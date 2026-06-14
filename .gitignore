@@ -1,0 +1,64 @@
+# ───────────────────────────────────────────────────────────
+# CRITICAL: Personal data (never commit)
+# ───────────────────────────────────────────────────────────
+# bunshin runtime data (database with all your memories, credentials)
+.bunshin/
+data.db*
+gmail.json
+calendar.json
+entities.json
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# LINE export files (may contain private chat history)
+*[LINE]*.txt
+*line_export*
+
+# Calendar / Gmail credentials backups
+*.bak.*
+
+# ───────────────────────────────────────────────────────────
+# Python
+# ───────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ───────────────────────────────────────────────────────────
+# IDE / Editor
+# ───────────────────────────────────────────────────────────
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+.DS_Store
+
+# ───────────────────────────────────────────────────────────
+# Claude Code project files (may contain context)
+# ───────────────────────────────────────────────────────────
+.mcp.json
+.claude/
+
+# ───────────────────────────────────────────────────────────
+# OS / Misc
+# ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.tmp

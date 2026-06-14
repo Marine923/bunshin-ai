@@ -1,0 +1,1061 @@
+"""Bunshin CLI."""
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+import click
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TextColumn,
+    TimeRemainingColumn,
+)
+from rich.table import Table
+
+from bunshin.ingestion.claude_history import import_claude_history
+from bunshin.ingestion.files import DEFAULT_EXTENSIONS, import_files
+from bunshin.storage import (
+    DEFAULT_DB_PATH,
+    count_records,
+    count_short_records,
+    count_vectors,
+    delete_short_records,
+    get_records_without_vectors,
+    init_db,
+    init_vector_db,
+    insert_vector,
+    list_sources_with_counts,
+)
+
+
+console = Console()
+
+
+@click.group()
+@click.version_option()
+def main():
+    """分身（Bunshin）— Personal memory engine."""
+
+
+@main.command("init")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+def init_cmd(db: Path):
+    """Initialize the Bunshin database."""
+    conn = init_db(db)
+    conn.close()
+    console.print(f"[green]OK[/green] Initialized database at [cyan]{db}[/cyan]")
+
+
+@main.command("import-claude")
+@click.argument(
+    "path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=Path.home() / ".claude" / "projects",
+)
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Print each file as it is processed")
+def import_claude_cmd(path: Path, db: Path, verbose: bool):
+    """Import Claude Code transcript history."""
+    conn = init_db(db)
+    console.print(f"Scanning [cyan]{path}[/cyan] for transcript .jsonl files...")
+    stats = import_claude_history(conn, path, verbose=verbose)
+
+    table = Table(title="Claude history import results")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    table.add_row("Files scanned", str(stats["files_scanned"]))
+    table.add_row("Lines parsed", str(stats["lines_parsed"]))
+    table.add_row("Records inserted", str(stats["records_inserted"]))
+    table.add_row("Records skipped (dup)", str(stats["records_skipped"]))
+    table.add_row("Files failed to read", str(stats["files_failed"]))
+    console.print(table)
+
+    conn.close()
+
+
+@main.command("status")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+def status_cmd(db: Path):
+    """Show database stats."""
+    if not db.exists():
+        console.print(
+            f"[red]No database found at {db}. Run [bold]bunshin init[/bold] first.[/red]"
+        )
+        return
+
+    conn = init_db(db)
+    total = count_records(conn)
+
+    table = Table(title=f"分身 status — {db}")
+    table.add_column("Source", style="cyan")
+    table.add_column("Records", justify="right")
+    for source, count in list_sources_with_counts(conn):
+        table.add_row(source, str(count))
+    table.add_row("[bold]Total records[/bold]", f"[bold]{total}[/bold]")
+
+    try:
+        init_vector_db(conn)
+        vcount = count_vectors(conn)
+        table.add_row("[bold]Embeddings[/bold]", f"[bold]{vcount}[/bold]")
+    except Exception as e:
+        table.add_row("[bold]Embeddings[/bold]", f"[red]error: {e}[/red]")
+
+    console.print(table)
+    conn.close()
+
+
+@main.command("embed")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+@click.option("--batch-size", default=32, help="Batch size for embedding")
+def embed_cmd(db: Path, batch_size: int):
+    """Generate embeddings for all records that don't have one yet."""
+    from bunshin.embeddings import DIMENSIONS, embed_passages
+
+    conn = init_db(db)
+    init_vector_db(conn, dimensions=DIMENSIONS)
+
+    pending = get_records_without_vectors(conn)
+    if not pending:
+        console.print("[yellow]No records to embed (all up to date).[/yellow]")
+        conn.close()
+        return
+
+    console.print(
+        f"Embedding [bold]{len(pending)}[/bold] records "
+        f"(first run downloads ~120 MB model, then ~30s for {len(pending)} records)..."
+    )
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Embedding", total=len(pending))
+        for i in range(0, len(pending), batch_size):
+            batch = pending[i : i + batch_size]
+            ids = [r[0] for r in batch]
+            texts = [r[1] for r in batch]
+            embeddings = list(embed_passages(texts))
+            for rec_id, emb in zip(ids, embeddings):
+                insert_vector(conn, rec_id, emb)
+            conn.commit()
+            progress.update(task, advance=len(batch))
+
+    console.print(f"[green]OK[/green] Embedded {len(pending)} records.")
+    conn.close()
+
+
+@main.command("search")
+@click.argument("query", type=str)
+@click.option("--limit", "-n", default=5, help="Max results")
+@click.option("--full", is_flag=True, help="Show full content (no truncation)")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+def search_cmd(query: str, limit: int, full: bool, db: Path):
+    """Search records by semantic similarity."""
+    from bunshin.search import search as do_search
+
+    if not db.exists():
+        console.print(f"[red]No database at {db}. Run [bold]bunshin init[/bold] first.[/red]")
+        return
+
+    conn = init_db(db)
+    results = do_search(conn, query, limit=limit)
+    conn.close()
+
+    if not results:
+        console.print(
+            "[yellow]No results.[/yellow] "
+            "Did you run [bold]bunshin embed[/bold]?"
+        )
+        return
+
+    console.print(f"\n[bold]'{query}'[/bold] の検索結果（{len(results)}件）\n")
+    for i, r in enumerate(results, 1):
+        ts = (
+            datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M")
+            if r["timestamp"]
+            else "n/a"
+        )
+        role = (r["metadata"] or {}).get("role", "?")
+        console.print(
+            f"[bold cyan]#{i}[/bold cyan] "
+            f"[dim]{ts} | {r['source']}/{role} | "
+            f"distance={r['distance']:.3f}[/dim]"
+        )
+        content = r["content"]
+        if not full and len(content) > 300:
+            content = content[:300] + "..."
+        console.print(content)
+        console.print()
+
+
+@main.command("import-files")
+@click.argument(
+    "path",
+    type=click.Path(exists=True, path_type=Path),
+    default=Path.cwd,
+)
+@click.option(
+    "--ext",
+    multiple=True,
+    help="File extensions to include (default: .md .markdown .txt)",
+)
+@click.option("--force", is_flag=True, help="Reimport even if file unchanged")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+def import_files_cmd(path: Path, ext: tuple[str, ...], force: bool, db: Path):
+    """Import local Markdown / text files."""
+    conn = init_db(db)
+    extensions = set(ext) if ext else DEFAULT_EXTENSIONS
+    console.print(f"Scanning [cyan]{path}[/cyan] for {sorted(extensions)} files...")
+    stats = import_files(conn, path, extensions=extensions, force=force)
+    table = Table(title="File import results")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    for k, v in stats.items():
+        table.add_row(k, str(v))
+    console.print(table)
+    conn.close()
+
+
+@main.command("reindex")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+@click.option(
+    "--claude-path",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path.home() / ".claude" / "projects",
+)
+def reindex_cmd(db: Path, claude_path: Path):
+    """Force re-chunk and re-embed all Claude history (~30s)."""
+    from bunshin.embeddings import DIMENSIONS, embed_passages
+    from bunshin.storage import (
+        get_records_without_vectors,
+        init_vector_db,
+        insert_vector,
+    )
+
+    conn = init_db(db)
+
+    console.print("[yellow]Force-reindexing all Claude sessions...[/yellow]")
+    stats = import_claude_history(conn, claude_path, force=True)
+
+    console.print(
+        f"Sessions: scanned={stats['files_scanned']} "
+        f"reimported={stats['files_reimported']} "
+        f"records={stats['records_inserted']}"
+    )
+
+    # Re-embed
+    init_vector_db(conn, dimensions=DIMENSIONS)
+    pending = [
+        (rid, text) for rid, text in get_records_without_vectors(conn)
+        if len(text or "") >= 20
+    ]
+    if pending:
+        console.print(f"Embedding {len(pending)} new chunks...")
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Embedding", total=len(pending))
+            for i in range(0, len(pending), 32):
+                batch = pending[i : i + 32]
+                ids = [r[0] for r in batch]
+                texts = [r[1] for r in batch]
+                for rec_id, emb in zip(ids, embed_passages(texts)):
+                    insert_vector(conn, rec_id, emb)
+                conn.commit()
+                progress.update(task, advance=len(batch))
+
+    console.print(f"[green]Reindex complete.[/green]")
+    conn.close()
+
+
+@main.command("chat")
+@click.argument("query", type=str)
+@click.option("--model", default=None, help="Ollama model (auto-pick if not set)")
+@click.option("--context-limit", default=5, help="Number of past memories to load")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+def chat_cmd(query: str, model: Optional[str], context_limit: int, db: Path):
+    """Chat with your memory via local LLM (Ollama)."""
+    from bunshin.chat import build_context, chat_ollama, check_ollama, pick_model
+
+    ok, available = check_ollama()
+    if not ok:
+        console.print("[red]Ollama not running.[/red]")
+        console.print("Install: [cyan]https://ollama.com[/cyan]")
+        console.print("Start:   [cyan]ollama serve[/cyan]")
+        console.print("Pull a model: [cyan]ollama pull llama3.2:3b[/cyan]")
+        return
+
+    if not available:
+        console.print("[red]No Ollama models installed.[/red]")
+        console.print("Try: [cyan]ollama pull llama3.2:3b[/cyan]")
+        return
+
+    chosen = model or pick_model(available)
+    if not chosen:
+        console.print("[red]Could not pick a model.[/red]")
+        return
+
+    if not db.exists():
+        console.print(f"[red]No database at {db}.[/red]")
+        return
+
+    conn = init_db(db)
+    console.print(f"[dim]Model: {chosen} | Loading {context_limit} memories...[/dim]")
+    context = build_context(conn, query, limit=context_limit)
+    conn.close()
+
+    if not context:
+        console.print("[yellow](No relevant past memory found, answering without context)[/yellow]")
+
+    console.print(f"\n[bold cyan]Q:[/bold cyan] {query}\n")
+    console.print(f"[bold green]分身:[/bold green] ", end="")
+    try:
+        for chunk in chat_ollama(query, context, model=chosen, stream=True):
+            console.print(chunk, end="")
+        console.print()
+    except Exception as e:
+        console.print(f"\n[red]Error: {e}[/red]")
+
+
+@main.command("import-line")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--verbose", "-v", is_flag=True)
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def import_line_cmd(path: Path, verbose: bool, db: Path):
+    """Import a LINE chat export (text file)."""
+    from bunshin.ingestion.line import import_line_file
+
+    conn = init_db(db)
+    console.print(f"Reading [cyan]{path.name}[/cyan]...")
+    stats = import_line_file(conn, path, verbose=verbose)
+    if stats.get("error_msg"):
+        console.print(f"[red]Error:[/red] {stats['error_msg']}")
+    else:
+        table = Table(title=f"LINE import — {stats.get('title','')[:60]}")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Count", justify="right")
+        table.add_row("messages_parsed", str(stats["messages_parsed"]))
+        table.add_row("chunks_inserted", str(stats["chunks_inserted"]))
+        console.print(table)
+    conn.close()
+
+
+@main.command("doctor")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def doctor_cmd(db: Path):
+    """Diagnose setup, show what's working and what's missing."""
+    import subprocess
+
+    console.print("\n[bold]🩺 分身 セットアップ診断[/bold]\n")
+
+    issues = []  # (level, label, detail, fix)
+
+    # ── 1. Database
+    if not db.exists():
+        issues.append(("❌", "データベース", "未初期化", "bunshin init"))
+    else:
+        conn = init_db(db)
+        total = count_records(conn)
+        if total == 0:
+            issues.append(
+                ("⚠", "データベース",
+                 f"DB は存在するが空 ({db})",
+                 "bunshin import-claude && bunshin embed")
+            )
+        else:
+            sources = dict(list_sources_with_counts(conn))
+            console.print(f"[green]✓[/green] データベース: {total} 件 ({db})")
+            for src, cnt in sorted(sources.items(), key=lambda x: -x[1]):
+                console.print(f"   [dim]├ {src}: {cnt}[/dim]")
+
+        try:
+            init_vector_db(conn)
+        except Exception:
+            pass
+        vec_count = count_vectors(conn)
+        if vec_count < total * 0.8:
+            issues.append(
+                ("⚠", "ベクトル化",
+                 f"{vec_count}/{total} のみ (検索品質が下がる)",
+                 "bunshin embed")
+            )
+        else:
+            console.print(f"[green]✓[/green] ベクトル化: {vec_count}/{total}")
+        conn.close()
+
+    # ── 2. Ollama
+    try:
+        from bunshin.chat import check_ollama
+        ok, models = check_ollama()
+        if not ok:
+            issues.append(
+                ("⚠", "Ollama (オフラインチャット)",
+                 "未起動 — オンラインAIのみ使用可",
+                 "open /Applications/Ollama.app   # または ollama serve")
+            )
+        elif not models:
+            issues.append(
+                ("⚠", "Ollama モデル",
+                 "Ollama 稼働中だがモデル未インストール",
+                 "ollama pull qwen2.5:14b   # 推奨")
+            )
+        else:
+            console.print(f"[green]✓[/green] Ollama: {len(models)} モデル ({', '.join(models[:3])})")
+    except Exception as e:
+        issues.append(("⚠", "Ollama", f"確認失敗: {e}", "ollama 確認"))
+
+    # ── 3. Gmail
+    try:
+        from bunshin.ingestion.gmail import load_credentials as gmail_creds
+        creds = gmail_creds()
+        if not creds:
+            issues.append(
+                ("ℹ", "Gmail取り込み",
+                 "未設定 (オプション)",
+                 "bunshin setup-gmail --email YOU@gmail.com")
+            )
+        else:
+            console.print(f"[green]✓[/green] Gmail: {creds['email']}")
+    except Exception:
+        pass
+
+    # ── 4. Calendar
+    try:
+        from bunshin.ingestion.calendar import load_url as cal_url
+        if not cal_url():
+            issues.append(
+                ("ℹ", "カレンダー取り込み",
+                 "未設定 (オプション)",
+                 "bunshin setup-calendar 'iCal URL'   # Google Calendar 設定 → 統合 から取得")
+            )
+        else:
+            console.print(f"[green]✓[/green] カレンダー: URL 設定済")
+    except Exception:
+        pass
+
+    # ── 5. launchd auto-update
+    plist = Path.home() / "Library/LaunchAgents/com.bunshin.update.plist"
+    if not plist.exists():
+        issues.append(
+            ("ℹ", "自動更新 (launchd)",
+             "未設定 — 手動で update が必要",
+             "docs/SETUP.md → 「オプション：自動取り込み」参照")
+        )
+    else:
+        try:
+            r = subprocess.run(
+                ["launchctl", "list"], capture_output=True, text=True, timeout=5
+            )
+            if "com.bunshin.update" in r.stdout:
+                console.print("[green]✓[/green] 自動更新: launchd で毎時実行中")
+            else:
+                issues.append(
+                    ("⚠", "自動更新", "plist あるが launchctl にロードされていない",
+                     "launchctl load ~/Library/LaunchAgents/com.bunshin.update.plist")
+                )
+        except Exception:
+            pass
+
+    # ── 6. MCP integration
+    project_mcp = Path.cwd() / ".mcp.json"
+    desktop_mcp = Path.home() / "Library/Application Support/Claude/claude_desktop_config.json"
+
+    if project_mcp.exists():
+        console.print(f"[green]✓[/green] Claude Code MCP: {project_mcp}")
+    else:
+        issues.append(
+            ("ℹ", "Claude Code MCP",
+             "プロジェクトディレクトリに .mcp.json なし",
+             "docs/SETUP.md → 「オプション：MCP連携」参照")
+        )
+
+    if desktop_mcp.exists():
+        try:
+            import json as _json
+            config = _json.loads(desktop_mcp.read_text())
+            if "bunshin" in config.get("mcpServers", {}):
+                console.print("[green]✓[/green] Claude Desktop MCP: 設定済")
+            else:
+                issues.append(
+                    ("ℹ", "Claude Desktop MCP", "設定ファイルあるが bunshin 未登録",
+                     "docs/SETUP.md 参照")
+                )
+        except Exception:
+            pass
+
+    # ── 7. Knowledge Graph
+    try:
+        from bunshin.knowledge_graph import init_kg_schema
+        conn = init_db(db)
+        init_kg_schema(conn)
+        e_count = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+        link_count = conn.execute("SELECT COUNT(*) FROM record_entities").fetchone()[0]
+        if e_count == 0:
+            issues.append(
+                ("ℹ", "Knowledge Graph",
+                 "エンティティ未抽出",
+                 "bunshin graph build")
+            )
+        else:
+            console.print(f"[green]✓[/green] Knowledge Graph: {e_count} エンティティ, {link_count} リンク")
+        conn.close()
+    except Exception:
+        pass
+
+    # ── Summary
+    console.print()
+    if not issues:
+        console.print("[bold green]🎉 すべて整っています！[/bold green]")
+        console.print("[dim]ブラウザで http://127.0.0.1:8000 を開いて使ってください。[/dim]")
+        return
+
+    console.print("[bold]── 改善できる項目 ──[/bold]\n")
+    for level, label, detail, fix in issues:
+        color = "red" if level == "❌" else "yellow" if level == "⚠" else "cyan"
+        console.print(f"[{color}]{level}[/{color}] [bold]{label}[/bold]: {detail}")
+        console.print(f"   [dim]→[/dim] [cyan]{fix}[/cyan]\n")
+
+
+@main.command("graph")
+@click.argument("action", type=click.Choice(["build", "rebuild", "list", "add"]))
+@click.option("--name", default=None, help="Entity name (for `add`)")
+@click.option("--type", "type_", default="topic", help="Entity type (for `add`)")
+@click.option("--alias", multiple=True, help="Entity alias (repeatable, for `add`)")
+@click.option("--description", default=None, help="Entity description (for `add`)")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def graph_cmd(
+    action: str,
+    name: Optional[str],
+    type_: str,
+    alias: tuple[str, ...],
+    description: Optional[str],
+    db: Path,
+):
+    """Knowledge graph commands.
+
+    Actions:
+      build    Seed entities + link records (incremental)
+      rebuild  Same as build (currently identical, idempotent)
+      list     Show all entities with mention counts
+      add      Add a custom entity (--name required)
+    """
+    from bunshin.knowledge_graph import (
+        add_custom_entity,
+        entity_with_counts,
+        init_kg_schema,
+        link_records_to_entities,
+        seed_entities,
+    )
+
+    conn = init_db(db)
+    init_kg_schema(conn)
+
+    if action in ("build", "rebuild"):
+        console.print("Seeding entities...")
+        seed_stats = seed_entities(conn)
+        console.print(
+            f"  ✓ from memory: {seed_stats['from_memory']} | "
+            f"user config: {seed_stats.get('from_user_config', 0)} | "
+            f"generic: {seed_stats.get('from_generic', 0)}"
+        )
+        console.print("Linking records to entities...")
+        link_stats = link_records_to_entities(conn, verbose=False)
+        console.print(
+            f"  ✓ scanned {link_stats['records_scanned']} records | "
+            f"{link_stats['links_inserted']} links | "
+            f"{link_stats['entities_used']} entities used"
+        )
+
+    elif action == "list":
+        entities = entity_with_counts(conn)
+        table = Table(title=f"Entities ({len(entities)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Type")
+        table.add_column("Mentions", justify="right")
+        table.add_column("Description", style="dim")
+        for e in entities[:50]:
+            table.add_row(
+                e["name"],
+                e["type"],
+                str(e["mentions"]),
+                (e["description"] or "")[:60],
+            )
+        console.print(table)
+        if len(entities) > 50:
+            console.print(f"[dim](showing 50 of {len(entities)})[/dim]")
+
+    elif action == "add":
+        if not name:
+            console.print("[red]--name is required for `add`[/red]")
+            return
+        eid = add_custom_entity(
+            conn, name, type_,
+            aliases=list(alias) or None,
+            description=description,
+        )
+        console.print(f"[green]OK[/green] Added entity #{eid}: {name} ({type_})")
+        console.print("[dim]Run `bun graph rebuild` to link existing records.[/dim]")
+
+    conn.close()
+
+
+@main.command("insights")
+@click.option("--db", type=click.Path(path_type=Path), default=DEFAULT_DB_PATH)
+def insights_cmd(db: Path):
+    """Show today's auto-generated insights."""
+    from bunshin.insights import generate_insights
+
+    conn = init_db(db)
+    data = generate_insights(conn)
+    conn.close()
+
+    console.print(f"\n[bold]💡 分身からのお知らせ — {data['generated_at']}[/bold]\n")
+
+    if data["inactive_projects"]:
+        console.print("[bold yellow]🔥 長期未活動プロジェクト[/bold yellow]")
+        for p in data["inactive_projects"]:
+            console.print(
+                f"  [bold]{p['name']}[/bold] — "
+                f"[red]{p['days_ago']}日未活動[/red] (最終 {p['last_seen']})"
+            )
+            console.print(f"    {p['description'][:120]}")
+        console.print()
+
+    if data["upcoming_events"]:
+        console.print("[bold cyan]📅 直近の予定（14日以内）[/bold cyan]")
+        for e in data["upcoming_events"]:
+            loc = f" @ {e['location']}" if e["location"] else ""
+            console.print(f"  {e['start']} — [bold]{e['summary']}[/bold]{loc}")
+        console.print()
+
+    if data["recent_notes"]:
+        console.print("[bold green]📝 直近の手動メモ[/bold green]")
+        for n in data["recent_notes"]:
+            console.print(f"  {n['date']} {n['content'][:120]}")
+        console.print()
+
+    if data["pending_questions"]:
+        console.print("[bold magenta]❓ 直近1週間で未回答の質問[/bold magenta]")
+        for q in data["pending_questions"]:
+            console.print(f"  {q['date']}")
+            console.print(f"    {q['content'][:200]}")
+            console.print()
+
+
+@main.command("note")
+@click.argument("content", type=str)
+@click.option("--tag", multiple=True, help="Tag (repeatable)")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def note_cmd(content: str, tag: tuple[str, ...], db: Path):
+    """Add a manual memo. Embeds it immediately for instant search."""
+    from bunshin.embeddings import DIMENSIONS, embed_passages
+    from bunshin.ingestion.manual import add_note
+    from bunshin.storage import init_vector_db, insert_vector
+
+    conn = init_db(db)
+    record_id = add_note(conn, content, tags=list(tag))
+    if not record_id:
+        console.print("[yellow]Empty memo, nothing saved.[/yellow]")
+        conn.close()
+        return
+
+    # Immediate embedding so it's searchable right away
+    if len(content) >= 20:
+        init_vector_db(conn, dimensions=DIMENSIONS)
+        for emb in embed_passages([content]):
+            insert_vector(conn, record_id, emb)
+        conn.commit()
+
+    console.print(f"[green]OK[/green] Saved memo: {content[:80]}")
+    conn.close()
+
+
+@main.command("setup-calendar")
+@click.argument("ical_url", type=str)
+def setup_calendar_cmd(ical_url: str):
+    """Save iCal feed URL for calendar import (Google Calendar private URL)."""
+    from bunshin.ingestion.calendar import save_url
+    save_url(ical_url)
+    console.print("[green]OK[/green] Saved calendar URL.")
+    console.print("Next: [bold]bunshin import-calendar[/bold]")
+
+
+@main.command("import-calendar")
+@click.option("--url", default=None, help="iCal URL (uses saved URL if not given)")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def import_calendar_cmd(url: Optional[str], db: Path):
+    """Import calendar events from iCal feed."""
+    from bunshin.ingestion.calendar import import_calendar
+
+    conn = init_db(db)
+    console.print("Fetching calendar...")
+    stats = import_calendar(conn, url=url)
+    if stats.get("error_msg"):
+        console.print(f"[red]Error:[/red] {stats['error_msg']}")
+    else:
+        table = Table(title="Calendar import")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Count", justify="right")
+        for k in ("fetched", "imported", "errors"):
+            table.add_row(k, str(stats.get(k, 0)))
+        console.print(table)
+    conn.close()
+
+
+@main.command("setup-gmail")
+@click.option("--email", required=True, help="Your Gmail address")
+@click.option(
+    "--app-password",
+    required=True,
+    prompt=True,
+    hide_input=True,
+    help="App password (https://myaccount.google.com/apppasswords)",
+)
+def setup_gmail_cmd(email: str, app_password: str):
+    """Save Gmail credentials. Needs an App Password (not your regular password)."""
+    from bunshin.ingestion.gmail import save_credentials
+    save_credentials(email, app_password.strip())
+    console.print(f"[green]OK[/green] Saved credentials for [cyan]{email}[/cyan]")
+    console.print("Next: [bold]bunshin import-gmail[/bold]")
+
+
+@main.command("import-gmail")
+@click.option("--limit", type=int, default=None, help="Max emails to fetch")
+@click.option("--initial-days", default=90, help="Days back to fetch on first run")
+@click.option(
+    "--folder",
+    default='"[Gmail]/All Mail"',
+    help='IMAP folder (default: all mail)',
+)
+@click.option("--verbose", "-v", is_flag=True)
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def import_gmail_cmd(
+    limit: Optional[int],
+    initial_days: int,
+    folder: str,
+    verbose: bool,
+    db: Path,
+):
+    """Import emails via Gmail IMAP (run setup-gmail first)."""
+    from bunshin.ingestion.gmail import import_gmail, load_credentials
+
+    creds = load_credentials()
+    if not creds:
+        console.print("[red]No Gmail credentials.[/red]")
+        console.print("Run: [bold]bunshin setup-gmail --email you@gmail.com[/bold]")
+        return
+
+    conn = init_db(db)
+    console.print(f"Connecting to Gmail as [cyan]{creds['email']}[/cyan]...")
+    stats = import_gmail(
+        conn,
+        creds["email"],
+        creds["app_password"],
+        folder=folder,
+        limit=limit,
+        initial_days=initial_days,
+        verbose=verbose,
+    )
+
+    if stats.get("error_msg"):
+        console.print(f"[red]Error:[/red] {stats['error_msg']}")
+    else:
+        table = Table(title="Gmail import results")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Count", justify="right")
+        for k in ("fetched", "imported", "chunks_inserted", "errors"):
+            table.add_row(k, str(stats.get(k, 0)))
+        console.print(table)
+    conn.close()
+
+
+@main.command("clean")
+@click.option("--min-length", default=20, help="Minimum content length to keep")
+@click.option("--dry-run", is_flag=True, help="Count only, don't delete")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+def clean_cmd(min_length: int, dry_run: bool, db: Path):
+    """Delete records shorter than min-length characters (semantic noise)."""
+    if not db.exists():
+        console.print(f"[red]No database at {db}.[/red]")
+        return
+
+    conn = init_db(db)
+    short = count_short_records(conn, min_length=min_length)
+    total = count_records(conn)
+
+    if short == 0:
+        console.print(
+            f"[green]Nothing to clean.[/green] All {total} records are {min_length}+ chars."
+        )
+        conn.close()
+        return
+
+    console.print(
+        f"Found [bold]{short}[/bold] short records (< {min_length} chars) "
+        f"out of [bold]{total}[/bold] total."
+    )
+
+    if dry_run:
+        console.print("[yellow]Dry run, not deleting.[/yellow]")
+        conn.close()
+        return
+
+    deleted = delete_short_records(conn, min_length=min_length)
+    remaining = count_records(conn)
+    remaining_vec = count_vectors(conn)
+    console.print(f"[green]OK[/green] Deleted {deleted} records.")
+    console.print(f"Remaining: [bold]{remaining}[/bold] records, [bold]{remaining_vec}[/bold] embeddings.")
+    conn.close()
+
+
+@main.command("web")
+@click.option("--host", default="127.0.0.1", help="Bind host")
+@click.option("--port", default=8000, help="Bind port")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+def web_cmd(host: str, port: int, db: Path):
+    """Start the Bunshin web UI."""
+    import uvicorn
+
+    from bunshin.web.server import create_app
+
+    if not db.exists():
+        console.print(
+            f"[red]No database at {db}. Run [bold]bunshin init[/bold] first.[/red]"
+        )
+        return
+
+    url = f"http://{host}:{port}"
+    console.print(f"[green]分身 Web UI[/green] starting on [cyan]{url}[/cyan]")
+    console.print("[dim]Open the URL in your browser. Press Ctrl+C to stop.[/dim]\n")
+
+    app = create_app(db)
+    uvicorn.run(app, host=host, port=port, log_level="warning")
+
+
+@main.command("update")
+@click.option(
+    "--claude-path",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path.home() / ".claude" / "projects",
+    help="Path to Claude Code projects directory",
+)
+@click.option(
+    "--files-path",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=lambda: Path.home() / "Documents",
+    help="Path to scan for markdown / text files (default: ~/Documents)",
+)
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+@click.option("--no-files", is_flag=True, help="Skip file ingestion")
+@click.option("--quiet", "-q", is_flag=True, help="Minimal output (for cron)")
+def update_cmd(
+    claude_path: Path,
+    files_path: Path,
+    db: Path,
+    no_files: bool,
+    quiet: bool,
+):
+    """Incremental import + embed of Claude history AND local files.
+
+    Idempotent — safe to run from cron/launchd. Skips unchanged sessions/files
+    via mtime cache.
+    """
+    from datetime import datetime
+
+    from bunshin.embeddings import DIMENSIONS, embed_passages
+
+    start = datetime.now()
+    conn = init_db(db)
+
+    # 1) Claude history
+    if claude_path.exists():
+        c_stats = import_claude_history(conn, claude_path)
+    else:
+        c_stats = {"files_scanned": 0, "files_reimported": 0, "records_inserted": 0}
+
+    # 2) Local files
+    if no_files or not files_path.exists():
+        f_stats = {"files_scanned": 0, "files_reimported": 0, "chunks_inserted": 0}
+    else:
+        f_stats = import_files(conn, files_path)
+
+    # 3) Gmail (only if user has set up credentials)
+    g_stats = {"fetched": 0, "imported": 0, "chunks_inserted": 0, "errors": 0}
+    try:
+        from bunshin.ingestion.gmail import import_gmail, load_credentials
+        creds = load_credentials()
+        if creds:
+            g_stats = import_gmail(
+                conn, creds["email"], creds["app_password"]
+            )
+    except Exception:
+        pass
+
+    # 4) Calendar (only if user has set up URL)
+    cal_stats = {"fetched": 0, "imported": 0, "errors": 0}
+    try:
+        from bunshin.ingestion.calendar import import_calendar, load_url
+        if load_url():
+            cal_stats = import_calendar(conn)
+    except Exception:
+        pass
+
+    # 5) Embed everything that lacks a vector
+    init_vector_db(conn, dimensions=DIMENSIONS)
+    pending = [
+        (rid, text) for rid, text in get_records_without_vectors(conn)
+        if len(text or "") >= 20
+    ]
+    embedded = 0
+    if pending:
+        batch_size = 32
+        for i in range(0, len(pending), batch_size):
+            batch = pending[i : i + batch_size]
+            ids = [r[0] for r in batch]
+            texts = [r[1] for r in batch]
+            embeddings = list(embed_passages(texts))
+            for rec_id, emb in zip(ids, embeddings):
+                insert_vector(conn, rec_id, emb)
+            conn.commit()
+            embedded += len(batch)
+
+    duration = (datetime.now() - start).total_seconds()
+    summary = (
+        f"claude_sessions={c_stats['files_reimported']} "
+        f"claude_records={c_stats['records_inserted']} "
+        f"files_reimported={f_stats['files_reimported']} "
+        f"file_chunks={f_stats['chunks_inserted']} "
+        f"gmail_imported={g_stats['imported']} "
+        f"gmail_chunks={g_stats['chunks_inserted']} "
+        f"cal_events={cal_stats['imported']} "
+        f"embedded={embedded} duration={duration:.1f}s"
+    )
+
+    # Stamp for /api/status
+    conn.execute(
+        "INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)",
+        ("last_update_at", str(int(start.timestamp()))),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)",
+        ("last_update_summary", summary),
+    )
+    conn.commit()
+    conn.close()
+
+    if quiet:
+        click.echo(f"[bunshin update] {start.strftime('%Y-%m-%d %H:%M:%S')} {summary}")
+    else:
+        console.print(f"[green]Update complete[/green]: {summary}")
+
+
+@main.command("mcp")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    help="Database file path",
+)
+def mcp_cmd(db: Path):
+    """Start the MCP server (stdio) for Claude Code / Desktop integration."""
+    if not db.exists():
+        click.echo(f"No database at {db}. Run `bunshin init` first.", err=True)
+        return
+
+    # IMPORTANT: stdout is reserved for MCP protocol. Don't print anything to it.
+    from bunshin.mcp.server import run
+    run(db)
+
+
+if __name__ == "__main__":
+    main()
