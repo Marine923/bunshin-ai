@@ -178,51 +178,69 @@ python3.11 -m venv ~/.bunshin/venv
 
 ---
 
-## オプション：自動取り込み（launchd）
+## オプション：自動取り込み（毎時）
 
 毎時、Claude会話＋ファイル＋Gmail＋カレンダー を自動取り込み。
-
-### plist 配置
-
-`~/Library/LaunchAgents/com.bunshin.update.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.bunshin.update</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/Users/YOU/.bunshin/venv/bin/bunshin</string>
-        <string>update</string>
-        <string>--quiet</string>
-    </array>
-    <key>StartInterval</key>
-    <integer>3600</integer>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/Users/YOU/.bunshin/logs/update.out.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Users/YOU/.bunshin/logs/update.err.log</string>
-</dict>
-</plist>
-```
-
-### 有効化
+OS 自動検出で、Mac/Linux どちらでも同じコマンド：
 
 ```bash
-mkdir -p ~/.bunshin/logs
-launchctl load ~/Library/LaunchAgents/com.bunshin.update.plist
-launchctl list | grep bunshin    # 確認
+bunshin install-scheduler
 ```
+
+### 自動検出される仕組み
+
+| OS | 使われる仕組み |
+|----|--------------|
+| macOS | `launchd` user agent (`~/Library/LaunchAgents/com.bunshin.update.plist`) |
+| Linux + systemd | `systemctl --user` timer + service |
+| Linux + cron のみ | `crontab` エントリ |
 
 ### ログ確認
 
+すべてのプラットフォーム共通：
+
 ```bash
 tail -f ~/.bunshin/logs/update.out.log
+```
+
+### 解除
+
+```bash
+bunshin uninstall-scheduler
+```
+
+### 状態確認
+
+```bash
+bunshin doctor
+# → 「自動更新: macos で毎時実行中」のような行を確認
+```
+
+### 手動セットアップ（任意、上記が動かない場合）
+
+#### macOS
+
+```bash
+mkdir -p ~/.bunshin/logs
+# bunshin install-scheduler が ~/Library/LaunchAgents/ に plist を生成し
+# launchctl load します。中身を見たい場合は plist を直接確認。
+launchctl list | grep bunshin
+```
+
+#### Linux + systemd
+
+```bash
+# bunshin install-scheduler が以下を生成・有効化します:
+# ~/.config/systemd/user/bunshin-update.{service,timer}
+systemctl --user status bunshin-update.timer
+journalctl --user -u bunshin-update.service
+```
+
+#### Linux + cron のみ
+
+```bash
+# bunshin install-scheduler が crontab に追記します。
+crontab -l | grep bunshin
 ```
 
 ---

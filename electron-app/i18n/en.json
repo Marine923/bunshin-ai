@@ -1,0 +1,43 @@
+{
+  "menu": {
+    "about": "About Bunshin",
+    "hide": "Hide Bunshin",
+    "hideOthers": "Hide Others",
+    "unhide": "Show All",
+    "quit": "Quit Bunshin",
+    "file": "File",
+    "newMemo": "New Memo…",
+    "newMemoPrefix": "Remember:",
+    "search": "Search…",
+    "close": "Close Window",
+    "edit": "Edit",
+    "undo": "Undo",
+    "redo": "Redo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select All",
+    "view": "View",
+    "reload": "Reload",
+    "forceReload": "Force Reload",
+    "devTools": "Toggle Developer Tools",
+    "resetZoom": "Actual Size",
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "fullscreen": "Toggle Full Screen",
+    "window": "Window",
+    "minimize": "Minimize",
+    "zoom": "Zoom",
+    "front": "Bring All to Front",
+    "help": "Help",
+    "docs": "Documentation",
+    "repository": "GitHub Repository",
+    "reportIssue": "Report an Issue"
+  },
+  "dialog": {
+    "bunshinNotFoundTitle": "Bunshin CLI not found",
+    "bunshinNotFoundBody": "Could not find the bunshin CLI at {path} or other standard locations.\n\nPlease install bunshin first:\n  python3.11 -m venv ~/.bunshin/venv\n  ~/.bunshin/venv/bin/pip install -e /path/to/bunshin",
+    "serverTimeoutTitle": "Bunshin server failed to start",
+    "serverTimeoutBody": "The bunshin web server did not become reachable within 30 seconds.\n\nTry running `bunshin web` manually in a terminal to see the error, then launch the app again."
+  }
+}

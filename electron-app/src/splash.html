@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    -webkit-user-select: none;
+    font-family: -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
+  }
+  .splash {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #1a1f3a 0%, #0a0a14 100%);
+    border-radius: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #e5e5e5;
+    padding: 32px;
+    -webkit-app-region: drag;
+  }
+  /* Concentric rings (matching app icon design) */
+  .logo {
+    position: relative;
+    width: 140px;
+    height: 140px;
+    margin-bottom: 28px;
+  }
+  .ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 2.5px solid transparent;
+  }
+  .ring.outer {
+    inset: 0;
+    border-color: #4a8fef;
+    animation: spin-cw 4s linear infinite;
+  }
+  .ring.outer::before {
+    content: '';
+    position: absolute;
+    top: -7px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #4a8fef;
+  }
+  .ring.inner {
+    inset: 35px;
+    border-color: #5fbf6f;
+    animation: spin-ccw 3s linear infinite;
+  }
+  .ring.inner::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: -5px;
+    transform: translateY(-50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #5fbf6f;
+  }
+  .core {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 22px;
+    height: 22px;
+    margin: -11px 0 0 -11px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff 0%, #c8d4ef 100%);
+    box-shadow: 0 0 24px rgba(255,255,255,0.5);
+  }
+  @keyframes spin-cw  { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes spin-ccw { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+
+  h1 {
+    font-size: 24px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    letter-spacing: 0.05em;
+  }
+  .subtitle {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 24px;
+  }
+  .status {
+    font-size: 13px;
+    color: #aaa;
+    text-align: center;
+    min-height: 18px;
+  }
+  .progress {
+    margin-top: 16px;
+    width: 200px;
+    height: 3px;
+    background: #1a1f3a;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    width: 30%;
+    background: linear-gradient(90deg, #4a8fef, #a04aef);
+    border-radius: 2px;
+    animation: slide 1.4s ease-in-out infinite;
+  }
+  @keyframes slide {
+    0%   { transform: translateX(-100%); }
+    50%  { transform: translateX(200%); }
+    100% { transform: translateX(200%); }
+  }
+</style>
+</head>
+<body>
+  <div class="splash">
+    <div class="logo">
+      <div class="ring outer"></div>
+      <div class="ring inner"></div>
+      <div class="core"></div>
+    </div>
+    <h1>分身（Bunshin）</h1>
+    <div class="subtitle" id="subtitle">Personal memory engine</div>
+    <div class="status" id="status">起動中…</div>
+    <div class="progress"><div class="progress-bar"></div></div>
+  </div>
+
+<script>
+  // Listen for status updates from main process via IPC if exposed
+  window.addEventListener('DOMContentLoaded', () => {
+    if (window.bunshinSplash && window.bunshinSplash.onStatus) {
+      window.bunshinSplash.onStatus((msg) => {
+        document.getElementById('status').textContent = msg;
+      });
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+{
+  "menu": {
+    "about": "Bunshin について",
+    "hide": "Bunshin を隠す",
+    "hideOthers": "ほかを隠す",
+    "unhide": "すべて表示",
+    "quit": "Bunshin を終了",
+    "file": "ファイル",
+    "newMemo": "新規メモ…",
+    "newMemoPrefix": "覚えといて:",
+    "search": "検索…",
+    "close": "ウインドウを閉じる",
+    "edit": "編集",
+    "undo": "取り消す",
+    "redo": "やり直す",
+    "cut": "カット",
+    "copy": "コピー",
+    "paste": "ペースト",
+    "selectAll": "すべてを選択",
+    "view": "表示",
+    "reload": "再読み込み",
+    "forceReload": "強制再読み込み",
+    "devTools": "開発者ツールを表示",
+    "resetZoom": "実際のサイズ",
+    "zoomIn": "拡大",
+    "zoomOut": "縮小",
+    "fullscreen": "フルスクリーン",
+    "window": "ウインドウ",
+    "minimize": "最小化",
+    "zoom": "ズーム",
+    "front": "すべてを手前に移動",
+    "help": "ヘルプ",
+    "docs": "ドキュメント",
+    "repository": "GitHub リポジトリ",
+    "reportIssue": "問題を報告"
+  },
+  "dialog": {
+    "bunshinNotFoundTitle": "Bunshin CLI が見つかりません",
+    "bunshinNotFoundBody": "bunshin CLI が {path} または他の標準的な場所に見つかりませんでした。\n\nまず bunshin をインストールしてください：\n  python3.11 -m venv ~/.bunshin/venv\n  ~/.bunshin/venv/bin/pip install -e /path/to/bunshin",
+    "serverTimeoutTitle": "Bunshin サーバーの起動に失敗しました",
+    "serverTimeoutBody": "bunshin web サーバーが30秒以内に応答しませんでした。\n\nターミナルで `bunshin web` を手動実行してエラーを確認した上で、アプリを再起動してください。"
+  }
+}

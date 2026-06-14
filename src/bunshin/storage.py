@@ -117,7 +117,11 @@ def load_vec_extension(conn: sqlite3.Connection) -> None:
 
 
 def init_vector_db(conn: sqlite3.Connection, dimensions: int = 384) -> None:
-    """Create the vector storage table (idempotent)."""
+    """Create the vector storage table (idempotent).
+
+    If a table already exists with a different dimension, raises sqlite3.OperationalError
+    on later inserts. Call drop_vector_db() first when migrating embedding models.
+    """
     load_vec_extension(conn)
     conn.execute(
         f"""CREATE VIRTUAL TABLE IF NOT EXISTS records_vec USING vec0(
@@ -126,6 +130,32 @@ def init_vector_db(conn: sqlite3.Connection, dimensions: int = 384) -> None:
         )"""
     )
     conn.commit()
+
+
+def drop_vector_db(conn: sqlite3.Connection) -> None:
+    """Drop the vector table — used when migrating to a different embedding model.
+
+    Records themselves are preserved; only vectors are wiped and need re-embedding.
+    """
+    try:
+        load_vec_extension(conn)
+    except Exception:
+        pass
+    conn.execute("DROP TABLE IF EXISTS records_vec")
+    conn.commit()
+
+
+def detect_vec_dimensions(conn: sqlite3.Connection) -> Optional[int]:
+    """Inspect the existing vec table to find its dimensions, or None if no table."""
+    cursor = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='records_vec'"
+    )
+    row = cursor.fetchone()
+    if not row or not row[0]:
+        return None
+    import re
+    m = re.search(r"FLOAT\[(\d+)\]", row[0])
+    return int(m.group(1)) if m else None
 
 
 def insert_vector(conn: sqlite3.Connection, record_id: str, embedding) -> None:

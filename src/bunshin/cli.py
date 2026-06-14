@@ -395,6 +395,116 @@ def import_line_cmd(path: Path, verbose: bool, db: Path):
     conn.close()
 
 
+@main.command("migrate-embeddings")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Force re-embed all records even if dimensions match",
+)
+def migrate_embeddings_cmd(db: Path, force: bool):
+    """Migrate to the currently configured embedding model.
+
+    Compares the on-disk vector dimensions with the configured model.
+    If they differ, drops the vector table and re-embeds all records.
+    """
+    from bunshin.embeddings import DIMENSIONS, MODEL_NAME, embed_passages
+    from bunshin.storage import (
+        detect_vec_dimensions,
+        drop_vector_db,
+        get_records_without_vectors,
+        init_vector_db,
+        insert_vector,
+    )
+
+    conn = init_db(db)
+    existing_dim = detect_vec_dimensions(conn)
+    target_dim = DIMENSIONS
+
+    console.print(f"Configured model:  [cyan]{MODEL_NAME}[/cyan] ({target_dim}d)")
+    console.print(f"Existing vec dim:  [cyan]{existing_dim}[/cyan]")
+
+    if existing_dim == target_dim and not force:
+        console.print("[green]✓[/green] Dimensions match, no migration needed.")
+        console.print("[dim]Use --force to re-embed anyway.[/dim]")
+        return
+
+    if existing_dim is not None:
+        console.print(f"[yellow]Dropping old vector table ({existing_dim}d)...[/yellow]")
+        drop_vector_db(conn)
+
+    console.print(f"[yellow]Creating new vector table ({target_dim}d)...[/yellow]")
+    init_vector_db(conn, dimensions=target_dim)
+
+    # Re-embed everything (model will be downloaded on first call if new)
+    pending = [
+        (rid, text) for rid, text in get_records_without_vectors(conn)
+        if len(text or "") >= 20
+    ]
+    console.print(f"Re-embedding [bold]{len(pending)}[/bold] records (first run downloads the model)...")
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Embedding", total=len(pending))
+        batch_size = 16  # smaller batch for the larger model
+        for i in range(0, len(pending), batch_size):
+            batch = pending[i : i + batch_size]
+            ids = [r[0] for r in batch]
+            texts = [r[1] for r in batch]
+            for rec_id, emb in zip(ids, embed_passages(texts)):
+                insert_vector(conn, rec_id, emb)
+            conn.commit()
+            progress.update(task, advance=len(batch))
+
+    console.print(f"[green]✓[/green] Migrated to {MODEL_NAME} ({target_dim}d)")
+    conn.close()
+
+
+@main.command("install-scheduler")
+def install_scheduler_cmd():
+    """Install hourly auto-update via OS-appropriate scheduler.
+
+    Auto-detects:
+      - macOS → launchd user agent
+      - Linux + systemd → systemd --user timer
+      - Linux + cron → crontab entry
+    """
+    from bunshin.scheduler import detect_platform, install_scheduler
+
+    plat = detect_platform()
+    console.print(f"Detected platform: [cyan]{plat}[/cyan]")
+    ok, msg = install_scheduler()
+    if ok:
+        console.print(f"[green]✓[/green] {msg}")
+        console.print(
+            "[dim]Logs: ~/.bunshin/logs/update.{out,err}.log[/dim]"
+        )
+    else:
+        console.print(f"[red]✗[/red] {msg}")
+
+
+@main.command("uninstall-scheduler")
+def uninstall_scheduler_cmd():
+    """Remove the auto-update scheduler installed via `install-scheduler`."""
+    from bunshin.scheduler import uninstall_scheduler
+
+    ok, msg = uninstall_scheduler()
+    if ok:
+        console.print(f"[green]✓[/green] {msg}")
+    else:
+        console.print(f"[red]✗[/red] {msg}")
+
+
 @main.command("doctor")
 @click.option(
     "--db",
@@ -492,28 +602,27 @@ def doctor_cmd(db: Path):
     except Exception:
         pass
 
-    # ── 5. launchd auto-update
-    plist = Path.home() / "Library/LaunchAgents/com.bunshin.update.plist"
-    if not plist.exists():
-        issues.append(
-            ("ℹ", "自動更新 (launchd)",
-             "未設定 — 手動で update が必要",
-             "docs/SETUP.md → 「オプション：自動取り込み」参照")
-        )
-    else:
-        try:
-            r = subprocess.run(
-                ["launchctl", "list"], capture_output=True, text=True, timeout=5
+    # ── 5. auto-update (cross-platform scheduler)
+    try:
+        from bunshin.scheduler import scheduler_status
+        st = scheduler_status()
+        plat = st.get("platform", "unknown")
+        if not st.get("installed"):
+            issues.append(
+                ("ℹ", "自動更新",
+                 f"未設定 ({plat}) — 手動で update が必要",
+                 "bunshin install-scheduler")
             )
-            if "com.bunshin.update" in r.stdout:
-                console.print("[green]✓[/green] 自動更新: launchd で毎時実行中")
-            else:
-                issues.append(
-                    ("⚠", "自動更新", "plist あるが launchctl にロードされていない",
-                     "launchctl load ~/Library/LaunchAgents/com.bunshin.update.plist")
-                )
-        except Exception:
-            pass
+        elif not st.get("active"):
+            issues.append(
+                ("⚠", "自動更新",
+                 f"設定済 ({plat}) だが稼働してない",
+                 "bunshin install-scheduler  # 再インストール")
+            )
+        else:
+            console.print(f"[green]✓[/green] 自動更新: {plat} で毎時実行中")
+    except Exception as e:
+        issues.append(("⚠", "自動更新", f"確認失敗: {e}", "—"))
 
     # ── 6. MCP integration
     project_mcp = Path.cwd() / ".mcp.json"

@@ -1,0 +1,111 @@
+{
+  "name": "bunshin-desktop",
+  "version": "0.1.0",
+  "description": "Bunshin — 4-condition personal memory AI (desktop wrapper)",
+  "main": "src/main.js",
+  "author": {
+    "name": "Marine923",
+    "url": "https://github.com/Marine923"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Marine923/bunshin-ai"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:mac-universal": "electron-builder --mac --universal",
+    "icon:build": "node scripts/build-icon.js"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "sharp": "^0.33.0"
+  },
+  "build": {
+    "appId": "com.bunshin.desktop",
+    "productName": "Bunshin",
+    "copyright": "Copyright © 2026 Marine923",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "i18n/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "minimumSystemVersion": "11.0.0",
+      "extendInfo": {
+        "LSApplicationCategoryType": "public.app-category.productivity",
+        "NSHumanReadableCopyright": "Copyright © 2026 Marine923",
+        "CFBundleLocalizations": [
+          "en",
+          "ja"
+        ]
+      },
+      "identity": null
+    },
+    "dmg": {
+      "title": "Bunshin ${version}",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "linux": {
+      "category": "Utility",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "afterPack": "scripts/after-pack.js",
+    "publish": {
+      "provider": "github",
+      "owner": "Marine923",
+      "repo": "bunshin-ai",
+      "releaseType": "release"
+    }
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9"
+  }
+}

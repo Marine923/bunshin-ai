@@ -1,0 +1,52 @@
+name: Build Desktop App
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: electron-app/package-lock.json
+
+      - name: Install npm deps
+        working-directory: electron-app
+        run: npm ci
+
+      - name: Build icon (macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: electron-app
+        run: npm run icon:build
+
+      - name: Build & package
+        working-directory: electron-app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bunshin-${{ matrix.os }}
+          path: |
+            electron-app/dist/*.dmg
+            electron-app/dist/*.AppImage
+            electron-app/dist/*.deb
+            electron-app/dist/*.exe
+          if-no-files-found: warn
+          retention-days: 14
