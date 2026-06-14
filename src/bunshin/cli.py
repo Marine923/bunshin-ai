@@ -685,7 +685,7 @@ def doctor_cmd(db: Path):
 
 
 @main.command("graph")
-@click.argument("action", type=click.Choice(["build", "rebuild", "list", "add"]))
+@click.argument("action", type=click.Choice(["build", "rebuild", "list", "add", "discover", "cleanup"]))
 @click.option("--name", default=None, help="Entity name (for `add`)")
 @click.option("--type", "type_", default="topic", help="Entity type (for `add`)")
 @click.option("--alias", multiple=True, help="Entity alias (repeatable, for `add`)")
@@ -755,6 +755,38 @@ def graph_cmd(
         console.print(table)
         if len(entities) > 50:
             console.print(f"[dim](showing 50 of {len(entities)})[/dim]")
+
+    elif action == "cleanup":
+        from bunshin.knowledge_graph import cleanup_noise_entities
+        n = cleanup_noise_entities(conn)
+        console.print(f"[green]✓[/green] Removed {n} noise entities")
+
+    elif action == "discover":
+        from bunshin.knowledge_graph import discover_entities_via_llm, link_records_to_entities
+        sample = 100  # could be parametrized
+        console.print(f"[yellow]Discovering entities via LLM (sample={sample})...[/yellow]")
+        console.print("[dim]This calls Ollama for each sampled record (~1-3min total).[/dim]")
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("LLM discovery", total=sample)
+            def cb(i, total, found):
+                progress.update(task, completed=i, description=f"LLM discovery (found: {found})")
+            stats = discover_entities_via_llm(conn, sample_size=sample, progress_callback=cb)
+        if "error" in stats:
+            console.print(f"[red]Error:[/red] {stats['error']}")
+        else:
+            console.print(
+                f"[green]✓[/green] processed={stats['records_processed']} "
+                f"found={stats['entities_found']} new={stats['entities_new']} "
+                f"errors={stats.get('errors',0)} (model={stats.get('model','?')})"
+            )
+            console.print("[dim]Now run `bun graph rebuild` to link them to records.[/dim]")
 
     elif action == "add":
         if not name:

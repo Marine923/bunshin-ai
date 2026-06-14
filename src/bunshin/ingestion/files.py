@@ -6,7 +6,7 @@ from typing import Iterable, Optional
 from bunshin.storage import insert_record
 
 
-DEFAULT_EXTENSIONS = {".md", ".markdown", ".txt"}
+DEFAULT_EXTENSIONS = {".md", ".markdown", ".txt", ".pdf", ".docx"}
 
 SKIP_DIRS = {
     "node_modules", ".git", ".venv", "venv", "env", "__pycache__",
@@ -47,7 +47,14 @@ def find_files(
 
 
 def read_text(path: Path) -> Optional[str]:
-    """Read text file, trying UTF-8 then Shift-JIS."""
+    """Read file text. Dispatches on extension for PDF / DOCX, else
+    decodes as UTF-8 (with Shift-JIS fallback for legacy Japanese files)."""
+    ext = path.suffix.lower()
+    if ext == ".pdf":
+        return _read_pdf(path)
+    if ext == ".docx":
+        return _read_docx(path)
+    # Plain text fallback (md, txt, anything else with text)
     for encoding in ("utf-8", "cp932"):
         try:
             return path.read_text(encoding=encoding)
@@ -56,6 +63,56 @@ def read_text(path: Path) -> Optional[str]:
         except OSError:
             return None
     return None
+
+
+def _read_pdf(path: Path) -> Optional[str]:
+    """Extract text from a PDF. Returns None on unreadable / encrypted."""
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return None
+    try:
+        reader = PdfReader(str(path))
+        if reader.is_encrypted:
+            try:
+                reader.decrypt("")  # try empty password
+            except Exception:
+                return None
+        parts = []
+        for i, page in enumerate(reader.pages):
+            try:
+                txt = page.extract_text() or ""
+            except Exception:
+                continue
+            if txt.strip():
+                parts.append(f"[p.{i+1}]\n{txt.strip()}")
+        return "\n\n".join(parts) if parts else None
+    except Exception:
+        return None
+
+
+def _read_docx(path: Path) -> Optional[str]:
+    """Extract text from a .docx file."""
+    try:
+        import docx  # python-docx
+    except ImportError:
+        return None
+    try:
+        doc = docx.Document(str(path))
+        parts = []
+        for p in doc.paragraphs:
+            t = p.text.strip()
+            if t:
+                parts.append(t)
+        # Tables: serialize cells as tab-separated rows
+        for table in doc.tables:
+            for row in table.rows:
+                row_text = "\t".join(cell.text.strip() for cell in row.cells)
+                if row_text.strip("\t"):
+                    parts.append(row_text)
+        return "\n".join(parts) if parts else None
+    except Exception:
+        return None
 
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:

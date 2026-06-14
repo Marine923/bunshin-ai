@@ -367,3 +367,200 @@ def add_custom_entity(
     """Manually add an entity (e.g., person name discovered later)."""
     init_kg_schema(conn)
     return upsert_entity(conn, name, type_, aliases=aliases, description=description)
+
+
+# ────────────────────────────────────────────────────────────
+# LLM-based entity discovery
+# ────────────────────────────────────────────────────────────
+
+_DISCOVERY_PROMPT = """以下のテキストから、実際に登場する**人物名・組織名・プロジェクト名・場所名**を抽出してください。
+
+ルール：
+- テキスト中に**明示的に名前として登場するもののみ**抽出（推測しない）
+- 一般名詞（「会社」「人」「ドローン」など）は抽出しない
+- 重複は除く
+- JSON のみで応答（説明文・コードブロック禁止）
+
+出力フォーマット：
+{"entities": [{"name": "...", "type": "person|organization|project|place"}]}
+
+抽出対象テキスト：
+"""
+
+
+# Names we want to exclude from auto-discovery (case-insensitive substring or exact).
+# These tend to surface from Claude/AI internal artifacts or are too generic to be useful.
+_ENTITY_NOISE_EXACT = {
+    "todowrite", "askuserquestion", "taskcreate", "taskupdate",
+    "read", "write", "edit", "bash", "grep", "glob",
+    "user", "assistant", "system", "claude",
+    "none", "null", "n/a",
+}
+_ENTITY_NOISE_GENERIC = {
+    "ドローン会社", "会社", "プロジェクト", "事業",
+    "メール", "ファイル",
+}
+
+
+def _is_noise_entity(name: str) -> bool:
+    """Skip single-letter labels, AI tool names, and overly generic nouns."""
+    s = name.strip()
+    if not s:
+        return True
+    # Single-letter or 2-character ASCII (option enumerators like "A", "F")
+    if len(s) <= 2 and all(c.isascii() and c.isalpha() for c in s):
+        return True
+    # Pure ASCII 3 chars or fewer, all letters → likely garbage (tool names tend to fit)
+    if len(s) <= 3 and all(c.isascii() and (c.isalnum() or c in "._-") for c in s):
+        return True
+    if s.lower() in _ENTITY_NOISE_EXACT:
+        return True
+    if s in _ENTITY_NOISE_GENERIC:
+        return True
+    # Looks like a Claude tool invocation marker
+    if s.startswith("tool_use") or "[tool_" in s:
+        return True
+    return False
+
+
+def _parse_llm_entity_response(text: str) -> list[dict]:
+    """Parse Ollama response. Tolerates code fences and stray prose around the JSON."""
+    import re
+    s = text.strip()
+    s = re.sub(r"^```(?:json)?\s*", "", s)
+    s = re.sub(r"\s*```$", "", s)
+    match = re.search(r"\{[\s\S]*\}", s)
+    if not match:
+        return []
+    try:
+        data = json.loads(match.group(0))
+        ents = data.get("entities", []) if isinstance(data, dict) else []
+        out = []
+        for e in ents:
+            if not isinstance(e, dict):
+                continue
+            name = (e.get("name") or "").strip()
+            type_ = (e.get("type") or "topic").strip().lower()
+            if not name or type_ not in {"person", "organization", "project", "place", "tool", "concept"}:
+                continue
+            if _is_noise_entity(name):
+                continue
+            out.append({"name": name, "type": type_})
+        return out
+    except json.JSONDecodeError:
+        return []
+
+
+def cleanup_noise_entities(conn: sqlite3.Connection) -> int:
+    """Remove obvious noise entities that may have been added before filters existed."""
+    init_kg_schema(conn)
+    cursor = conn.execute("SELECT id, name FROM entities")
+    to_delete = [eid for eid, name in cursor.fetchall() if _is_noise_entity(name)]
+    if not to_delete:
+        return 0
+    placeholders = ",".join(["?"] * len(to_delete))
+    conn.execute(f"DELETE FROM record_entities WHERE entity_id IN ({placeholders})", to_delete)
+    conn.execute(f"DELETE FROM entities WHERE id IN ({placeholders})", to_delete)
+    conn.commit()
+    return len(to_delete)
+
+
+def discover_entities_via_llm(
+    conn: sqlite3.Connection,
+    sample_size: int = 100,
+    model: Optional[str] = None,
+    min_content_length: int = 200,
+    progress_callback=None,
+) -> dict:
+    """Use Ollama to discover new entities mentioned in records.
+
+    Samples records (favoring high-information sources: claude turns,
+    long files, recent gmail), asks the LLM to extract named entities,
+    dedupes against existing, and inserts new ones.
+
+    Skips entities already known under any of their (name + aliases).
+    """
+    init_kg_schema(conn)
+    stats = {"records_processed": 0, "entities_found": 0, "entities_new": 0, "errors": 0}
+
+    try:
+        from bunshin.chat import OLLAMA_HOST, check_ollama, pick_model
+        import httpx
+    except ImportError:
+        stats["error"] = "Required modules missing"
+        return stats
+
+    ok, available = check_ollama()
+    if not ok or not available:
+        stats["error"] = "Ollama not available"
+        return stats
+
+    chosen = model or pick_model(available)
+    stats["model"] = chosen
+
+    # Build the known-name set (lowercased) so we can dedupe quickly.
+    known_lc: set[str] = set()
+    for e in get_all_entities(conn):
+        known_lc.add(e["name"].lower())
+        for alias in e["aliases"]:
+            if alias:
+                known_lc.add(alias.lower())
+
+    # Pull a sample of high-value records.
+    cursor = conn.execute(
+        """SELECT content FROM records
+           WHERE content IS NOT NULL
+             AND length(content) >= ?
+             AND source IN ('claude', 'file', 'gmail')
+           ORDER BY RANDOM()
+           LIMIT ?""",
+        (min_content_length, sample_size),
+    )
+    samples = [row[0] for row in cursor.fetchall()]
+
+    discovered: dict[str, str] = {}  # name → type
+
+    for i, content in enumerate(samples):
+        # Truncate to avoid huge prompts
+        snippet = content[:2500]
+        payload = {
+            "model": chosen,
+            "messages": [
+                {"role": "system", "content": "You output strict JSON only."},
+                {"role": "user", "content": _DISCOVERY_PROMPT + snippet},
+            ],
+            "stream": False,
+            "format": "json",
+        }
+        try:
+            r = httpx.post(
+                f"{OLLAMA_HOST}/api/chat", json=payload, timeout=90.0
+            )
+            r.raise_for_status()
+            response_text = r.json().get("message", {}).get("content", "")
+            ents = _parse_llm_entity_response(response_text)
+            for e in ents:
+                name = e["name"]
+                if name.lower() in known_lc:
+                    continue
+                if name not in discovered:
+                    discovered[name] = e["type"]
+            stats["records_processed"] += 1
+        except Exception:
+            stats["errors"] += 1
+
+        if progress_callback:
+            progress_callback(i + 1, len(samples), len(discovered))
+
+    stats["entities_found"] = len(discovered)
+
+    # Insert discovered ones
+    for name, type_ in discovered.items():
+        try:
+            upsert_entity(conn, name, type_, description="(LLM 抽出)")
+            stats["entities_new"] += 1
+        except Exception:
+            pass
+
+    conn.commit()
+    return stats

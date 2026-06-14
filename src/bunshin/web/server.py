@@ -189,6 +189,13 @@ INDEX_HTML = """<!DOCTYPE html>
   .source-badge.claude { background: #1a3a6a; color: #8fb4ef; }
   .source-badge.file { background: #2a3a1a; color: #b4ef8f; }
   .result-meta .distance { color: #999; }
+  .result-meta .more-chunks {
+    color: #efaf4a;
+    background: rgba(239, 175, 74, 0.1);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+  }
   .result-meta .expand-hint { margin-left: auto; color: #555; font-size: 11px; }
   .result-content {
     white-space: pre-wrap;
@@ -231,11 +238,79 @@ INDEX_HTML = """<!DOCTYPE html>
   .loading { text-align: center; color: #888; padding: 20px; }
 
   /* ── Chat pane ── */
+  .chat-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 16px;
+    height: calc(100vh - 200px);
+    max-height: 820px;
+  }
+  @media (max-width: 720px) {
+    .chat-layout { grid-template-columns: 1fr; grid-template-rows: 140px 1fr; }
+  }
+  .chat-sidebar {
+    background: #0d0d0d;
+    border: 1px solid #1a1a1a;
+    border-radius: 8px;
+    padding: 8px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-new-btn {
+    width: 100%;
+    padding: 10px;
+    background: #1a3a6a;
+    border: 1px solid #2a4a7a;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    margin-bottom: 10px;
+    transition: background 0.15s;
+  }
+  .chat-new-btn:hover { background: #234a7a; }
+  .chat-session-item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #aaa;
+    transition: all 0.15s;
+    margin-bottom: 2px;
+    position: relative;
+  }
+  .chat-session-item:hover { background: #1a1a1a; color: #ddd; }
+  .chat-session-item.active { background: #1a3a6a; color: #fff; }
+  .chat-session-item .title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 18px;
+  }
+  .chat-session-item .meta { font-size: 10px; color: #666; margin-top: 2px; }
+  .chat-session-item .delete-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 16px;
+    height: 16px;
+    line-height: 14px;
+    text-align: center;
+    border-radius: 3px;
+    font-size: 12px;
+    color: #555;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .chat-session-item:hover .delete-btn { opacity: 1; }
+  .chat-session-item .delete-btn:hover { background: #6a1a1a; color: #fff; }
+
   .chat-container {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 200px);
-    max-height: 800px;
+    min-height: 0;
   }
   .chat-messages {
     flex: 1;
@@ -551,20 +626,28 @@ INDEX_HTML = """<!DOCTYPE html>
 
   <!-- ============== Chat Pane ============== -->
   <section class="pane" id="pane-chat">
-    <div class="chat-container">
-      <div class="chat-messages" id="chat-messages">
-        <div class="empty">
-          ローカルLLM（Ollama）で過去記憶を参照しながらチャットします。<br>
-          下に質問を入力してください。<br><br>
-          💡 「<b>覚えといて: 来週火曜10時に漁協ミーティング</b>」のように<br>
-          先頭に <code>覚えといて:</code> や <code>メモ:</code> を付けると、AI に聞かずに記憶に保存だけします。
+    <div class="chat-layout">
+      <aside class="chat-sidebar">
+        <button class="chat-new-btn" id="chat-new-btn">＋ 新規チャット</button>
+        <div id="chat-sessions">
+          <div style="font-size:11px;color:#666;padding:8px;">読み込み中…</div>
         </div>
+      </aside>
+      <div class="chat-container">
+        <div class="chat-messages" id="chat-messages">
+          <div class="empty">
+            ローカルLLM（Ollama）で過去記憶を参照しながらチャットします。<br>
+            下に質問を入力してください。<br><br>
+            💡 「<b>覚えといて: 来週火曜10時に漁協ミーティング</b>」のように<br>
+            先頭に <code>覚えといて:</code> や <code>メモ:</code> を付けると、AI に聞かずに記憶に保存だけします。
+          </div>
+        </div>
+        <div class="chat-status" id="chat-status"></div>
+        <form class="chat-input-row" id="chat-form">
+          <input class="chat-input" id="chat-input" type="text" placeholder="分身に聞く… / Ask your bunshin..." autocomplete="off">
+          <button class="chat-send" id="chat-send" type="submit">送信</button>
+        </form>
       </div>
-      <div class="chat-status" id="chat-status"></div>
-      <form class="chat-input-row" id="chat-form">
-        <input class="chat-input" id="chat-input" type="text" placeholder="分身に聞く… / Ask your bunshin..." autocomplete="off">
-        <button class="chat-send" id="chat-send" type="submit">送信</button>
-      </form>
     </div>
   </section>
 </main>
@@ -829,12 +912,16 @@ function renderResult(r, idx) {
   const srcLabel = r.source === 'file'
     ? `📄 ${(r.source_id || '').split('/').pop()}`
     : `💬 ${role || 'claude'}`;
+  const more = (r.total_in_source && r.total_in_source > 1)
+    ? `<span class="more-chunks">📚 同じ会話内に他 ${r.total_in_source - 1} 件</span>`
+    : '';
   return `
     <div class="result" data-idx="${idx}">
       <div class="result-meta">
         <span>${ts}</span>
         <span class="source-badge ${srcClass}">${esc(srcLabel)}</span>
         <span class="distance">distance ${r.distance.toFixed(3)}</span>
+        ${more}
         <span class="expand-hint">クリックで会話全体を表示 ▾</span>
       </div>
       <div class="result-content">${esc(r.content)}</div>
@@ -904,6 +991,77 @@ loadExampleChips();
 
 // ===== Chat =====
 const chatForm = $('chat-form'), chatInput = $('chat-input'), chatMessages = $('chat-messages'), chatStatus = $('chat-status'), chatSend = $('chat-send');
+const chatSessions = $('chat-sessions'), chatNewBtn = $('chat-new-btn');
+let currentSessionId = null;
+
+async function loadSessionList() {
+  try {
+    const r = await fetch('/api/chat/sessions');
+    const j = await r.json();
+    const sessions = j.sessions || [];
+    if (!sessions.length) {
+      chatSessions.innerHTML = '<div style="font-size:11px;color:#666;padding:8px;">(まだ会話がありません)</div>';
+      return;
+    }
+    chatSessions.innerHTML = sessions.map(s => {
+      const date = new Date(s.updated_at * 1000).toLocaleDateString('ja-JP');
+      const active = s.id === currentSessionId ? 'active' : '';
+      return `
+        <div class="chat-session-item ${active}" data-sid="${esc(s.id)}">
+          <div class="title">${esc(s.title)}</div>
+          <div class="meta">${esc(date)} · ${s.message_count} メッセージ</div>
+          <div class="delete-btn" data-del="${esc(s.id)}" title="削除">×</div>
+        </div>
+      `;
+    }).join('');
+    chatSessions.querySelectorAll('.chat-session-item').forEach(el => {
+      el.addEventListener('click', (ev) => {
+        if (ev.target.dataset && ev.target.dataset.del) return;
+        loadSession(el.dataset.sid);
+      });
+    });
+    chatSessions.querySelectorAll('.delete-btn').forEach(el => {
+      el.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        const sid = el.dataset.del;
+        if (!confirm('この会話を削除しますか？')) return;
+        await fetch(`/api/chat/sessions/${sid}`, { method: 'DELETE' });
+        if (currentSessionId === sid) startNewChat();
+        loadSessionList();
+      });
+    });
+  } catch (e) {
+    chatSessions.innerHTML = `<div style="font-size:11px;color:#a44;padding:8px;">${esc(String(e))}</div>`;
+  }
+}
+
+async function loadSession(sid) {
+  try {
+    const r = await fetch(`/api/chat/sessions/${sid}`);
+    const j = await r.json();
+    if (j.error) return;
+    currentSessionId = sid;
+    chatMessages.innerHTML = '';
+    for (const m of (j.messages || [])) {
+      appendMsg(m.role, m.content, m.context_used);
+    }
+    loadSessionList();  // refresh active highlight
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function startNewChat() {
+  currentSessionId = null;
+  chatMessages.innerHTML = `<div class="empty">
+    新しい会話を始めましょう。<br><br>
+    💡 「覚えといて: ...」「メモ: ...」で記憶への保存だけもできます。
+  </div>`;
+  loadSessionList();
+}
+
+chatNewBtn.addEventListener('click', startNewChat);
+loadSessionList();
 
 function appendMsg(role, content, contextList) {
   const msg = document.createElement('div');
@@ -986,7 +1144,9 @@ chatForm.addEventListener('submit', async (e) => {
 
   const respMsg = appendMsg('assistant', '');
   try {
-    const resp = await fetch('/api/chat?' + new URLSearchParams({ q: query }));
+    const params = new URLSearchParams({ q: query });
+    if (currentSessionId) params.set('session_id', currentSessionId);
+    const resp = await fetch('/api/chat?' + params);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: resp.statusText }));
       respMsg.textContent = `エラー: ${err.detail || resp.statusText}`;
@@ -1010,12 +1170,16 @@ chatForm.addEventListener('submit', async (e) => {
         if (!line.trim()) continue;
         try {
           const j = JSON.parse(line);
-          if (j.context) {
+          if (j.session_id) {
+            currentSessionId = j.session_id;
+          } else if (j.context) {
             contextList = j.context;
           } else if (j.delta) {
             fullText += j.delta;
             respMsg.textContent = fullText;
             chatMessages.scrollTop = chatMessages.scrollHeight;
+          } else if (j.done) {
+            loadSessionList();  // refresh sidebar with new session/message count
           } else if (j.error) {
             respMsg.textContent = 'エラー: ' + j.error;
           }
@@ -1084,12 +1248,14 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         sort: str = Query("relevance", pattern="^(relevance|newest|oldest)$"),
         from_ts: Optional[int] = Query(None, alias="from"),
         to_ts: Optional[int] = Query(None, alias="to"),
+        max_per_source: int = Query(1, ge=0, le=20),
     ):
         conn = init_db(db_path)
         try:
             results = search(
                 conn, q, limit=limit, min_content_length=min_chars,
                 sort=sort, from_ts=from_ts, to_ts=to_ts,
+                max_per_source=max_per_source,
             )
             return {"query": q, "count": len(results), "results": results}
         finally:
@@ -1170,15 +1336,52 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         finally:
             conn.close()
 
+    @app.get("/api/chat/sessions")
+    def api_chat_sessions():
+        from bunshin.chat_history import list_sessions
+        conn = init_db(db_path)
+        try:
+            return {"sessions": list_sessions(conn)}
+        finally:
+            conn.close()
+
+    @app.get("/api/chat/sessions/{session_id}")
+    def api_chat_session_detail(session_id: str):
+        from bunshin.chat_history import get_messages, get_session
+        conn = init_db(db_path)
+        try:
+            session = get_session(conn, session_id)
+            if not session:
+                return {"error": "session not found"}
+            return {
+                "session": session,
+                "messages": get_messages(conn, session_id),
+            }
+        finally:
+            conn.close()
+
+    @app.delete("/api/chat/sessions/{session_id}")
+    def api_chat_session_delete(session_id: str):
+        from bunshin.chat_history import delete_session
+        conn = init_db(db_path)
+        try:
+            n = delete_session(conn, session_id)
+            return {"deleted_messages": n}
+        finally:
+            conn.close()
+
     @app.get("/api/chat")
     def api_chat(
         q: str = Query(..., min_length=1),
         model: Optional[str] = Query(None),
         context_limit: int = Query(5, ge=0, le=20),
+        session_id: Optional[str] = Query(None),
     ):
         """Stream a chat response. Yields newline-delimited JSON:
+            {"session_id": "..."} once at start (so the client can persist it)
             {"context": [...]} once at start
             {"delta": "..."} per chunk
+            {"done": true} at end
             {"error": "..."} on failure
         """
         from bunshin.chat import (
@@ -1187,6 +1390,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             check_ollama,
             pick_model,
         )
+        from bunshin.chat_history import add_message, create_session, get_messages, get_session
 
         def event_stream():
             ok, available = check_ollama()
@@ -1204,38 +1408,64 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
 
             conn = init_db(db_path)
             try:
+                # Session: create new if not supplied or not found
+                sid = session_id
+                history = []
+                if sid:
+                    sess = get_session(conn, sid)
+                    if sess:
+                        for m in get_messages(conn, sid):
+                            history.append({"role": m["role"], "content": m["content"]})
+                    else:
+                        sid = None
+                if not sid:
+                    sid = create_session(conn, model=chosen)
+
                 results = search(conn, q, limit=context_limit) if context_limit > 0 else []
+
+                # Emit session id + context for the client.
+                yield json.dumps({"session_id": sid, "model": chosen}, ensure_ascii=False) + "\n"
+                context_summary = [
+                    {
+                        "timestamp": r["timestamp"],
+                        "source": r["source"],
+                        "content": r["content"],
+                        "distance": r["distance"],
+                    }
+                    for r in results
+                ]
+                yield json.dumps({"context": context_summary}, ensure_ascii=False) + "\n"
+
+                # Save the user turn before generating, so it's persisted even if generation fails.
+                add_message(conn, sid, "user", q, context_used=context_summary)
+
+                # Build prompt context text
+                from datetime import datetime as _dt
+                ctx_lines = []
+                for r in results:
+                    ts = _dt.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M") if r["timestamp"] else "n/a"
+                    snippet = r["content"]
+                    if len(snippet) > 800:
+                        snippet = snippet[:800] + "..."
+                    ctx_lines.append(f"[{ts}] ({r['source']})\n{snippet}")
+                ctx_text = "\n\n---\n\n".join(ctx_lines)
+
+                full_response = []
+                try:
+                    for delta in chat_ollama(q, ctx_text, model=chosen, stream=True, history=history):
+                        full_response.append(delta)
+                        yield json.dumps({"delta": delta}, ensure_ascii=False) + "\n"
+                except Exception as e:
+                    yield json.dumps({"error": str(e)}, ensure_ascii=False) + "\n"
+                    return
+
+                # Save the assistant turn.
+                assistant_text = "".join(full_response)
+                if assistant_text.strip():
+                    add_message(conn, sid, "assistant", assistant_text)
+                yield json.dumps({"done": True}, ensure_ascii=False) + "\n"
             finally:
                 conn.close()
-
-            # Emit context list first
-            context_summary = [
-                {
-                    "timestamp": r["timestamp"],
-                    "source": r["source"],
-                    "content": r["content"],
-                    "distance": r["distance"],
-                }
-                for r in results
-            ]
-            yield json.dumps({"context": context_summary, "model": chosen}, ensure_ascii=False) + "\n"
-
-            # Build prompt context text
-            from datetime import datetime
-            ctx_lines = []
-            for r in results:
-                ts = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M") if r["timestamp"] else "n/a"
-                snippet = r["content"]
-                if len(snippet) > 800:
-                    snippet = snippet[:800] + "..."
-                ctx_lines.append(f"[{ts}] ({r['source']})\n{snippet}")
-            ctx_text = "\n\n---\n\n".join(ctx_lines)
-
-            try:
-                for delta in chat_ollama(q, ctx_text, model=chosen, stream=True):
-                    yield json.dumps({"delta": delta}, ensure_ascii=False) + "\n"
-            except Exception as e:
-                yield json.dumps({"error": str(e)}, ensure_ascii=False) + "\n"
 
         return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 

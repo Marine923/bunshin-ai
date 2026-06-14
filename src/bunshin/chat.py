@@ -69,8 +69,13 @@ def chat_ollama(
     model: str,
     host: str = OLLAMA_HOST,
     stream: bool = True,
+    history: Optional[list[dict]] = None,
 ):
-    """Send chat request to Ollama. Yields response chunks if stream=True, else returns full text."""
+    """Send chat request to Ollama. Yields response chunks if stream=True, else returns full text.
+
+    `history` is a list of prior turns: [{"role": "user"|"assistant", "content": ...}, ...]
+    Used to support multi-turn conversations — Ollama gets the whole exchange.
+    """
     system = (
         "あなたはユーザーの個人記憶アシスタント「分身（Bunshin）」です。\n\n"
         "下記の「関連する過去文脈」は、ユーザーの実際の過去会話・メール・ファイル・メモから"
@@ -80,16 +85,20 @@ def chat_ollama(
         "2. 直接の回答がなくても、関連情報から**推測できる場合は「〜と思われます／〜の可能性が高い」と答えてください**。\n"
         "3. 逆質問は最小限に。**情報が完全に足りない時だけ**にしてください。\n"
         "4. 過去文脈が**本当に質問と無関係な場合のみ**「過去の記憶には該当情報が見当たりません」と答えてください。\n"
-        "5. 「過去の記憶」を使って答えていることをユーザーに伝えるため、**日付を必ず引用**してください（例：「2026-05-14 の会話で...」）。\n\n"
+        "5. 「過去の記憶」を使って答えていることをユーザーに伝えるため、**日付を必ず引用**してください（例：「2026-05-14 の会話で...」）。\n"
+        "6. 直前までの会話履歴がある場合は、**それを踏まえて連続性のある応答**をしてください。\n\n"
         f"=== 関連する過去文脈 ===\n{context}\n=== ここまで ==="
     )
 
+    messages = [{"role": "system", "content": system}]
+    if history:
+        # Append prior turns. Cap to last ~20 turns to keep prompt bounded.
+        messages.extend(history[-20:])
+    messages.append({"role": "user", "content": query})
+
     payload = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": query},
-        ],
+        "messages": messages,
         "stream": stream,
     }
 
