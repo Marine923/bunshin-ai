@@ -1,7 +1,7 @@
 """FastAPI web server for Bunshin."""
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -352,6 +352,43 @@ INDEX_HTML = """<!DOCTYPE html>
     font-size: 12px;
   }
   .chat-msg .ctx-list.shown { display: block; }
+  .chat-msg .citation {
+    display: inline-block;
+    padding: 1px 6px;
+    margin: 0 2px;
+    background: #1a3a6a;
+    color: #8fb4ef;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    vertical-align: middle;
+    text-decoration: none;
+  }
+  .chat-msg .citation:hover { background: #234a7a; color: #fff; }
+  .chat-msg .ctx-item-numbered {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+  }
+  .chat-msg .ctx-item-numbered:target {
+    background: rgba(74, 143, 239, 0.15);
+    outline: 1px solid #4a8fef;
+  }
+  .chat-msg .ctx-num {
+    flex: 0 0 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    background: #1a3a6a;
+    color: #8fb4ef;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
   .chat-input-row {
     display: flex;
     gap: 8px;
@@ -541,6 +578,109 @@ INDEX_HTML = """<!DOCTYPE html>
     word-wrap: break-word;
   }
 
+  /* ── Settings pane ── */
+  .settings-section {
+    margin-bottom: 28px;
+    background: #0d0d0d;
+    border: 1px solid #1a1a1a;
+    border-radius: 10px;
+    padding: 18px 22px;
+  }
+  .settings-section h2 {
+    margin: 0 0 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ddd;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .settings-field {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    gap: 16px;
+    align-items: start;
+    padding: 12px 0;
+    border-bottom: 1px solid #141414;
+  }
+  .settings-field:last-child { border-bottom: none; }
+  @media (max-width: 640px) {
+    .settings-field { grid-template-columns: 1fr; }
+  }
+  .settings-label {
+    color: #e0e0e0;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .settings-help {
+    color: #777;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .settings-input {
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    color: #fff;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    width: 100%;
+  }
+  .settings-input:focus { outline: none; border-color: #4a8fef; }
+  .settings-toggle {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    border-radius: 20px;
+    padding: 4px;
+    width: 60px;
+    transition: background 0.15s;
+  }
+  .settings-toggle input { display: none; }
+  .settings-toggle .knob {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #888;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .settings-toggle.on { background: #1a3a6a; border-color: #4a8fef; }
+  .settings-toggle.on .knob { transform: translateX(28px); background: #4a8fef; }
+
+  .settings-save-bar {
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(to top, #0a0a0a 60%, transparent);
+    padding: 16px 0 0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    align-items: center;
+  }
+  .settings-save-btn {
+    background: #4a8fef;
+    color: #fff;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .settings-save-btn:hover { background: #6aa5ff; }
+  .settings-save-btn:disabled { background: #2a3a5a; cursor: not-allowed; }
+  .settings-toast {
+    color: #5fbf6f;
+    font-size: 13px;
+  }
+  .settings-toast.error { color: #ef6666; }
+
   /* ── Mobile responsive ── */
   @media (max-width: 640px) {
     .search-box, .chat-input { padding: 14px 16px; font-size: 16px; }
@@ -569,6 +709,7 @@ INDEX_HTML = """<!DOCTYPE html>
   <div class="tab" data-pane="chat">💬 チャット</div>
   <div class="tab" data-pane="insights">💡 気づき</div>
   <div class="tab" data-pane="graph">🕸 関係性</div>
+  <div class="tab" data-pane="settings">⚙ 設定</div>
 </nav>
 
 <main>
@@ -624,6 +765,13 @@ INDEX_HTML = """<!DOCTYPE html>
     </div>
   </section>
 
+  <!-- ============== Settings Pane ============== -->
+  <section class="pane" id="pane-settings">
+    <div id="settings-content">
+      <div class="loading">読み込み中…</div>
+    </div>
+  </section>
+
   <!-- ============== Chat Pane ============== -->
   <section class="pane" id="pane-chat">
     <div class="chat-layout">
@@ -667,8 +815,132 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.pane === 'search') $('q').focus();
     if (tab.dataset.pane === 'insights') loadInsights();
     if (tab.dataset.pane === 'graph') loadEntities();
+    if (tab.dataset.pane === 'settings') loadSettings();
   });
 });
+
+// ===== Settings =====
+let settingsLoaded = false;
+let settingsSchemaCache = null;
+let settingsCurrent = {};
+
+const SECTION_TITLES = {
+  notifications: { ja: '🔔 通知', en: 'Notifications' },
+  search:        { ja: '🔍 検索',  en: 'Search' },
+  chat:          { ja: '💬 チャット', en: 'Chat' },
+};
+
+async function loadSettings() {
+  if (settingsLoaded) return;
+  const root = $('settings-content');
+  try {
+    const j = await (await fetch('/api/settings')).json();
+    settingsSchemaCache = j.schema;
+    settingsCurrent = JSON.parse(JSON.stringify(j.settings));  // working copy
+
+    // Group by section
+    const bySection = {};
+    for (const [key, meta] of Object.entries(j.schema)) {
+      const s = meta.section || 'misc';
+      (bySection[s] ||= []).push([key, meta]);
+    }
+
+    let html = '';
+    for (const section of Object.keys(bySection)) {
+      const title = (SECTION_TITLES[section] || { ja: section }).ja;
+      html += `<div class="settings-section"><h2>${esc(title)}</h2>`;
+      for (const [key, meta] of bySection[section]) {
+        const current = settingsCurrent[key];
+        html += `<div class="settings-field">
+          <div>
+            <div class="settings-label">${esc(meta.label_ja || key)}</div>
+            <div class="settings-help">${esc(meta.help_ja || '')}</div>
+          </div>
+          <div>${renderSettingControl(key, meta, current)}</div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    html += `<div class="settings-save-bar">
+      <span class="settings-toast" id="settings-toast"></span>
+      <button class="settings-save-btn" id="settings-save-btn">保存</button>
+    </div>`;
+    root.innerHTML = html;
+    settingsLoaded = true;
+
+    // Attach toggle behaviour
+    root.querySelectorAll('.settings-toggle').forEach(el => {
+      el.addEventListener('click', () => {
+        const cb = el.querySelector('input');
+        cb.checked = !cb.checked;
+        el.classList.toggle('on', cb.checked);
+        settingsCurrent[cb.dataset.key] = cb.checked;
+      });
+    });
+    root.querySelectorAll('input.settings-input, select.settings-input').forEach(el => {
+      el.addEventListener('change', () => {
+        const key = el.dataset.key;
+        const meta = settingsSchemaCache[key];
+        let v = el.value;
+        if (meta.type === 'int') v = parseInt(v, 10);
+        else if (meta.type === 'float') v = parseFloat(v);
+        settingsCurrent[key] = v;
+      });
+    });
+    $('settings-save-btn').addEventListener('click', saveSettings);
+  } catch (e) {
+    root.innerHTML = `<div class="empty">エラー: ${esc(String(e))}</div>`;
+  }
+}
+
+function renderSettingControl(key, meta, current) {
+  if (meta.type === 'bool') {
+    const on = current ? 'on' : '';
+    return `<label class="settings-toggle ${on}">
+      <input type="checkbox" data-key="${esc(key)}" ${current ? 'checked' : ''}>
+      <span class="knob"></span>
+    </label>`;
+  }
+  if (meta.type === 'enum') {
+    const opts = meta.enum.map(o => `<option value="${esc(o)}" ${o===current?'selected':''}>${esc(o)}</option>`).join('');
+    return `<select class="settings-input" data-key="${esc(key)}">${opts}</select>`;
+  }
+  if (meta.type === 'int' || meta.type === 'float') {
+    const min = meta.min !== undefined ? `min="${meta.min}"` : '';
+    const max = meta.max !== undefined ? `max="${meta.max}"` : '';
+    return `<input type="number" class="settings-input" data-key="${esc(key)}" value="${esc(String(current))}" ${min} ${max}>`;
+  }
+  return `<input type="text" class="settings-input" data-key="${esc(key)}" value="${esc(String(current))}">`;
+}
+
+async function saveSettings() {
+  const btn = $('settings-save-btn');
+  const toast = $('settings-toast');
+  btn.disabled = true;
+  toast.textContent = '保存中…';
+  toast.classList.remove('error');
+  try {
+    const r = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: settingsCurrent }),
+    });
+    const j = await r.json();
+    if (j.errors && Object.keys(j.errors).length) {
+      toast.textContent = 'エラー: ' + Object.entries(j.errors).map(([k,v]) => `${k}: ${v}`).join(', ');
+      toast.classList.add('error');
+    } else {
+      const n = Object.keys(j.updated || {}).length;
+      toast.textContent = `✓ ${n} 項目を保存しました`;
+      setTimeout(() => { toast.textContent = ''; }, 3000);
+    }
+  } catch (e) {
+    toast.textContent = 'エラー: ' + e;
+    toast.classList.add('error');
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 // ===== Knowledge Graph =====
 let entitiesLoaded = false;
@@ -1063,24 +1335,76 @@ function startNewChat() {
 chatNewBtn.addEventListener('click', startNewChat);
 loadSessionList();
 
+function linkifyCitations(text, contextList) {
+  // Replace [N] tokens with clickable links to the citation block below,
+  // but only if N is a valid index for the context list.
+  if (!contextList || !contextList.length) {
+    return esc(text);
+  }
+  let html = '';
+  let lastEnd = 0;
+  const re = /\[(\d+)\]/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const num = parseInt(m[1], 10);
+    html += esc(text.slice(lastEnd, m.index));
+    if (num >= 1 && num <= contextList.length) {
+      const cid = `cit-${num}-${Math.random().toString(36).slice(2, 6)}`;
+      html += `<a class="citation" href="#${cid}" data-cit="${num}">[${num}]</a>`;
+    } else {
+      html += esc(m[0]);
+    }
+    lastEnd = re.lastIndex;
+  }
+  html += esc(text.slice(lastEnd));
+  return html;
+}
+
+function renderCtxList(contextList, listId) {
+  return contextList.map((c, i) => {
+    const num = i + 1;
+    const ts = c.timestamp ? new Date(c.timestamp * 1000).toLocaleString('ja-JP') : 'n/a';
+    const cid = `${listId}-${num}`;
+    return `<div class="ctx-item-numbered" id="${cid}">
+      <div class="ctx-num">${num}</div>
+      <div style="flex:1;">
+        <div style="color:#bbb;font-size:12px;"><b>${esc(ts)}</b> · ${esc(c.source)}</div>
+        <div style="color:#999;font-size:12px;margin-top:4px;">${esc((c.content||'').slice(0,300))}…</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function appendMsg(role, content, contextList) {
   const msg = document.createElement('div');
   msg.className = 'chat-msg ' + role;
-  msg.textContent = content;
+  if (role === 'assistant' && contextList && contextList.length) {
+    msg.innerHTML = linkifyCitations(content, contextList);
+  } else {
+    msg.textContent = content;
+  }
   if (contextList && contextList.length) {
     const toggle = document.createElement('span');
     toggle.className = 'ctx-toggle';
     toggle.textContent = `📚 参照した過去記憶 ${contextList.length}件 ▾`;
+    const listId = 'ctx-' + Math.random().toString(36).slice(2, 8);
     const list = document.createElement('div');
     list.className = 'ctx-list';
-    list.innerHTML = contextList.map(c => {
-      const ts = c.timestamp ? new Date(c.timestamp * 1000).toLocaleString('ja-JP') : 'n/a';
-      return `<div style="margin-bottom:8px;"><b>${ts}</b> [${esc(c.source)}]<br>${esc((c.content||'').slice(0,200))}…</div>`;
-    }).join('');
+    list.innerHTML = renderCtxList(contextList, listId);
     toggle.onclick = () => list.classList.toggle('shown');
     msg.appendChild(document.createElement('br'));
     msg.appendChild(toggle);
     msg.appendChild(list);
+    // Wire citation link clicks to expand the list + scroll to item.
+    msg.querySelectorAll('.citation').forEach(a => {
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        list.classList.add('shown');
+        const num = parseInt(a.dataset.cit, 10);
+        const target = list.querySelector(`#${CSS.escape(listId)}-${num}`);
+        if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    });
   }
   chatMessages.appendChild(msg);
   chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -1186,23 +1510,30 @@ chatForm.addEventListener('submit', async (e) => {
         } catch {}
       }
     }
-    // Re-render with context toggle
+    // Re-render with citations linkified + context toggle.
     if (contextList) {
-      respMsg.textContent = '';
-      respMsg.textContent = fullText;
+      respMsg.innerHTML = linkifyCitations(fullText, contextList);
       const toggle = document.createElement('span');
       toggle.className = 'ctx-toggle';
       toggle.textContent = `📚 参照した過去記憶 ${contextList.length}件 ▾`;
+      const listId = 'ctx-' + Math.random().toString(36).slice(2, 8);
       const list = document.createElement('div');
       list.className = 'ctx-list';
-      list.innerHTML = contextList.map(c => {
-        const ts = c.timestamp ? new Date(c.timestamp * 1000).toLocaleString('ja-JP') : 'n/a';
-        return `<div style="margin-bottom:8px;"><b>${ts}</b> [${esc(c.source)}]<br>${esc((c.content||'').slice(0,200))}…</div>`;
-      }).join('');
+      list.innerHTML = renderCtxList(contextList, listId);
       toggle.onclick = () => list.classList.toggle('shown');
       respMsg.appendChild(document.createElement('br'));
       respMsg.appendChild(toggle);
       respMsg.appendChild(list);
+      // Wire citation link clicks
+      respMsg.querySelectorAll('.citation').forEach(a => {
+        a.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          list.classList.add('shown');
+          const num = parseInt(a.dataset.cit, 10);
+          const target = list.querySelector(`#${CSS.escape(listId)}-${num}`);
+          if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        });
+      });
     }
     chatStatus.textContent = '';
   } catch (e) {
@@ -1249,6 +1580,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         from_ts: Optional[int] = Query(None, alias="from"),
         to_ts: Optional[int] = Query(None, alias="to"),
         max_per_source: int = Query(1, ge=0, le=20),
+        mode: str = Query("hybrid", pattern="^(vector|hybrid)$"),
     ):
         conn = init_db(db_path)
         try:
@@ -1256,6 +1588,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 conn, q, limit=limit, min_content_length=min_chars,
                 sort=sort, from_ts=from_ts, to_ts=to_ts,
                 max_per_source=max_per_source,
+                mode=mode,
             )
             return {"query": q, "count": len(results), "results": results}
         finally:
@@ -1267,6 +1600,38 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         try:
             records = get_session_records(conn, source_id)
             return {"source_id": source_id, "count": len(records), "records": records}
+        finally:
+            conn.close()
+
+    @app.get("/api/settings")
+    def api_settings_get():
+        from bunshin.settings import all_settings, settings_schema
+        conn = init_db(db_path)
+        try:
+            return {"settings": all_settings(conn), "schema": settings_schema()}
+        finally:
+            conn.close()
+
+    class SettingsUpdate(BaseModel):
+        values: dict[str, Any]
+
+    @app.put("/api/settings")
+    def api_settings_put(req: SettingsUpdate):
+        from bunshin.settings import all_settings, set_value, SCHEMA
+        conn = init_db(db_path)
+        try:
+            updated = {}
+            errors = {}
+            for k, v in (req.values or {}).items():
+                if k not in SCHEMA:
+                    errors[k] = "unknown setting"
+                    continue
+                try:
+                    set_value(conn, k, v)
+                    updated[k] = v
+                except Exception as e:
+                    errors[k] = str(e)
+            return {"updated": updated, "errors": errors, "settings": all_settings(conn)}
         finally:
             conn.close()
 
@@ -1439,15 +1804,15 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 # Save the user turn before generating, so it's persisted even if generation fails.
                 add_message(conn, sid, "user", q, context_used=context_summary)
 
-                # Build prompt context text
+                # Build prompt context text with citation numbers.
                 from datetime import datetime as _dt
                 ctx_lines = []
-                for r in results:
+                for i, r in enumerate(results, 1):
                     ts = _dt.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M") if r["timestamp"] else "n/a"
                     snippet = r["content"]
                     if len(snippet) > 800:
                         snippet = snippet[:800] + "..."
-                    ctx_lines.append(f"[{ts}] ({r['source']})\n{snippet}")
+                    ctx_lines.append(f"[{i}] {ts} ({r['source']})\n{snippet}")
                 ctx_text = "\n\n---\n\n".join(ctx_lines)
 
                 full_response = []

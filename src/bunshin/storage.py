@@ -158,6 +158,65 @@ def detect_vec_dimensions(conn: sqlite3.Connection) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+# ── FTS5 full-text search index ──
+
+def init_fts(conn: sqlite3.Connection) -> None:
+    """Create the FTS5 virtual table for keyword/BM25 search alongside vec search.
+
+    Uses content='records' so it stays in sync via triggers we create below.
+    Skips silently if FTS5 isn't compiled in (rare on macOS Python sqlite3).
+    """
+    try:
+        conn.executescript(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS records_fts USING fts5(
+                content,
+                content='records',
+                content_rowid='rowid',
+                tokenize='unicode61 remove_diacritics 2'
+            );
+
+            CREATE TRIGGER IF NOT EXISTS records_ai_fts
+                AFTER INSERT ON records BEGIN
+                INSERT INTO records_fts(rowid, content) VALUES (new.rowid, new.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS records_ad_fts
+                AFTER DELETE ON records BEGIN
+                INSERT INTO records_fts(records_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS records_au_fts
+                AFTER UPDATE ON records BEGIN
+                INSERT INTO records_fts(records_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+                INSERT INTO records_fts(rowid, content) VALUES (new.rowid, new.content);
+            END;
+            """
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        # FTS5 not available, fall back silently
+        pass
+
+
+def fts_record_count(conn: sqlite3.Connection) -> int:
+    try:
+        cursor = conn.execute("SELECT COUNT(*) FROM records_fts")
+        return cursor.fetchone()[0]
+    except sqlite3.OperationalError:
+        return 0
+
+
+def rebuild_fts(conn: sqlite3.Connection) -> int:
+    """Rebuild the FTS5 index from scratch — used after large back-fills."""
+    try:
+        conn.execute("INSERT INTO records_fts(records_fts) VALUES('rebuild')")
+        conn.commit()
+        return fts_record_count(conn)
+    except sqlite3.OperationalError:
+        return 0
+
+
 def insert_vector(conn: sqlite3.Connection, record_id: str, embedding) -> None:
     """Store a vector for a record (caller batches commits)."""
     import numpy as np

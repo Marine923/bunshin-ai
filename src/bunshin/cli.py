@@ -470,6 +470,45 @@ def migrate_embeddings_cmd(db: Path, force: bool):
     conn.close()
 
 
+@main.command("backup")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+@click.option("--keep", default=7, help="Number of daily snapshots to retain")
+def backup_cmd(db: Path, keep: int):
+    """Take a consistent snapshot of the DB into ~/.bunshin/backups/."""
+    from bunshin.backup import backup_db
+    stats = backup_db(db, keep=keep)
+    if stats.get("error"):
+        console.print(f"[red]✗[/red] {stats['error']}")
+        return
+    mb = stats["bytes"] / 1024 / 1024
+    console.print(
+        f"[green]✓[/green] Backup: {stats['backup_path']} ({mb:.1f} MB)\n"
+        f"  retained={stats['retained']} removed={stats['removed']}"
+    )
+
+
+@main.command("backups")
+def backups_cmd():
+    """List existing backups."""
+    from bunshin.backup import list_backups
+    items = list_backups()
+    if not items:
+        console.print("[yellow]No backups yet.[/yellow] Run `bunshin backup` first.")
+        return
+    table = Table(title="Backups")
+    table.add_column("Date", style="cyan")
+    table.add_column("Size", justify="right")
+    table.add_column("Path", style="dim")
+    for it in items:
+        mb = it["bytes"] / 1024 / 1024
+        table.add_row(it["mtime_str"], f"{mb:.1f} MB", it["path"])
+    console.print(table)
+
+
 @main.command("install-scheduler")
 def install_scheduler_cmd():
     """Install hourly auto-update via OS-appropriate scheduler.
@@ -846,6 +885,65 @@ def insights_cmd(db: Path):
             console.print()
 
 
+@main.command("transcribe")
+@click.argument(
+    "path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option("--model", default="small", help="Whisper model size (tiny, base, small, medium, large)")
+@click.option("--language", default="ja", help="Language hint (ja, en, auto, ...)")
+@click.option("--save/--no-save", default=True, help="Save the transcript as a manual memo")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def transcribe_cmd(path: Path, model: str, language: str, save: bool, db: Path):
+    """Transcribe an audio file and (by default) save it as a memo.
+
+    Requires one of: faster-whisper, openai-whisper, or whisper-cpp.
+    """
+    from bunshin.ingestion.audio import detect_backend, transcribe
+
+    backend = detect_backend()
+    console.print(f"Backend: [cyan]{backend or 'none'}[/cyan]")
+    if not backend:
+        console.print(
+            "[red]No transcription backend installed.[/red]\n"
+            "Run one of:\n"
+            "  [cyan]pip install faster-whisper[/cyan]   # recommended\n"
+            "  [cyan]pip install openai-whisper[/cyan]   # reference (needs torch)\n"
+            "  [cyan]brew install whisper-cpp[/cyan]     # Apple-Silicon native"
+        )
+        return
+
+    console.print(f"Transcribing [cyan]{path.name}[/cyan] with model={model} lang={language}…")
+    console.print("[dim]First run downloads the model (~80MB-1GB depending on size).[/dim]")
+    result = transcribe(path, model_name=model, language=language)
+    if result.get("error"):
+        console.print(f"[red]Error:[/red] {result['error']}")
+        return
+
+    text = result["text"]
+    console.print(f"\n[green]✓[/green] Transcribed {len(text)} chars\n")
+    console.print(text[:500] + ("..." if len(text) > 500 else ""))
+
+    if save:
+        from bunshin.embeddings import DIMENSIONS, embed_passages
+        from bunshin.ingestion.manual import add_note
+        from bunshin.storage import init_vector_db, insert_vector
+
+        conn = init_db(db)
+        rid = add_note(conn, content=f"[音声: {path.name}]\n\n{text}", tags=["audio", "transcript"])
+        if rid and len(text) >= 20:
+            init_vector_db(conn, dimensions=DIMENSIONS)
+            for emb in embed_passages([text]):
+                insert_vector(conn, rid, emb)
+            conn.commit()
+        conn.close()
+        console.print(f"\n[green]✓[/green] Saved as memo (record_id={rid})")
+
+
 @main.command("note")
 @click.argument("content", type=str)
 @click.option("--tag", multiple=True, help="Tag (repeatable)")
@@ -1150,6 +1248,18 @@ def update_cmd(
             conn.commit()
             embedded += len(batch)
 
+    # Daily backup if today's snapshot doesn't exist yet.
+    try:
+        from bunshin.backup import DEFAULT_BACKUP_DIR, backup_db
+        today_snap = DEFAULT_BACKUP_DIR / f"data-{start.strftime('%Y-%m-%d')}.db"
+        backup_taken = False
+        if not today_snap.exists():
+            conn.commit()  # flush pending writes before vacuuming
+            bk = backup_db(db, keep=7)
+            backup_taken = bool(bk.get("backup_path")) and not bk.get("error")
+    except Exception:
+        backup_taken = False
+
     duration = (datetime.now() - start).total_seconds()
     summary = (
         f"claude_sessions={c_stats['files_reimported']} "
@@ -1159,7 +1269,9 @@ def update_cmd(
         f"gmail_imported={g_stats['imported']} "
         f"gmail_chunks={g_stats['chunks_inserted']} "
         f"cal_events={cal_stats['imported']} "
-        f"embedded={embedded} duration={duration:.1f}s"
+        f"embedded={embedded} "
+        f"backup={'yes' if backup_taken else 'no'} "
+        f"duration={duration:.1f}s"
     )
 
     # Stamp for /api/status
