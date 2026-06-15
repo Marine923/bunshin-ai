@@ -736,6 +736,20 @@ INDEX_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
+    <div class="filter-row">
+      <span>ソース:</span>
+      <div class="chips-row" id="sources">
+        <span class="filter-chip active" data-source="">全部</span>
+        <span class="filter-chip" data-source="claude">💬 Claude</span>
+        <span class="filter-chip" data-source="gmail">📧 Gmail</span>
+        <span class="filter-chip" data-source="file">📄 ファイル</span>
+        <span class="filter-chip" data-source="manual">📝 メモ</span>
+        <span class="filter-chip" data-source="calendar">📅 予定</span>
+        <span class="filter-chip" data-source="line">💬 LINE</span>
+        <span class="filter-chip" data-source="browser">🌐 ブラウザ</span>
+      </div>
+    </div>
+
     <div class="examples" id="example-chips">
       <!-- Examples will be loaded from your top entities -->
     </div>
@@ -1071,6 +1085,18 @@ async function loadInsights() {
     genEl.textContent = `生成: ${j.generated_at}`;
     let html = '';
 
+    // LLM digest section first — shown only as a button, fetched on click.
+    html += `
+      <div class="insights-section">
+        <h2>📰 過去7日間のサマリ（AI 生成）</h2>
+        <div id="digest-area">
+          <button id="digest-btn" class="settings-save-btn" style="background:#3a5a8a;padding:8px 18px;font-size:13px;">
+            AI でサマリを作成（30 秒〜2 分）
+          </button>
+        </div>
+      </div>
+    `;
+
     if (j.setup_hints?.length) {
       html += '<div class="insights-section"><h2>🛠 セットアップ案内</h2>';
       for (const h of j.setup_hints) {
@@ -1135,6 +1161,32 @@ async function loadInsights() {
     if (!html) html = '<div class="empty">気づきがまだありません</div>';
     content.innerHTML = html;
     insightsLoaded = true;
+
+    // Wire the digest button (lazy because LLM call is slow).
+    const digestBtn = document.getElementById('digest-btn');
+    if (digestBtn) {
+      digestBtn.addEventListener('click', async () => {
+        const area = document.getElementById('digest-area');
+        area.innerHTML = '<div class="loading">AI が記憶を要約中…（最大2分）</div>';
+        try {
+          const r = await fetch('/api/insights/digest?days=7');
+          const j = await r.json();
+          if (j.error) {
+            area.innerHTML = `<div class="empty">エラー: ${esc(j.error)}</div>`;
+            return;
+          }
+          const formatted = esc(j.digest).replace(/\\n/g, '<br>').replace(/^## (.+)$/gm, '<h3 style="margin:14px 0 6px;color:#ddd;">$1</h3>').replace(/^- (.+)$/gm, '• $1');
+          area.innerHTML = `
+            <div class="insights-card" style="border-left:3px solid #5fbf6f;">
+              <div class="meta">モデル: ${esc(j.model)} · 対象記録: ${j.covered_records} 件</div>
+              <div class="body" style="white-space:pre-wrap;">${formatted}</div>
+            </div>
+          `;
+        } catch (e) {
+          area.innerHTML = `<div class="empty">エラー: ${esc(String(e))}</div>`;
+        }
+      });
+    }
   } catch (e) {
     content.innerHTML = `<div class="empty">エラー: ${esc(String(e))}</div>`;
   }
@@ -1151,8 +1203,10 @@ loadStats();
 
 // ===== Search =====
 const q = $('q'), results = $('results'), sortSel = $('sort'), periodsEl = $('periods');
+const sourcesEl = $('sources');
 let searchTimer = null;
 let currentPeriod = 'all';
+let currentSource = '';
 
 function periodToSec(p) {
   const day = 86400;
@@ -1166,6 +1220,7 @@ async function doSearch(query) {
     const params = new URLSearchParams({ q: query, limit: 20, sort: sortSel.value });
     const sec = periodToSec(currentPeriod);
     if (sec) params.set('from', Math.floor(Date.now()/1000) - sec);
+    if (currentSource) params.set('sources', currentSource);
     const j = await (await fetch(`/api/search?${params}`)).json();
     if (!j.results?.length) { results.innerHTML = '<div class="empty">該当なし</div>'; return; }
     results.innerHTML = j.results.map((r, i) => renderResult(r, i)).join('');
@@ -1244,6 +1299,13 @@ periodsEl.addEventListener('click', e => {
   document.querySelectorAll('#periods .filter-chip').forEach(c => c.classList.remove('active'));
   e.target.classList.add('active');
   currentPeriod = e.target.dataset.period;
+  doSearch(q.value);
+});
+sourcesEl.addEventListener('click', e => {
+  if (!e.target.classList.contains('filter-chip')) return;
+  document.querySelectorAll('#sources .filter-chip').forEach(c => c.classList.remove('active'));
+  e.target.classList.add('active');
+  currentSource = e.target.dataset.source;
   doSearch(q.value);
 });
 // Populate example chips from user's top entities
@@ -1551,8 +1613,42 @@ chatForm.addEventListener('submit', async (e) => {
 """
 
 
+def _start_background_watcher(db_path: Path) -> None:
+    """If watchdog is available and the user has a watch directory configured,
+    start a background watcher when the web server boots."""
+    try:
+        from bunshin.file_watcher import WATCHDOG_AVAILABLE, start_watcher
+    except ImportError:
+        return
+    if not WATCHDOG_AVAILABLE:
+        return
+
+    # For now, watch the user's Documents/Seiyo/ob (where most user data is)
+    # if it exists; otherwise watch ~/Documents.
+    import os
+    candidates = [
+        os.environ.get("BUNSHIN_WATCH_DIR"),
+        str(Path.home() / "Documents" / "Seiyo" / "ob"),
+        str(Path.home() / "Documents"),
+    ]
+    watch_dir = None
+    for c in candidates:
+        if c and Path(c).exists():
+            watch_dir = Path(c)
+            break
+    if not watch_dir:
+        return
+
+    try:
+        start_watcher(db_path=db_path, root=watch_dir, idle_seconds=3.0)
+        print(f"[bunshin] file watcher started on {watch_dir}", flush=True)
+    except Exception as e:
+        print(f"[bunshin] file watcher failed: {e}", flush=True)
+
+
 def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
     app = FastAPI(title="分身 (Bunshin)")
+    _start_background_watcher(db_path)
 
     @app.get("/", response_class=HTMLResponse)
     def index():
@@ -1581,14 +1677,17 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         to_ts: Optional[int] = Query(None, alias="to"),
         max_per_source: int = Query(1, ge=0, le=20),
         mode: str = Query("hybrid", pattern="^(vector|hybrid)$"),
+        sources: Optional[str] = Query(None, description="Comma-separated source filter"),
     ):
         conn = init_db(db_path)
         try:
+            source_list = [s.strip() for s in sources.split(",")] if sources else None
             results = search(
                 conn, q, limit=limit, min_content_length=min_chars,
                 sort=sort, from_ts=from_ts, to_ts=to_ts,
                 max_per_source=max_per_source,
                 mode=mode,
+                sources=source_list,
             )
             return {"query": q, "count": len(results), "results": results}
         finally:
@@ -1674,6 +1773,15 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         conn = init_db(db_path)
         try:
             return generate_insights(conn)
+        finally:
+            conn.close()
+
+    @app.get("/api/insights/digest")
+    def api_insights_digest(days: int = Query(7, ge=1, le=90)):
+        from bunshin.insights import generate_llm_digest
+        conn = init_db(db_path)
+        try:
+            return generate_llm_digest(conn, days=days)
         finally:
             conn.close()
 

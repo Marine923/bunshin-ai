@@ -91,6 +91,7 @@ def search(
     to_ts: Optional[int] = None,
     max_per_source: int = 1,
     mode: str = "hybrid",
+    sources: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """Search records by semantic similarity to query.
 
@@ -124,6 +125,10 @@ def search(
     if to_ts is not None:
         where.append("r.timestamp <= ?")
         params.append(to_ts)
+    if sources:
+        placeholders = ",".join(["?"] * len(sources))
+        where.append(f"r.source IN ({placeholders})")
+        params.extend(sources)
 
     order_clause = _ORDER_CLAUSES.get(sort, _ORDER_CLAUSES["relevance"])
 

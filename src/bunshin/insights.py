@@ -209,3 +209,91 @@ def generate_insights(
                 break
 
     return out
+
+
+def generate_llm_digest(
+    conn: sqlite3.Connection,
+    days: int = 7,
+    model: Optional[str] = None,
+) -> dict:
+    """Use Ollama to summarize the past N days of records into a digest.
+
+    Returns: {"digest": text, "model": ..., "covered_records": n, "error": str|None}
+    """
+    out: dict = {"digest": "", "model": None, "covered_records": 0, "error": None}
+
+    try:
+        from bunshin.chat import OLLAMA_HOST, check_ollama, pick_model
+        import httpx
+    except ImportError as e:
+        out["error"] = f"imports failed: {e}"
+        return out
+
+    ok, available = check_ollama()
+    if not ok or not available:
+        out["error"] = "Ollama not available"
+        return out
+
+    chosen = model or pick_model(available)
+    out["model"] = chosen
+
+    now_ts = int(datetime.now().timestamp())
+    since = now_ts - days * 86400
+
+    cursor = conn.execute(
+        """SELECT source, timestamp, content, metadata
+           FROM records
+           WHERE timestamp >= ? AND length(content) >= 50
+           ORDER BY timestamp DESC
+           LIMIT 200""",
+        (since,),
+    )
+    rows = cursor.fetchall()
+    out["covered_records"] = len(rows)
+    if not rows:
+        out["digest"] = "(過去 {} 日間に十分な記録がありません)".format(days)
+        return out
+
+    # Build a compact textual log for the LLM.
+    blocks = []
+    for src, ts, content, meta in rows:
+        date = datetime.fromtimestamp(ts).strftime("%m-%d") if ts else "?"
+        # truncate noisy content
+        snippet = content[:400]
+        blocks.append(f"[{date} {src}] {snippet}")
+    log_text = "\n".join(blocks)[:14000]  # bound prompt
+
+    prompt = (
+        f"以下は過去 {days} 日間のユーザーの記録（メール・会話・ファイル）の抜粋です。"
+        "ユーザーが「今週何があったか」「何を考えていたか」「今やるべきことは何か」を"
+        "把握できる**簡潔な日本語サマリ**を作ってください。\n\n"
+        "フォーマット：\n"
+        "## このN日間のハイライト\n"
+        "- 箇条書きで重要な出来事・決定（3-6項目）\n\n"
+        "## 進行中のテーマ\n"
+        "- 継続的に登場する話題、プロジェクト\n\n"
+        "## 今やるべきこと\n"
+        "- 記録から推測される未対応事項・締切（3-5項目）\n\n"
+        "ルール：日付や固有名詞は記録から引用すること。"
+        "推測で名前を作らないこと。\n\n"
+        f"=== 記録 ===\n{log_text}\n=== ここまで ==="
+    )
+
+    try:
+        r = httpx.post(
+            f"{OLLAMA_HOST}/api/chat",
+            json={
+                "model": chosen,
+                "messages": [
+                    {"role": "system", "content": "You write concise Japanese summaries."},
+                    {"role": "user", "content": prompt},
+                ],
+                "stream": False,
+            },
+            timeout=180.0,
+        )
+        r.raise_for_status()
+        out["digest"] = r.json().get("message", {}).get("content", "").strip()
+    except Exception as e:
+        out["error"] = str(e)
+    return out

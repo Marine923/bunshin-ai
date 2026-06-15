@@ -219,6 +219,53 @@ def search_cmd(query: str, limit: int, full: bool, db: Path):
         console.print()
 
 
+@main.command("watch")
+@click.argument(
+    "path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=lambda: Path.home() / "Documents",
+)
+@click.option("--ext", multiple=True, help="File extensions to watch (default: same as import-files)")
+@click.option("--idle", default=3.0, help="Idle seconds before re-ingesting after a change")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def watch_cmd(path: Path, ext: tuple[str, ...], idle: float, db: Path):
+    """Watch a directory and re-ingest files on change (Ctrl+C to stop)."""
+    from bunshin.file_watcher import WATCHDOG_AVAILABLE, start_watcher
+    from bunshin.ingestion.files import DEFAULT_EXTENSIONS
+
+    if not WATCHDOG_AVAILABLE:
+        console.print("[red]watchdog not installed.[/red] Run: [cyan]pip install watchdog[/cyan]")
+        return
+
+    extensions = set(ext) if ext else DEFAULT_EXTENSIONS
+    console.print(
+        f"[green]Watching[/green] [cyan]{path}[/cyan] for {sorted(extensions)} "
+        f"(idle={idle}s)\n[dim]Press Ctrl+C to stop.[/dim]\n"
+    )
+
+    def on_import(info):
+        console.print(
+            f"[dim]{info['path']}[/dim] → chunks={info.get('chunks_inserted', 0)}"
+        )
+
+    stop = start_watcher(
+        db_path=db, root=path, extensions=extensions,
+        idle_seconds=idle, on_import=on_import,
+    )
+    try:
+        import signal
+        signal.pause()
+    except (KeyboardInterrupt, AttributeError):
+        pass
+    finally:
+        console.print("\n[yellow]Stopping watcher...[/yellow]")
+        stop()
+
+
 @main.command("import-files")
 @click.argument(
     "path",
@@ -366,6 +413,36 @@ def chat_cmd(query: str, model: Optional[str], context_limit: int, db: Path):
         console.print()
     except Exception as e:
         console.print(f"\n[red]Error: {e}[/red]")
+
+
+@main.command("import-browser")
+@click.option(
+    "--browser",
+    "browsers",
+    multiple=True,
+    type=click.Choice(["safari", "chrome", "arc"]),
+    help="Which browser to import (repeatable). Defaults to all available.",
+)
+@click.option("--initial-days", default=90, help="Days back to fetch on first run")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def import_browser_cmd(browsers: tuple[str, ...], initial_days: int, db: Path):
+    """Import Safari / Chrome / Arc visit history."""
+    from bunshin.ingestion.browser import import_browser_history
+    conn = init_db(db)
+    chosen = list(browsers) if browsers else None
+    console.print(f"Importing browser history (browsers={chosen or 'all'})…")
+    stats = import_browser_history(conn, browsers=chosen, initial_days=initial_days)
+    table = Table(title="Browser import")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    for k in ("safari", "chrome", "arc", "inserted", "skipped"):
+        table.add_row(k, str(stats.get(k, 0)))
+    console.print(table)
+    conn.close()
 
 
 @main.command("import-line")
@@ -1229,7 +1306,15 @@ def update_cmd(
     except Exception:
         pass
 
-    # 5) Embed everything that lacks a vector
+    # 5) Browser history (incremental — uses last_ts watermark in settings)
+    browser_stats = {"inserted": 0}
+    try:
+        from bunshin.ingestion.browser import import_browser_history
+        browser_stats = import_browser_history(conn)
+    except Exception:
+        pass
+
+    # 6) Embed everything that lacks a vector
     init_vector_db(conn, dimensions=DIMENSIONS)
     pending = [
         (rid, text) for rid, text in get_records_without_vectors(conn)
@@ -1269,6 +1354,7 @@ def update_cmd(
         f"gmail_imported={g_stats['imported']} "
         f"gmail_chunks={g_stats['chunks_inserted']} "
         f"cal_events={cal_stats['imported']} "
+        f"browser_visits={browser_stats.get('inserted', 0)} "
         f"embedded={embedded} "
         f"backup={'yes' if backup_taken else 'no'} "
         f"duration={duration:.1f}s"
