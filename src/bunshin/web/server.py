@@ -141,6 +141,90 @@ INDEX_HTML = """<!DOCTYPE html>
     border-color: #4a8fef;
     color: #fff;
   }
+  /* Timeline */
+  .timeline-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .timeline-day {
+    background: #161616;
+    border: 1px solid #232323;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+  }
+  .timeline-day-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+  }
+  .timeline-day-date {
+    font-weight: 600;
+    color: #ddd;
+    font-size: 14px;
+  }
+  .timeline-day-date .today-marker {
+    color: #4a8fef;
+    font-weight: 500;
+    margin-left: 6px;
+    font-size: 12px;
+  }
+  .timeline-day-total {
+    font-size: 12px;
+    color: #888;
+  }
+  .timeline-day-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .src-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #1c1c1c;
+    border: 1px solid #2a2a2a;
+    border-radius: 14px;
+    padding: 4px 10px;
+    font-size: 13px;
+    color: #ccc;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .src-pill:hover { background: #252525; border-color: #555; color: #fff; }
+  .src-pill.expanded { background: #1a3a6a; border-color: #4a8fef; color: #fff; }
+  .timeline-day-records {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #2a2a2a;
+  }
+  .timeline-record {
+    display: flex;
+    gap: 12px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: #bbb;
+    border-bottom: 1px solid #1f1f1f;
+    align-items: flex-start;
+  }
+  .timeline-record:last-child { border-bottom: 0; }
+  .timeline-rec-time {
+    color: #777;
+    min-width: 42px;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .timeline-rec-content {
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.5;
+  }
   .examples {
     margin-top: 16px;
     display: flex;
@@ -736,6 +820,7 @@ INDEX_HTML = """<!DOCTYPE html>
   <div class="tab active" data-pane="search">🔍 検索</div>
   <div class="tab" data-pane="chat">💬 チャット</div>
   <div class="tab" data-pane="insights">💡 気づき</div>
+  <div class="tab" data-pane="timeline">📅 タイムライン</div>
   <div class="tab" data-pane="graph">🕸 関係性</div>
   <div class="tab" data-pane="settings">⚙ 設定</div>
 </nav>
@@ -775,6 +860,9 @@ INDEX_HTML = """<!DOCTYPE html>
         <span class="filter-chip" data-source="calendar">📅 予定</span>
         <span class="filter-chip" data-source="line">💬 LINE</span>
         <span class="filter-chip" data-source="browser">🌐 ブラウザ</span>
+        <span class="filter-chip" data-source="notes">📓 メモ帳</span>
+        <span class="filter-chip" data-source="imessage">💌 iMessage</span>
+        <span class="filter-chip" data-source="photo">📷 写真</span>
       </div>
     </div>
 
@@ -791,6 +879,22 @@ INDEX_HTML = """<!DOCTYPE html>
   <section class="pane" id="pane-insights">
     <div class="insights-generated" id="insights-generated"></div>
     <div id="insights-content">
+      <div class="loading">読み込み中…</div>
+    </div>
+  </section>
+
+  <!-- ============== Timeline Pane ============== -->
+  <section class="pane" id="pane-timeline">
+    <div class="timeline-controls">
+      <span>期間:</span>
+      <div class="chips-row" id="timeline-periods">
+        <span class="filter-chip" data-days="7">直近1週間</span>
+        <span class="filter-chip active" data-days="30">直近1ヶ月</span>
+        <span class="filter-chip" data-days="90">直近3ヶ月</span>
+        <span class="filter-chip" data-days="365">直近1年</span>
+      </div>
+    </div>
+    <div id="timeline-content">
       <div class="loading">読み込み中…</div>
     </div>
   </section>
@@ -858,6 +962,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.pane === 'insights') loadInsights();
     if (tab.dataset.pane === 'graph') loadEntities();
     if (tab.dataset.pane === 'settings') loadSettings();
+    if (tab.dataset.pane === 'timeline') loadTimeline();
   });
 });
 
@@ -1101,6 +1206,113 @@ async function loadEntityDetail(entityId) {
     detailEl.innerHTML = `<div class="empty">エラー: ${esc(String(e))}</div>`;
   }
 }
+
+// ===== Timeline =====
+const TIMELINE_SOURCE_ICONS = {
+  claude: '💬', gmail: '📧', file: '📄', manual: '📝',
+  calendar: '📅', line: '💬', browser: '🌐',
+  notes: '📓', imessage: '💌', photo: '📷'
+};
+let _timelineDays = 30;
+async function loadTimeline(days) {
+  if (typeof days === 'number') _timelineDays = days;
+  const c = $('timeline-content');
+  c.innerHTML = '<div class="loading">読み込み中…</div>';
+  try {
+    const r = await fetch(`/api/timeline?days=${_timelineDays}`);
+    const j = await r.json();
+    if (!j.days || !j.days.length) {
+      c.innerHTML = '<div class="empty">この期間に記録がありません</div>';
+      return;
+    }
+    c.innerHTML = j.days.map(renderTimelineDay).join('');
+  } catch (e) {
+    c.innerHTML = `<div class="empty">エラー: ${esc(String(e))}</div>`;
+  }
+}
+function renderTimelineDay(d) {
+  const sources = Object.entries(d.sources)
+    .sort((a,b) => b[1] - a[1])
+    .map(([src, cnt]) => {
+      const icon = TIMELINE_SOURCE_ICONS[src] || '❓';
+      return `<span class="src-pill" data-src="${src}" data-date="${d.date}">${icon} ${cnt}</span>`;
+    }).join('');
+  return `
+    <div class="timeline-day" data-date="${d.date}">
+      <div class="timeline-day-header">
+        <span class="timeline-day-date">${formatDateLabel(d.date)}</span>
+        <span class="timeline-day-total">合計 ${d.total} 件</span>
+      </div>
+      <div class="timeline-day-sources">${sources}</div>
+      <div class="timeline-day-records" style="display:none"></div>
+    </div>`;
+}
+function formatDateLabel(yyyy_mm_dd) {
+  const [y, mo, d] = yyyy_mm_dd.split('-').map(n => parseInt(n));
+  const dt = new Date(y, mo - 1, d);
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const isToday = dt.getTime() === today.getTime();
+  const isYesterday = dt.getTime() === yesterday.getTime();
+  const weekday = ['日','月','火','水','木','金','土'][dt.getDay()];
+  let suffix = '';
+  if (isToday) suffix = '<span class="today-marker">今日</span>';
+  else if (isYesterday) suffix = '<span class="today-marker">昨日</span>';
+  return `${yyyy_mm_dd} (${weekday})${suffix}`;
+}
+function formatTimelineTime(ts) {
+  const d = new Date(ts * 1000);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+document.addEventListener('click', async (e) => {
+  const pill = e.target.closest('.src-pill');
+  if (!pill) return;
+  const dayEl = pill.closest('.timeline-day');
+  if (!dayEl) return;
+  const recordsEl = dayEl.querySelector('.timeline-day-records');
+  const date = pill.dataset.date;
+  const source = pill.dataset.src;
+  const sameSource = recordsEl.dataset.source === source;
+  const isOpen = recordsEl.style.display !== 'none';
+  // Reset all pills in this day
+  dayEl.querySelectorAll('.src-pill').forEach(p => p.classList.remove('expanded'));
+  if (isOpen && sameSource) {
+    recordsEl.style.display = 'none';
+    recordsEl.dataset.source = '';
+    return;
+  }
+  pill.classList.add('expanded');
+  recordsEl.dataset.source = source;
+  recordsEl.style.display = 'block';
+  recordsEl.innerHTML = '<div class="loading">読み込み中…</div>';
+  try {
+    const r = await fetch(`/api/timeline/day?date=${date}&source=${encodeURIComponent(source)}&limit=50`);
+    const j = await r.json();
+    if (!j.results.length) {
+      recordsEl.innerHTML = '<div class="empty">なし</div>';
+      return;
+    }
+    recordsEl.innerHTML = j.results.map(rec => {
+      const time = formatTimelineTime(rec.timestamp);
+      const text = rec.content.slice(0, 400) + (rec.content.length > 400 ? '…' : '');
+      return `
+        <div class="timeline-record">
+          <div class="timeline-rec-time">${time}</div>
+          <div class="timeline-rec-content">${esc(text)}</div>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    recordsEl.innerHTML = `<div class="empty">エラー: ${esc(String(err))}</div>`;
+  }
+});
+document.querySelectorAll('#timeline-periods .filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#timeline-periods .filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    loadTimeline(parseInt(chip.dataset.days));
+  });
+});
 
 // ===== Insights =====
 let insightsLoaded = false;
@@ -1803,6 +2015,73 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             )
             siblings = [r for r in results if r["source_id"] == source_id]
             return {"source_id": source_id, "count": len(siblings), "results": siblings[:limit]}
+        finally:
+            conn.close()
+
+    @app.get("/api/timeline")
+    def api_timeline(days: int = Query(30, ge=1, le=3650)):
+        """Aggregate records per local-day, per source, for the last N days."""
+        from datetime import datetime as _dt
+        conn = init_db(db_path)
+        try:
+            now = int(_dt.now().timestamp())
+            threshold = now - days * 86400
+            cursor = conn.execute(
+                """SELECT
+                    date(timestamp, 'unixepoch', 'localtime') AS day,
+                    source,
+                    COUNT(*) AS cnt
+                   FROM records
+                   WHERE timestamp >= ? AND length(content) >= 20
+                   GROUP BY day, source
+                   ORDER BY day DESC, cnt DESC""",
+                (threshold,),
+            )
+            by_day: dict = {}
+            for day, source, cnt in cursor.fetchall():
+                if day not in by_day:
+                    by_day[day] = {"date": day, "sources": {}, "total": 0}
+                by_day[day]["sources"][source] = cnt
+                by_day[day]["total"] += cnt
+            days_list = sorted(by_day.values(), key=lambda x: x["date"], reverse=True)
+            return {"days": days_list, "range_days": days}
+        finally:
+            conn.close()
+
+    @app.get("/api/timeline/day")
+    def api_timeline_day(
+        date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        source: Optional[str] = Query(None),
+        limit: int = Query(50, ge=1, le=200),
+    ):
+        """List records for a specific local-date (YYYY-MM-DD)."""
+        conn = init_db(db_path)
+        try:
+            sql = (
+                "SELECT id, source, source_id, timestamp, content, metadata "
+                "FROM records "
+                "WHERE date(timestamp, 'unixepoch', 'localtime') = ? "
+                "AND length(content) >= 20"
+            )
+            params: list = [date]
+            if source:
+                sql += " AND source = ?"
+                params.append(source)
+            sql += " ORDER BY timestamp ASC LIMIT ?"
+            params.append(limit)
+            cursor = conn.execute(sql, params)
+            rows = [
+                {
+                    "id": r[0],
+                    "source": r[1],
+                    "source_id": r[2],
+                    "timestamp": r[3],
+                    "content": r[4],
+                    "metadata": json.loads(r[5]) if r[5] else {},
+                }
+                for r in cursor.fetchall()
+            ]
+            return {"date": date, "source": source, "count": len(rows), "results": rows}
         finally:
             conn.close()
 
