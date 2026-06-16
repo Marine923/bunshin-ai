@@ -1,6 +1,6 @@
 {
   "name": "bunshin-desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Bunshin — 4-condition personal memory AI (desktop wrapper)",
   "main": "src/main.js",
   "author": {
@@ -38,6 +38,13 @@
       "src/**/*",
       "i18n/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/bunshin",
+        "to": "bunshin",
+        "filter": ["**/*"]
+      }
     ],
     "mac": {
       "category": "public.app-category.productivity",

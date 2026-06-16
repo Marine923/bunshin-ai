@@ -34,7 +34,7 @@ console = Console()
 
 
 @click.group()
-@click.version_option()
+@click.version_option(version=__import__("bunshin").__version__)
 def main():
     """分身（Bunshin）— Personal memory engine."""
 

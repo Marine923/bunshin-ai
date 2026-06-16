@@ -4,6 +4,33 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-06-16
+
+The "works on a clean Mac" release. Self-contained DMG, no Python
+install required.
+
+### Added
+- **Bundled Python runtime** — the DMG now ships a complete
+  PyInstaller-built `bunshin` CLI inside `Contents/Resources/bunshin/`.
+  Users with no Python install can drag the app to Applications and it
+  just works.
+- Electron's `findBunshinBinary()` now prefers the bundled CLI over a
+  developer venv, falling back to `~/.bunshin/venv/bin/bunshin`,
+  `/usr/local/bin/bunshin`, and `/opt/homebrew/bin/bunshin` for source
+  installs.
+
+### Changed
+- **DMG size**: 96MB → 169MB (arm64), 100MB → 173MB (x64). The
+  extra ~73MB is the bundled Python runtime + every fastembed /
+  sqlite-vec / fastapi / pillow dependency. First-launch model
+  download (e5-large, ~2GB) is unchanged.
+
+### Build infrastructure
+- New `bunshin.spec` for PyInstaller. Collects all data files and
+  hidden imports for the runtime-discovered dependencies.
+- New `src/bunshin/__main__.py` entry point so the bundle can run as
+  a single executable.
+
 ## [0.3.2] - 2026-06-16
 
 Hot fix for a v0.3.1 regression that broke tab switching.

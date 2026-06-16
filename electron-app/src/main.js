@@ -81,11 +81,19 @@ let t = loadLocale();
 // Server lifecycle
 // ────────────────────────────────────────────────────────────
 function findBunshinBinary() {
+  // 1. Production: bundled inside Contents/Resources/bunshin/ via electron-
+  //    builder's extraResources. This is what ships in the DMG so the app
+  //    works on a clean Mac with no Python install.
+  // 2. Dev fallback: a venv install at ~/.bunshin/venv/bin or a brew bin.
+  const bundled = process.resourcesPath
+    ? path.join(process.resourcesPath, 'bunshin', 'bunshin')
+    : null;
   const candidates = [
+    bundled,
     path.join(os.homedir(), '.bunshin', 'venv', 'bin', 'bunshin'),
     '/usr/local/bin/bunshin',
     '/opt/homebrew/bin/bunshin',
-  ];
+  ].filter(Boolean);
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
