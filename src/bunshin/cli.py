@@ -472,6 +472,47 @@ def import_line_cmd(path: Path, verbose: bool, db: Path):
     conn.close()
 
 
+@main.command("import-notes")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Re-import all notes, ignoring per-note modification timestamps",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Print each note as it is imported")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def import_notes_cmd(force: bool, verbose: bool, db: Path):
+    """Import Apple Notes (macOS only — runs Notes.app via AppleScript)."""
+    from bunshin.ingestion.notes import import_apple_notes
+
+    conn = init_db(db)
+    console.print("Asking Notes.app for your notes via AppleScript…")
+    console.print(
+        "[dim]初回は Notes.app へのアクセス許可を求められます — 「OK」を選んでください。[/dim]"
+    )
+    stats = import_apple_notes(conn, force=force, verbose=verbose)
+
+    if stats.get("applescript_failed"):
+        console.print(
+            "[red]AppleScript の実行に失敗しました。[/red] "
+            "Notes.app の自動化を許可する設定が必要です：\n"
+            "  システム設定 → プライバシーとセキュリティ → オートメーション → ターミナル → メモ をオン"
+        )
+        conn.close()
+        return
+
+    table = Table(title="Apple Notes import")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    for k in ("scanned", "unchanged", "imported", "failed", "chunks"):
+        table.add_row(k, str(stats.get(k, 0)))
+    console.print(table)
+    conn.close()
+
+
 @main.command("migrate-embeddings")
 @click.option(
     "--db",
