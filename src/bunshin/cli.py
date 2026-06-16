@@ -472,6 +472,39 @@ def import_line_cmd(path: Path, verbose: bool, db: Path):
     conn.close()
 
 
+@main.command("import-imessage")
+@click.option("--initial-days", default=365, help="Days back to fetch on first run")
+@click.option("--verbose", "-v", is_flag=True)
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def import_imessage_cmd(initial_days: int, verbose: bool, db: Path):
+    """Import iMessage / SMS history (requires Full Disk Access)."""
+    from bunshin.ingestion.imessage import import_imessage
+
+    conn = init_db(db)
+    console.print("iMessage を取り込み中…")
+    stats = import_imessage(conn, initial_days=initial_days, verbose=verbose)
+
+    if stats.get("error"):
+        console.print(f"[red]{stats['error']}[/red]")
+        console.print(
+            "[dim]設定後、ターミナルを開き直してから再実行してください。[/dim]"
+        )
+        conn.close()
+        return
+
+    table = Table(title="iMessage import")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    for k in ("scanned", "inserted", "recovered_from_blob", "skipped_no_text"):
+        table.add_row(k, str(stats.get(k, 0)))
+    console.print(table)
+    conn.close()
+
+
 @main.command("import-notes")
 @click.option(
     "--force",
