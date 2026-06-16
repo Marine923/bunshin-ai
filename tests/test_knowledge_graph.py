@@ -36,33 +36,33 @@ def test_generic_entities_well_formed():
 
 def test_link_records_finds_entity_in_content(populated_conn):
     init_kg_schema(populated_conn)
-    # Add an entity for Sky MISSION which appears in our fixture
-    upsert_entity(populated_conn, "Sky MISSION", "organization", ["スカイミッション"])
-    upsert_entity(populated_conn, "壱岐黄金プロジェクト", "project")
+    # Add an entity for Globex Corp which appears in our fixture
+    upsert_entity(populated_conn, "Globex Corp", "organization", ["グローベックス"])
+    upsert_entity(populated_conn, "Project Phoenix", "project")
 
     stats = link_records_to_entities(populated_conn)
     assert stats["records_scanned"] >= 5
-    assert stats["links_inserted"] >= 2  # Sky MISSION + 壱岐黄金プロジェクト at minimum
+    assert stats["links_inserted"] >= 2  # Globex Corp + Project Phoenix at minimum
 
 
 def test_entity_with_counts_returns_mentions(populated_conn):
     init_kg_schema(populated_conn)
-    upsert_entity(populated_conn, "Sky MISSION", "organization")
-    upsert_entity(populated_conn, "壱岐黄金プロジェクト", "project")
+    upsert_entity(populated_conn, "Globex Corp", "organization")
+    upsert_entity(populated_conn, "Project Phoenix", "project")
     link_records_to_entities(populated_conn)
 
     entities = entity_with_counts(populated_conn)
     by_name = {e["name"]: e for e in entities}
-    assert by_name["Sky MISSION"]["mentions"] >= 1
-    assert by_name["壱岐黄金プロジェクト"]["mentions"] >= 1
+    assert by_name["Globex Corp"]["mentions"] >= 1
+    assert by_name["Project Phoenix"]["mentions"] >= 1
 
 
 def test_entity_relations_specificity_calculation(populated_conn):
     init_kg_schema(populated_conn)
-    upsert_entity(populated_conn, "Sky MISSION", "organization")
+    upsert_entity(populated_conn, "Globex Corp", "organization")
     link_records_to_entities(populated_conn)
     entities = entity_with_counts(populated_conn)
-    sky_id = next(e["id"] for e in entities if e["name"] == "Sky MISSION")
+    sky_id = next(e["id"] for e in entities if e["name"] == "Globex Corp")
     rels = entity_relations(populated_conn, sky_id)
     # Specificity is bounded
     for r in rels:

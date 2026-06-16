@@ -64,7 +64,7 @@ def test_list_sources_with_counts(populated_conn):
 def test_get_session_records(populated_conn):
     records = get_session_records(populated_conn, "claude:s1")
     assert len(records) == 1
-    assert "壱岐黄金" in records[0]["content"]
+    assert "Project Phoenix" in records[0]["content"]
 
 
 def test_short_records_workflow(conn):

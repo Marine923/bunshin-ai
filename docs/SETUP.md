@@ -133,7 +133,7 @@ python3.11 -m venv ~/.bunshin/venv
 3. **チャット**
 
    ```bash
-   ~/.bunshin/venv/bin/bunshin chat "壱岐黄金の現状を要約して"
+   ~/.bunshin/venv/bin/bunshin chat "Project Phoenixの現状を要約して"
    ```
 
    または Web UI の「💬 チャット」タブ。

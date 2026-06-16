@@ -211,7 +211,7 @@ def generate_insights(
     import os
     watch_dir = (
         os.environ.get("BUNSHIN_WATCH_DIR")
-        or str(Path.home() / "Documents" / "Seiyo" / "ob")
+        or str(Path.home() / "Documents")
     )
     out["watch_status"] = {
         "dir": watch_dir,

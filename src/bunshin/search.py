@@ -102,7 +102,7 @@ def search(
                     includes `total_in_source` so the UI can hint at more.
     mode: "vector" (semantic only) or "hybrid" (vector + FTS5 BM25 fused
           via reciprocal rank fusion). Hybrid is the default and dominates
-          on queries with proper nouns ("Sky MISSION", "ウニ殻").
+          on queries with proper nouns ("Globex Corp", "サンプル素材").
 
     min_content_length filters out very short messages (greetings, ack,
     "OK", "お願いします", etc.) which tend to be semantic noise.

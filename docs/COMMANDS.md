@@ -85,7 +85,7 @@ bun import-line "/path/to/[LINE] トーク履歴.txt"
 
 ```bash
 bun note "来週火曜10時、漁協ミーティング"
-bun note "壱岐黄金 5kg ロゴ印刷確定" --tag iki_gold --tag decision
+bun note "Project Phoenix 5kg logo print confirmed" --tag project_phoenix --tag decision
 ```
 
 ---
@@ -110,7 +110,7 @@ bun update --no-files # ファイル取り込みスキップ
 意味検索（CLI）。
 
 ```bash
-bun search "壱岐黄金の進捗"
+bun search "Project Phoenixの進捗"
 bun search "ドローン" -n 20
 bun search "ク エ リ" --full  # 全文表示
 ```
@@ -130,7 +130,7 @@ bun insights
 Ollama 経由でオフラインチャット。
 
 ```bash
-bun chat "壱岐黄金の現状を要約して"
+bun chat "Project Phoenixの現状を要約して"
 bun chat "..." --model llama3.2:3b  # モデル指定
 bun chat "..." --model qwen2.5:14b  # 高品質
 ```

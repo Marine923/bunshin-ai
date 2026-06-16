@@ -1985,12 +1985,12 @@ def _start_background_watcher(db_path: Path) -> None:
     if not WATCHDOG_AVAILABLE:
         return
 
-    # For now, watch the user's Documents/Seiyo/ob (where most user data is)
-    # if it exists; otherwise watch ~/Documents.
+    # Default watch root: BUNSHIN_WATCH_DIR env var if set, otherwise the
+    # user's ~/Documents. The legacy Documents/Seiyo/ob path the developer
+    # used is gone — set BUNSHIN_WATCH_DIR if you want a different root.
     import os
     candidates = [
         os.environ.get("BUNSHIN_WATCH_DIR"),
-        str(Path.home() / "Documents" / "Seiyo" / "ob"),
         str(Path.home() / "Documents"),
     ]
     watch_dir = None
