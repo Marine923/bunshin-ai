@@ -224,6 +224,28 @@ INDEX_HTML = """<!DOCTYPE html>
     white-space: pre-wrap;
     word-break: break-word;
     line-height: 1.5;
+    max-height: 78px;
+    overflow: hidden;
+    position: relative;
+    transition: max-height 0.25s ease;
+  }
+  .timeline-rec-content::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    background: linear-gradient(transparent, #161616);
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.2s;
+  }
+  .timeline-record:hover .timeline-rec-content {
+    max-height: 1600px;
+  }
+  .timeline-record:hover .timeline-rec-content::after {
+    opacity: 0;
   }
   .examples {
     margin-top: 16px;
