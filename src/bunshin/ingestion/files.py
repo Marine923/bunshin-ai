@@ -12,7 +12,25 @@ SKIP_DIRS = {
     "node_modules", ".git", ".venv", "venv", "env", "__pycache__",
     ".pytest_cache", ".ruff_cache", "dist", "build", ".next",
     "target", "Pods", ".cache", "site-packages",
+    ".bunshin",  # our own data dir
 }
+
+# Patterns matched on file name. Excludes Python packaging artefacts and
+# other build outputs that show up as text but aren't real user content.
+SKIP_FILE_PATTERNS = {
+    "top_level.txt", "requires.txt", "entry_points.txt",
+    "dependency_links.txt", "RECORD", "METADATA", "PKG-INFO",
+    "package-lock.json", "yarn.lock", "Cargo.lock",
+}
+
+
+def _should_skip_file(path: Path) -> bool:
+    if path.name in SKIP_FILE_PATTERNS:
+        return True
+    # Anything inside a .egg-info, .dist-info, or similar bundle
+    if any(part.endswith((".egg-info", ".dist-info", ".egg")) for part in path.parts):
+        return True
+    return False
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 CHUNK_SIZE = 1500
@@ -37,6 +55,8 @@ def find_files(
             if entry.is_dir():
                 yield from find_files(entry, extensions)
             elif entry.is_file() and entry.suffix.lower() in extensions:
+                if _should_skip_file(entry):
+                    continue
                 try:
                     if entry.stat().st_size <= MAX_FILE_SIZE:
                         yield entry
