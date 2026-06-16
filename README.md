@@ -2,6 +2,10 @@
 
 > **A personal memory engine where YOU are the protagonist, and AI is an interchangeable tool.**
 
+[![Latest release](https://img.shields.io/github/v/release/Marine923/bunshin-ai)](https://github.com/Marine923/bunshin-ai/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)]()
+
 ChatGPT and Claude are like personal assistants — replaceable.
 Bunshin is like your brain's extension — not replaceable.
 
@@ -12,9 +16,9 @@ Bunshin is like your brain's extension — not replaceable.
 | # | Condition | Description | Implementation |
 |---|-----------|-------------|----------------|
 | 1 | **Local-First** | All data stays on YOUR device | SQLite + sqlite-vec |
-| 2 | **AI-Agnostic** | Works with any LLM (Claude, GPT, Gemini, Llama, ...) | MCP protocol |
+| 2 | **AI-Agnostic** | Works with any LLM (Claude, GPT, Gemini, Llama, …) | MCP protocol |
 | 3 | **Offline-Capable** | Functions without internet | Ollama integration |
-| 4 | **Omni-Source** | Ingests email, files, conversations, calendar, chats | 6 ingestion paths |
+| 4 | **Omni-Source** | Ingests email, files, chats, notes, photos, browser history, calendar | 9 ingestion paths |
 
 **To our knowledge, no other product satisfies all 4 conditions** (as of 2026-06).
 
@@ -36,61 +40,133 @@ Bunshin inverts this: your memory lives on your machine, in a standard SQLite fi
 
 ## What it does
 
-- 🔍 **Semantic search** across past Claude conversations, emails, files, notes
-- 💬 **Offline chat** powered by local LLM (Ollama) with past memory as context
-- 💡 **Auto-generated insights**: dormant projects, upcoming events, unanswered questions
-- 📝 **Capture anything**: `bunshin note "remember: ..."` or chat with `覚えといて: ...`
-- 🔄 **Automatic ingestion** via launchd (every hour: Claude history + files + Gmail + calendar)
-- 🤖 **MCP integration**: Claude Code / Claude Desktop can query bunshin as a tool
-- 🕸 **Knowledge graph**: auto-extracted entities (people, projects, organizations) with co-occurrence relations
+### 🔍 Search anything you've ever encountered
+Hybrid (semantic + BM25) search across every record. Japanese and English. Source filters, period filters, click-to-expand whole sessions, click-the-badge for sibling chunks.
+
+### 💬 Chat with offline LLM grounded in your past
+Local Ollama with auto-injected past-record context. Citations link back to source records. No data leaves your machine.
+
+### 💡 Auto-generated daily insights
+Dormant projects, upcoming calendar events, recent file changes, pending questions from past assistants. One tab to start your day.
+
+### 📅 Timeline
+Every record grouped by day and source. Today / yesterday markers. Per-source pill icons (💬 Claude, 📧 Gmail, 📓 notes, 📷 photos, 🌐 browser …). Click a pill to drill into that day, hover a record to expand it.
+
+### 🕸 Knowledge graph
+LLM-extracted entities (people, projects, organizations) with specificity-scored relations.
+
+### 🔁 Always up to date
+File watcher catches edits in seconds. launchd / systemd / cron syncs every hour. Automatic daily backups (`VACUUM INTO`).
+
+### 🤖 MCP for any AI
+Claude Code, Claude Desktop, or any MCP-aware LLM can call `search_memory` and `recall_session` against your records.
+
+---
+
+## Ingestion sources (9 paths)
+
+| Source | What goes in | Path |
+|--------|--------------|------|
+| 💬 Claude | Every Claude Code / Claude Desktop transcript | `~/.claude/projects/**/*.jsonl` |
+| 📧 Gmail | Last 90 days of mail (incremental after that) | Gmail API + App Password |
+| 📄 Files | `.md` / `.txt` / `.pdf` / `.docx` under a watched root | Walkable directory |
+| 📓 Apple Notes | Every note from Notes.app via AppleScript (no FDA) | macOS only |
+| 💌 iMessage / SMS | `chat.db` joined with handles + group names | macOS, FDA required |
+| 📷 Photos | EXIF (date, GPS, camera) + macOS Vision OCR (JP + EN) | `~/Pictures` or any dir |
+| 📷 Photos.app library | All media items from Photos.app via AppleScript | macOS only |
+| 🌐 Browser | Safari / Chrome / Arc visit history | macOS |
+| 📅 Calendar | Next 14 days from any iCal URL | iCloud, Google, etc. |
+| 🔊 Audio | Whisper transcription (3 backends: faster-whisper, openai-whisper, whisper-cpp) | Any audio file |
+| 💭 Manual | `bunshin note "…"` or `覚えといて: …` in chat | Anywhere |
+
+PDFs without an embedded text layer (scanned documents) are automatically routed through macOS Vision OCR via PDFKit + CoreGraphics page rendering — including business cards, quote sheets, and receipts.
 
 ---
 
 ## Quick start
 
+### Install the Mac app (recommended)
+
+1. Download the latest DMG from [Releases](https://github.com/Marine923/bunshin-ai/releases/latest):
+   - **Apple Silicon (M1/M2/M3/M4)**: `Bunshin-x.y.z-arm64.dmg`
+   - **Intel Mac**: `Bunshin-x.y.z.dmg`
+2. Open the DMG, drag Bunshin to `/Applications`.
+3. First launch: right-click → Open (macOS quarantine).
+
+The app handles initial setup, runs `bunshin web` in the background, and gives you the full UI immediately.
+
+### Or install from source
+
 ```bash
-# 1. Clone and install
 git clone https://github.com/Marine923/bunshin-ai.git
 cd bunshin
 python3.11 -m venv ~/.bunshin/venv
 ~/.bunshin/venv/bin/pip install -e .
 
-# 2. Initialize
+# Initialize
 ~/.bunshin/venv/bin/bunshin init
 
-# 3. Import your Claude Code history
+# Pull what you have (Claude history is the fastest first import)
 ~/.bunshin/venv/bin/bunshin import-claude
 ~/.bunshin/venv/bin/bunshin embed
 
-# 4. Open the web UI
+# Open the web UI
 ~/.bunshin/venv/bin/bunshin web
 # → http://127.0.0.1:8000
 
-# 5. Check setup health
+# Check setup health any time
 ~/.bunshin/venv/bin/bunshin doctor
 ```
 
-See [`docs/SETUP.md`](docs/SETUP.md) for full setup (Gmail, Calendar, Ollama, MCP, launchd).
+See [`docs/SETUP.md`](docs/SETUP.md) for Gmail, Calendar, Ollama, MCP, and scheduler setup.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│ Entry points: CLI / Web UI / MCP server              │
-├──────────────────────────────────────────────────────┤
-│ Core: search / chat / insights / knowledge graph     │
-├──────────────────────────────────────────────────────┤
-│ Storage: SQLite + sqlite-vec (~/.bunshin/data.db)    │
-├──────────────────────────────────────────────────────┤
-│ Ingestion: Claude / files / Gmail / calendar / LINE  │
-└──────────────────────────────────────────────────────┘
-       ↑                          ↑
-   Ollama (offline)        Claude/GPT/Gemini (via MCP)
+┌──────────────────────────────────────────────────────────┐
+│ Entry points: CLI · Web UI · MCP server · Electron app   │
+├──────────────────────────────────────────────────────────┤
+│ Core: search · chat · insights · knowledge graph         │
+├──────────────────────────────────────────────────────────┤
+│ Storage: SQLite + sqlite-vec  (~/.bunshin/data.db)       │
+│ Embeddings: intfloat/multilingual-e5-large (1024d, ONNX) │
+│ Hybrid search: vector + FTS5 BM25 via reciprocal-rank    │
+├──────────────────────────────────────────────────────────┤
+│ Ingestion: Claude · Gmail · files · Notes · iMessage     │
+│            photos · Photos.app · browser · calendar      │
+│            audio · manual                                │
+└──────────────────────────────────────────────────────────┘
+        ↑                                          ↑
+    Ollama (offline)                Claude / GPT / Gemini (via MCP)
 ```
 
 Details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+---
+
+## Real-world numbers
+
+A live install on the developer's MacBook holds:
+
+```
+Source          Records
+─────────────  ────────
+claude          ~2,400   conversation turns
+gmail           ~1,650   messages
+photos_app      ~2,700   media items (1,113 with GPS)
+file              ~900   docs (.md, .txt, .pdf, .docx)
+browser           ~600   visits
+notes             ~490   Apple notes
+photo              ~99   loose images (with OCR text)
+manual              1
+─────────────  ────────
+Total           ~8,650   records
+Embeddings      ~9,200   (1024-d, e5-large)
+```
+
+OCR on the photo set recovered, among other things, an entire DJI T25P quote sheet (¥4,028,264, with vendor address, item breakdown, and bank details) — fully searchable.
 
 ---
 
@@ -100,26 +176,27 @@ Details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - [`docs/COMMANDS.md`](docs/COMMANDS.md) — All CLI commands
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Internal design
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — Common issues
+- [`CHANGELOG.md`](CHANGELOG.md) — Release notes
 
 ---
 
-## Status & roadmap
-
-This is an **early prototype**. Built in 2 days by one developer + Claude Code.
+## Status
 
 ```
-Phase 0 (1 week planned)    ━━━━━━━━━━━━━━━━━━━━ 100%  Prototype
-Phase 1 (1 month planned)   ━━━━━━━━━━━━━━━━━━━━ 95%   MVP
-Phase 2 (3 months planned)  ━━━━━━░░░░░░░░░░░░░░ 30%   Native app (Tauri)
-Phase 3 (6 months planned)  ░░░░░░░░░░░░░░░░░░░░ 0%    OSS release polish
-Phase 4 (12 months planned) ░░░░░░░░░░░░░░░░░░░░ 0%    Pro features, monetization
+Phase 0  Prototype                        ━━━━━━━━━━━━━━━━━━━━ 100%
+Phase 1  MVP (search / chat / ingest)     ━━━━━━━━━━━━━━━━━━━━ 100%
+Phase 2  Native Mac app (Electron)        ━━━━━━━━━━━━━━━━━━━━ 100%
+Phase 3  Multi-source ingestion polish    ━━━━━━━━━━━━━━━━━━━━ 100%   ← v0.3.x
+Phase 4  Pro / Team features              ░░░░░░░░░░░░░░░░░░░░   0%
 ```
 
-Known limitations:
-- **macOS only** (launchd-specific automation). Linux/Windows support is a Phase 2 goal.
-- No tests yet
-- Ollama prompt engineering still being tuned
-- Knowledge graph relations can have false positives (mitigated by specificity scoring)
+### Known limitations
+
+- **macOS only** for now. Linux scheduler exists (`systemd --user` / `cron`); UI works in any browser. Windows untested.
+- **macOS code signing** not configured — first launch needs right-click → Open, or `xattr -dr com.apple.quarantine /Applications/Bunshin.app`.
+- **iMessage requires Full Disk Access** on the terminal / Python process. The CLI prints a Japanese guide when it can't read `chat.db`.
+- **Photos.app OCR** is opt-in via `--with-ocr` because each item has to be exported through Photos.app first (slow).
+- **Whisper** backends need a separate `pip install` (we don't ship one by default).
 
 ---
 
@@ -157,7 +234,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## Contributing
 
-This is a one-person prototype that just turned multi-person-eligible. Open issues for bugs and feature requests. PRs welcome but please discuss in an issue first.
+Open issues for bugs and feature requests. PRs welcome — please discuss substantial changes in an issue first.
 
 ---
 
@@ -169,10 +246,12 @@ Built on the shoulders of:
 - [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/)
 - [Ollama](https://ollama.com)
 - [MCP](https://modelcontextprotocol.io/) protocol from Anthropic
+- [Electron](https://www.electronjs.org/) + [electron-builder](https://www.electron.build/)
+- macOS Vision framework (text recognition)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (used to write 90% of this)
 
 ---
 
 ## 日本語ドキュメント
 
-完全な日本語版は [`README.ja.md`](README.ja.md) （または上記の英語版を参照）。
+完全な日本語版は [`README.ja.md`](README.ja.md)。
