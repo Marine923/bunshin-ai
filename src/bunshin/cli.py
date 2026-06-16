@@ -472,6 +472,49 @@ def import_line_cmd(path: Path, verbose: bool, db: Path):
     conn.close()
 
 
+@main.command("import-photos-app")
+@click.option("--limit", default=0, type=int, help="Only the first N items (0 = all)")
+@click.option("--days", default=0, type=int, help="Only items dated within last N days (0 = all)")
+@click.option("--with-ocr", is_flag=True, help="Export each item and run Vision OCR (slow)")
+@click.option("--verbose", "-v", is_flag=True)
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def import_photos_app_cmd(
+    limit: int, days: int, with_ocr: bool, verbose: bool, db: Path
+):
+    """Import the Photos.app library via AppleScript (no FDA needed)."""
+    from bunshin.ingestion.photos_app import import_photos_app
+
+    conn = init_db(db)
+    console.print(
+        f"Reading Photos.app library "
+        f"({'all' if not days else f'last {days} days'}"
+        f"{f', max {limit}' if limit else ''}, "
+        f"{'with OCR' if with_ocr else 'metadata only'})…"
+    )
+    stats = import_photos_app(
+        conn, limit=limit, days=days, with_ocr=with_ocr, verbose=verbose
+    )
+    if stats.get("applescript_failed"):
+        console.print(
+            "[red]Photos.app へのアクセス許可が必要です。[/red] "
+            "システム設定 → プライバシーとセキュリティ → オートメーション → "
+            "ターミナル → 写真 をオンにしてください。"
+        )
+        conn.close()
+        return
+    table = Table(title="Photos.app import")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    for k in ("scanned", "imported", "unchanged", "with_gps", "with_ocr", "failed"):
+        table.add_row(k, str(stats.get(k, 0)))
+    console.print(table)
+    conn.close()
+
+
 @main.command("import-photos")
 @click.argument(
     "root",

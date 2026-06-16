@@ -316,6 +316,14 @@ INDEX_HTML = """<!DOCTYPE html>
     color: #ddd;
     font-size: 14px;
   }
+  /* Search-query match highlight, applied across result / session /
+     siblings panels by the highlight() JS helper. */
+  mark {
+    background: #5b3a00;
+    color: #ffd987;
+    border-radius: 2px;
+    padding: 0 2px;
+  }
   .session-panel {
     margin-top: 16px;
     padding-top: 16px;
@@ -1468,8 +1476,27 @@ function periodToSec(p) {
   return { day, week: day*7, month: day*30, year: day*365 }[p] || null;
 }
 
+// Current query, shared with renderResult / renderSessionMsg so they can
+// highlight matched terms in the displayed content.
+let _currentQuery = '';
+function highlight(text, query) {
+  const escaped = esc(text);
+  if (!query) return escaped;
+  // Split on whitespace; for Japanese CJK this still works because we
+  // do simple substring matching. Skip tiny tokens that would highlight
+  // every character.
+  const terms = query.trim().split(/\s+/).filter(t => t.length >= 2);
+  if (!terms.length) return escaped;
+  const pattern = new RegExp(
+    '(' + terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')',
+    'gi'
+  );
+  return escaped.replace(pattern, '<mark>$1</mark>');
+}
+
 async function doSearch(query) {
   if (!query.trim()) { results.innerHTML = '<div class="empty">検索クエリを入力してください</div>'; return; }
+  _currentQuery = query;
   results.innerHTML = '<div class="loading">検索中…</div>';
   try {
     const params = new URLSearchParams({ q: query, limit: 20, sort: sortSel.value });
@@ -1514,7 +1541,7 @@ function renderResult(r, idx) {
         ${more}
         <span class="expand-hint">クリックで会話全体を表示 ▾</span>
       </div>
-      <div class="result-content">${esc(r.content)}</div>
+      <div class="result-content">${highlight(r.content, _currentQuery)}</div>
     </div>
   `;
 }
@@ -1549,7 +1576,7 @@ async function toggleSiblings(resultEl, badge) {
       const role = (s.metadata && s.metadata.role) ? s.metadata.role : '';
       return `<div class="sibling-item">
         <div class="meta">${esc(ts)} · ${esc(s.source)}${role ? '/' + esc(role) : ''} · dist ${s.distance.toFixed(2)}</div>
-        <div class="content">${esc(s.content)}</div>
+        <div class="content">${highlight(s.content, _currentQuery)}</div>
       </div>`;
     }).join('');
   } catch (e) {
@@ -1588,7 +1615,7 @@ function renderSessionMsg(rec, highlightId) {
         <span class="role ${roleKey}">${esc(role)}</span>
         <span>${ts}</span>
       </div>
-      <div class="session-msg-content">${esc(rec.content)}</div>
+      <div class="session-msg-content">${highlight(rec.content, _currentQuery)}</div>
     </div>
   `;
 }
