@@ -273,7 +273,7 @@ def delete_short_records(conn: sqlite3.Connection, min_length: int = 20) -> int:
                 f"DELETE FROM records_vec WHERE record_id IN ({placeholders})",
                 batch,
             )
-    except sqlite3.OperationalError:
+    except Exception:
         pass
 
     for start in range(0, len(ids), 500):
