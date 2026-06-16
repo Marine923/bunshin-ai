@@ -26,53 +26,133 @@ INDEX_HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>分身（Bunshin）</title>
 <style>
+  /* ─────────────── Design tokens ───────────────
+     Anchored on a Linear / Notion / Raycast palette: cool deep indigo
+     backgrounds, near-white headings, indigo accent, sparing chroma. */
+  :root {
+    --bg-0:         #0b0d12;  /* page background */
+    --bg-1:         #11141b;  /* cards, panels */
+    --bg-2:         #161a23;  /* hover state */
+    --bg-3:         #1d2230;  /* expanded / nested */
+    --border-1:     #1d2230;
+    --border-2:     #262c3a;
+    --text-1:       #f4f5f7;  /* primary heading */
+    --text-2:       #c9cdd5;  /* body */
+    --text-3:       #8a8f9c;  /* secondary */
+    --text-4:       #5d6271;  /* hint / placeholder */
+    --accent-1:     #818cf8;  /* primary indigo */
+    --accent-2:     #a5b4fc;  /* lighter indigo */
+    --accent-soft:  #1f2540;  /* selected chip bg */
+    --warn:         #f59e0b;
+    --good:         #34d399;
+    --shadow-1:     0 1px 2px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.02);
+    --radius-sm:    6px;
+    --radius-md:    10px;
+    --radius-lg:    14px;
+    --radius-pill:  999px;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     padding: 0;
-    background: #0a0a0a;
-    color: #e5e5e5;
-    font-family: -apple-system, "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
-    line-height: 1.6;
+    background: var(--bg-0);
+    color: var(--text-2);
+    font-family: "Inter", "SF Pro Text", -apple-system, "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+    line-height: 1.55;
+    font-size: 14px;
     -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv11", "ss01";
   }
   header {
-    padding: 18px 24px;
-    border-bottom: 1px solid #1a1a1a;
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border-1);
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 12px;
+    background: linear-gradient(180deg, rgba(129,140,248,0.04), transparent);
   }
   h1 {
     margin: 0;
-    font-size: 22px;
-    font-weight: 500;
-    letter-spacing: 0.05em;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-1);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
   }
-  .stats { font-size: 12px; color: #888; }
+  .logo-mark {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    box-shadow: var(--shadow-1);
+    border-radius: 7px;
+    overflow: hidden;
+    line-height: 0;
+  }
+  .logo-mark svg { width: 100%; height: 100%; display: block; }
+  .logo-text {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .logo-text-en {
+    color: var(--text-3);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+  .stats {
+    font-size: 12px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+  }
   nav.tabs {
     display: flex;
     gap: 0;
-    border-bottom: 1px solid #1a1a1a;
-    padding: 0 24px;
+    border-bottom: 1px solid var(--border-1);
+    padding: 0 22px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    background: var(--bg-0);
   }
   .tab {
-    padding: 12px 18px;
+    padding: 14px 16px;
     cursor: pointer;
-    color: #888;
+    color: var(--text-3);
     border-bottom: 2px solid transparent;
-    transition: all 0.15s;
+    transition: color 0.18s ease, border-bottom-color 0.18s ease;
     white-space: nowrap;
-    font-size: 14px;
+    font-size: 13.5px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+    letter-spacing: -0.005em;
   }
-  .tab:hover { color: #ddd; }
+  .tab-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    transition: stroke 0.18s ease, transform 0.18s ease;
+  }
+  .tab:hover {
+    color: var(--text-2);
+  }
+  .tab:hover .tab-icon {
+    transform: scale(1.08);
+  }
   .tab.active {
-    color: #fff;
-    border-bottom-color: #4a8fef;
+    color: var(--text-1);
+    border-bottom-color: var(--accent-1);
+  }
+  .tab.active .tab-icon {
+    color: var(--accent-2);
   }
   main {
     max-width: 900px;
@@ -92,17 +172,24 @@ INDEX_HTML = """<!DOCTYPE html>
   /* ── Search pane ── */
   .search-box {
     width: 100%;
-    padding: 18px 24px;
-    font-size: 17px;
-    background: #161616;
-    border: 1px solid #2a2a2a;
-    border-radius: 12px;
-    color: #fff;
+    padding: 16px 20px;
+    font-size: 16px;
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-md);
+    color: var(--text-1);
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
     font-family: inherit;
+    box-shadow: var(--shadow-1);
   }
-  .search-box:focus { border-color: #4a8fef; }
+  .search-box::placeholder { color: var(--text-4); }
+  .search-box:hover { background: var(--bg-2); }
+  .search-box:focus {
+    border-color: var(--accent-1);
+    background: var(--bg-1);
+    box-shadow: 0 0 0 3px rgba(129,140,248,0.18);
+  }
   .hint { margin-top: 12px; color: #666; font-size: 13px; }
   .filter-row {
     margin-top: 16px;
@@ -901,17 +988,58 @@ INDEX_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <header>
-  <h1>🌀 分身（Bunshin）</h1>
+  <h1>
+    <span class="logo-mark" aria-hidden="true">
+      <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#312e81"/>
+            <stop offset="100%" stop-color="#4c1d95"/>
+          </linearGradient>
+          <linearGradient id="logoRib" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"  stop-color="#818cf8"/>
+            <stop offset="50%" stop-color="#c4b5fd"/>
+            <stop offset="100%" stop-color="#f472b6"/>
+          </linearGradient>
+        </defs>
+        <rect width="1024" height="1024" rx="229" ry="229" fill="url(#logoBg)"/>
+        <g transform="translate(512 512)">
+          <path d="M -250 0 C -250 -140, -110 -140, 0 0 C 110 140, 250 140, 250 0 C 250 -140, 110 -140, 0 0 C -110 140, -250 140, -250 0 Z"
+                fill="none" stroke="url(#logoRib)" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <circle cx="512" cy="512" r="46" fill="#fef3c7"/>
+      </svg>
+    </span>
+    <span class="logo-text">分身 <span class="logo-text-en">Bunshin</span></span>
+  </h1>
   <div class="stats" id="stats">loading...</div>
 </header>
 
 <nav class="tabs">
-  <div class="tab active" data-pane="search">🔍 検索</div>
-  <div class="tab" data-pane="chat">💬 チャット</div>
-  <div class="tab" data-pane="insights">💡 気づき</div>
-  <div class="tab" data-pane="timeline">📅 タイムライン</div>
-  <div class="tab" data-pane="graph">🕸 関係性</div>
-  <div class="tab" data-pane="settings">⚙ 設定</div>
+  <div class="tab active" data-pane="search">
+    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    検索
+  </div>
+  <div class="tab" data-pane="chat">
+    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    チャット
+  </div>
+  <div class="tab" data-pane="insights">
+    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8h6.1l-4.9 3.6 1.9 5.8L12 14.6l-4.9 3.6 1.9-5.8L4 8.8h6.1z"/></svg>
+    気づき
+  </div>
+  <div class="tab" data-pane="timeline">
+    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+    タイムライン
+  </div>
+  <div class="tab" data-pane="graph">
+    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v3M12 10l-6 7M12 10l6 7"/></svg>
+    関係性
+  </div>
+  <div class="tab" data-pane="settings">
+    <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+    設定
+  </div>
 </nav>
 
 <main>

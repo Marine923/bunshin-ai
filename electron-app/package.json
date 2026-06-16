@@ -1,6 +1,6 @@
 {
   "name": "bunshin-desktop",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Bunshin — 4-condition personal memory AI (desktop wrapper)",
   "main": "src/main.js",
   "author": {
@@ -74,14 +74,17 @@
     },
     "dmg": {
       "title": "Bunshin ${version}",
+      "background": "build/background.png",
+      "icon": "build/icon.icns",
+      "iconSize": 96,
       "contents": [
         {
-          "x": 130,
-          "y": 220
+          "x": 140,
+          "y": 230
         },
         {
-          "x": 410,
-          "y": 220,
+          "x": 400,
+          "y": 230,
           "type": "link",
           "path": "/Applications"
         }
