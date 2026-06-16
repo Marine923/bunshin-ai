@@ -4,6 +4,28 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-16
+
+A same-day polish release after v0.3.0 — adds Photos.app library
+ingestion, search-match highlights, and a hover-expand for timeline
+records.
+
+### Added
+- **Photos.app library ingestion** (`bunshin import-photos-app`).
+  AppleScript pulls metadata (id, filename, date, GPS) for every media
+  item in 200-item batches with progress reporting. Tested live on a
+  2,725-item library — 1,113 items came back with GPS, so place-based
+  recall ("沖縄 2023") works out of the box. Optional `--with-ocr`
+  exports each item and routes it through the existing Vision OCR
+  pipeline.
+- **Search-match highlights** — query terms get wrapped in `<mark>`
+  with a distinct amber style across results, expanded sessions, and
+  the sibling chunks panel.
+
+### Changed
+- **Timeline records** now fade out at the bottom and expand on hover,
+  so you can scan a day's full context just by moving the cursor.
+
 ## [0.3.0] - 2026-06-16
 
 The "fill the gaps" release — broadens what Bunshin can actually
