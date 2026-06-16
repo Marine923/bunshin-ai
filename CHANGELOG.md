@@ -4,6 +4,52 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-16
+
+The "fill the gaps" release — broadens what Bunshin can actually
+remember on macOS. Real-world stress-tested at 5,944 records across 7
+sources.
+
+### Added — ingestion
+- **Apple Notes** via AppleScript (`bunshin import-notes`). No Full Disk
+  Access required. Incremental: a per-note modification timestamp is
+  stored in `settings` so subsequent runs only re-import changed notes.
+  HTML body is converted to plain text and chunked. Handles both English
+  and Japanese AppleScript date formats (Monterey+ space-after-日 included).
+- **iMessage / SMS** via `~/Library/Messages/chat.db`
+  (`bunshin import-imessage`). Joins messages with the handle (contact
+  id) and chat (group name) tables; best-effort recovers text from
+  `attributedBody` blobs on modern macOS where the plain `text` column
+  is NULL. Surfaces a friendly Japanese error pointing to System
+  Settings when Full Disk Access is missing.
+- **Photos** with EXIF + macOS Vision OCR (`bunshin import-photos`).
+  Extracts date, GPS, and camera via Pillow, and runs Japanese + English
+  text recognition via a tiny swift program compiled once to
+  `~/.bunshin/bin/bunshin-ocr`. Verified on 99 real images — 63
+  contained recognized text (business cards, screenshots, quote PDFs).
+- **Scanned-PDF OCR fallback** in the existing file ingester. PDFs with
+  fewer than 20 average characters per page are re-processed through
+  the swift Vision binary using PDFKit + CoreGraphics page rendering.
+
+### Added — UI
+- **📅 Timeline pane** grouping all records by local-date and source,
+  with today / yesterday markers and per-source pill counts. Clicking a
+  pill expands records inline. Backed by `/api/timeline` and
+  `/api/timeline/day` endpoints.
+- **New source filter chips** in the search pane: 📓 メモ帳, 💌 iMessage,
+  📷 写真.
+
+### Fixed
+- File ingestion no longer indexes Python packaging artefacts
+  (`top_level.txt`, `requires.txt`, `.egg-info/`, `.dist-info/`,
+  `package-lock.json`, `yarn.lock`, `Cargo.lock`, `.bunshin/`).
+
+### Known limitations
+- **iMessage** requires Full Disk Access. The CLI surfaces a Japanese
+  guide to System Settings → Privacy → Full Disk Access on failure.
+- **Photos.app library** (`.photoslibrary` bundles) is not yet
+  ingested — only loose image files under the given root.
+
 ## [0.2.0] - 2026-06-15
 
 This release transforms Bunshin from a working prototype into a polished
