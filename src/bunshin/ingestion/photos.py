@@ -115,20 +115,22 @@ def extract_exif(path: Path) -> dict:
     return out
 
 
-# Swift program that takes image paths and prints `path\tOCR_text\n` per
-# image, with newlines/tabs in the OCR text escaped. Compiled once to
-# ~/.bunshin/bin/bunshin-ocr so the per-image cost is just process spawn.
+# Bump this whenever the swift source below changes so the cached
+# binary is recompiled. Stored next to the binary as a sentinel file.
+_OCR_BINARY_VERSION = "v2-pdfkit"
+
+# Swift program that takes paths (images or PDFs) and prints
+# `path\tOCR_text\n` per file. Newlines/tabs in the OCR text are
+# backslash-escaped so each result fits on one stdout line. Compiled
+# once to ~/.bunshin/bin/bunshin-ocr.
 _OCR_SWIFT_SOURCE = r'''
 import Vision
 import Cocoa
 import Foundation
+import PDFKit
+import CoreGraphics
 
-func ocrFile(_ path: String) -> String {
-    let url = URL(fileURLWithPath: path)
-    guard let image = NSImage(contentsOf: url),
-          let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-        return ""
-    }
+func ocrCGImage(_ cgImage: CGImage) -> String {
     var output: [String] = []
     let request = VNRecognizeTextRequest { request, error in
         guard let obs = request.results as? [VNRecognizedTextObservation] else { return }
@@ -150,8 +152,55 @@ func ocrFile(_ path: String) -> String {
     return output.joined(separator: "\n")
 }
 
+func ocrImageFile(_ path: String) -> String {
+    let url = URL(fileURLWithPath: path)
+    guard let image = NSImage(contentsOf: url),
+          let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        return ""
+    }
+    return ocrCGImage(cgImage)
+}
+
+func ocrPDFFile(_ path: String) -> String {
+    let url = URL(fileURLWithPath: path)
+    guard let pdf = PDFDocument(url: url) else { return "" }
+    var allText: [String] = []
+    let scale: CGFloat = 2.0
+    for i in 0..<pdf.pageCount {
+        guard let page = pdf.page(at: i) else { continue }
+        let bounds = page.bounds(for: .mediaBox)
+        let w = Int(bounds.width * scale)
+        let h = Int(bounds.height * scale)
+        if w <= 0 || h <= 0 { continue }
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil, width: w, height: h,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { continue }
+        ctx.setFillColor(CGColor.white)
+        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.scaleBy(x: scale, y: scale)
+        ctx.translateBy(x: -bounds.minX, y: -bounds.minY)
+        page.draw(with: .mediaBox, to: ctx)
+        guard let cgImage = ctx.makeImage() else { continue }
+        let pageText = ocrCGImage(cgImage)
+        if !pageText.isEmpty {
+            allText.append("[p.\(i+1)]")
+            allText.append(pageText)
+        }
+    }
+    return allText.joined(separator: "\n")
+}
+
 for arg in CommandLine.arguments.dropFirst() {
-    let text = ocrFile(arg)
+    let text: String
+    if arg.lowercased().hasSuffix(".pdf") {
+        text = ocrPDFFile(arg)
+    } else {
+        text = ocrImageFile(arg)
+    }
     let escaped = text
         .replacingOccurrences(of: "\\", with: "\\\\")
         .replacingOccurrences(of: "\n", with: "\\n")
@@ -162,9 +211,20 @@ for arg in CommandLine.arguments.dropFirst() {
 
 
 def ensure_ocr_binary() -> Optional[Path]:
-    """Compile the swift OCR helper once. Cached at ~/.bunshin/bin/bunshin-ocr."""
+    """Compile the swift OCR helper once. Cached at ~/.bunshin/bin/bunshin-ocr.
+
+    The cached binary is rebuilt when _OCR_BINARY_VERSION changes so users
+    on older binaries (image-only) automatically get the new PDF-capable
+    one.
+    """
     binary = Path.home() / ".bunshin" / "bin" / "bunshin-ocr"
-    if binary.exists() and binary.stat().st_size > 0:
+    version_file = binary.parent / "bunshin-ocr.version"
+    cached_version = version_file.read_text().strip() if version_file.exists() else ""
+    if (
+        binary.exists()
+        and binary.stat().st_size > 0
+        and cached_version == _OCR_BINARY_VERSION
+    ):
         return binary
     swiftc = shutil.which("swiftc") or shutil.which("xcrun")
     if not swiftc:
@@ -179,6 +239,7 @@ def ensure_ocr_binary() -> Optional[Path]:
             cmd = [swiftc, str(source), "-o", str(binary)]
         result = subprocess.run(cmd, capture_output=True, timeout=120)
         if result.returncode == 0 and binary.exists():
+            version_file.write_text(_OCR_BINARY_VERSION)
             return binary
         return None
     except Exception:

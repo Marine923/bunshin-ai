@@ -86,7 +86,12 @@ def read_text(path: Path) -> Optional[str]:
 
 
 def _read_pdf(path: Path) -> Optional[str]:
-    """Extract text from a PDF. Returns None on unreadable / encrypted."""
+    """Extract text from a PDF, falling back to Vision OCR for scanned ones.
+
+    pypdf only recovers embedded text. Scanned PDFs (no embedded text
+    layer, just images) need OCR — we detect them via low average
+    chars-per-page and re-process through the macOS Vision binary.
+    """
     try:
         from pypdf import PdfReader
     except ImportError:
@@ -99,6 +104,7 @@ def _read_pdf(path: Path) -> Optional[str]:
             except Exception:
                 return None
         parts = []
+        page_count = len(reader.pages)
         for i, page in enumerate(reader.pages):
             try:
                 txt = page.extract_text() or ""
@@ -106,7 +112,26 @@ def _read_pdf(path: Path) -> Optional[str]:
                 continue
             if txt.strip():
                 parts.append(f"[p.{i+1}]\n{txt.strip()}")
-        return "\n\n".join(parts) if parts else None
+        direct_text = "\n\n".join(parts)
+
+        # Scanned-PDF detection: <20 average chars / page → run OCR.
+        avg = len(direct_text) / max(page_count, 1)
+        if page_count > 0 and avg < 20:
+            ocr_text = _ocr_pdf_fallback(path)
+            if ocr_text and len(ocr_text) > len(direct_text):
+                return ocr_text
+        return direct_text if direct_text else None
+    except Exception:
+        return None
+
+
+def _ocr_pdf_fallback(path: Path) -> Optional[str]:
+    """Run the cached macOS Vision OCR binary on a scanned PDF."""
+    try:
+        from bunshin.ingestion.photos import ocr_batch
+        results = ocr_batch([path])
+        text = results.get(str(path)) or ""
+        return text if text.strip() else None
     except Exception:
         return None
 
