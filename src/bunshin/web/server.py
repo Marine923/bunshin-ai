@@ -1502,18 +1502,30 @@ function periodToSec(p) {
 // highlight matched terms in the displayed content.
 let _currentQuery = '';
 function highlight(text, query) {
+  // No regex — Python's triple-quoted string mangles the backslash
+  // escapes needed for character classes, so we walk the text manually.
   const escaped = esc(text);
   if (!query) return escaped;
-  // Split on whitespace; for Japanese CJK this still works because we
-  // do simple substring matching. Skip tiny tokens that would highlight
-  // every character.
-  const terms = query.trim().split(/\s+/).filter(t => t.length >= 2);
+  const terms = query.trim().split(/[ 　\t]+/).filter(t => t.length >= 2);
   if (!terms.length) return escaped;
-  const pattern = new RegExp(
-    '(' + terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')',
-    'gi'
-  );
-  return escaped.replace(pattern, '<mark>$1</mark>');
+  let result = escaped;
+  for (const term of terms) {
+    const needle = term.toLowerCase();
+    let out = '';
+    let i = 0;
+    while (i < result.length) {
+      const slice = result.substr(i, needle.length);
+      if (slice.toLowerCase() === needle) {
+        out += '<mark>' + slice + '</mark>';
+        i += needle.length;
+      } else {
+        out += result[i];
+        i++;
+      }
+    }
+    result = out;
+  }
+  return result;
 }
 
 async function doSearch(query) {

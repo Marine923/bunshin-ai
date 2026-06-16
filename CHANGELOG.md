@@ -4,6 +4,20 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-06-16
+
+Hot fix for a v0.3.1 regression that broke tab switching.
+
+### Fixed
+- **All tabs except Search were unreachable** in v0.3.1. The
+  search-highlight regex relied on backslash escapes that Python's
+  triple-quoted string mangled, producing an invalid regular
+  expression literal. The JS parser bailed on the whole script,
+  killing every event handler including the tab-switch one.
+- Replaced the regex with a plain character-walk loop so no
+  backslash escapes are needed in the served JS. Highlight behavior
+  is unchanged.
+
 ## [0.3.1] - 2026-06-16
 
 A same-day polish release after v0.3.0 — adds Photos.app library
