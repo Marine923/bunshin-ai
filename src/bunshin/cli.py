@@ -472,6 +472,46 @@ def import_line_cmd(path: Path, verbose: bool, db: Path):
     conn.close()
 
 
+@main.command("import-photos")
+@click.argument(
+    "root",
+    type=click.Path(exists=True, file_okay=True, dir_okay=True, path_type=Path),
+    default=Path.home() / "Pictures",
+)
+@click.option("--skip-ocr", is_flag=True, help="Skip Vision OCR (EXIF only)")
+@click.option("--verbose", "-v", is_flag=True)
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def import_photos_cmd(root: Path, skip_ocr: bool, verbose: bool, db: Path):
+    """Import photos: EXIF + macOS Vision OCR (Japanese + English)."""
+    from bunshin.ingestion.photos import ensure_ocr_binary, import_photos
+
+    conn = init_db(db)
+    if not skip_ocr:
+        console.print("[dim]Vision OCR バイナリを準備中…[/dim]")
+        binary = ensure_ocr_binary()
+        if not binary:
+            console.print(
+                "[yellow]Swift がない or コンパイル失敗。EXIF のみで取り込みます。[/yellow]"
+            )
+            skip_ocr = True
+        else:
+            console.print(f"[dim]OCR バイナリ: {binary}[/dim]")
+    console.print(f"Scanning [cyan]{root}[/cyan] for images…")
+    stats = import_photos(conn, root, skip_ocr=skip_ocr, verbose=verbose)
+
+    table = Table(title="Photo import")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    for k in ("scanned", "imported", "unchanged", "with_gps", "with_ocr", "failed"):
+        table.add_row(k, str(stats.get(k, 0)))
+    console.print(table)
+    conn.close()
+
+
 @main.command("import-imessage")
 @click.option("--initial-days", default=365, help="Days back to fetch on first run")
 @click.option("--verbose", "-v", is_flag=True)
