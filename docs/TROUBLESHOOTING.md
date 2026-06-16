@@ -287,9 +287,130 @@ cp ~/.bunshin/data.db ~/.bunshin/data.db.backup
 
 ---
 
+## Mac アプリ（DMG インストール）特有
+
+### Q. 初回起動で「壊れているので開けません」エラー
+
+macOS の Gatekeeper による quarantine 警告です。署名されていない DMG なので、初回だけ手動で承認する必要があります。
+
+**方法 A — 右クリックで開く**
+1. `/Applications/Bunshin.app` を **右クリック**（または control + クリック）
+2. メニューから **「開く」** を選択
+3. 警告ダイアログで再度 **「開く」**
+
+**方法 B — quarantine 属性を削除（ターミナル）**
+```bash
+xattr -dr com.apple.quarantine /Applications/Bunshin.app
+```
+
+### Q. 起動しても真っ白なウィンドウしか出ない
+
+bunshin の Python サーバーが起動していない可能性。
+
+```bash
+# プロセス確認
+ps aux | grep "bunshin web" | grep -v grep
+
+# ポート確認
+lsof -iTCP:8000 -sTCP:LISTEN
+
+# 同梱バイナリが存在するか
+ls /Applications/Bunshin.app/Contents/Resources/bunshin/bunshin
+
+# 同梱バイナリを単体で叩く
+/Applications/Bunshin.app/Contents/Resources/bunshin/bunshin --version
+```
+
+`--version` でエラーが出る場合は、DMG が壊れているかダウンロード失敗の可能性。再ダウンロードしてください。
+
+### Q. データベースの場所
+
+すべて `~/.bunshin/` 配下：
+
+```
+~/.bunshin/
+├── data.db                  ← メイン DB
+├── data.db-wal              ← SQLite WAL
+├── credentials.json         ← Gmail（あれば）
+├── entities.json            ← 知識グラフのシード（自分で作る、任意）
+├── backups/                 ← 日次バックアップ
+└── venv/                    ← ソースインストールした場合の Python venv
+```
+
+Mac アプリ版で使う場合 `venv/` は不要です（同梱バイナリを使うため）。
+
+---
+
+## ログを取る
+
+サポートを求める時に必要な情報：
+
+### bunshin web のログ
+
+```bash
+# Bunshin.app のサーバーログ（Electron 経由）
+log show --predicate 'process == "Bunshin"' --last 30m
+
+# CLI で起動した bunshin web のログは標準出力
+~/.bunshin/venv/bin/bunshin web 2>&1 | tee /tmp/bunshin-web.log
+```
+
+### スケジューラのログ
+
+```bash
+# launchd で動いている自動取り込みの直近ログ
+tail ~/.bunshin/logs/update.out.log
+tail ~/.bunshin/logs/update.err.log
+```
+
+### 全体診断
+
+```bash
+bunshin doctor
+```
+
+主要コンポーネント（DB / Ollama / Gmail / Calendar / MCP / スケジューラ）の状態と、修復提案を一覧します。
+
+---
+
+## Issue を報告する
+
+[GitHub Issues](https://github.com/Marine923/bunshin-ai/issues) に以下のテンプレで投稿してください：
+
+````markdown
+### 環境
+- macOS バージョン: （例 14.5）
+- Bunshin バージョン: （`bunshin --version` の出力）
+- インストール方法: DMG / ソース
+- アーキテクチャ: arm64 / Intel
+
+### 再現手順
+1. ...
+2. ...
+
+### 期待される動作
+（あるべき挙動）
+
+### 実際の動作
+（実際に起こったこと）
+
+### ログ
+```
+（bunshin doctor の出力、関連するログ）
+```
+
+### スクリーンショット
+（可能なら画像を添付）
+````
+
+セキュリティ脆弱性の報告は Issue ではなく `mf@marihabi.com` 宛にメールしてください。
+
+---
+
 ## どうしても分からないとき
 
-1. `bun status` で全体像確認
-2. `tail ~/.bunshin/logs/update.{out,err}.log` で直近のログ
-3. `~/.claude/projects/` や `~/.bunshin/data.db` の存在確認
-4. GitHub Issue（OSS 公開後）
+1. `bun status` または `bunshin status` で全体像確認
+2. `bun doctor` または `bunshin doctor` で診断
+3. `tail ~/.bunshin/logs/update.{out,err}.log` で直近のログ
+4. `~/.claude/projects/` や `~/.bunshin/data.db` の存在確認
+5. [GitHub Issue](https://github.com/Marine923/bunshin-ai/issues) で報告

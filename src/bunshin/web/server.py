@@ -346,6 +346,65 @@ INDEX_HTML = """<!DOCTYPE html>
     border-radius: 2px;
     padding: 0 2px;
   }
+  /* Welcome / onboarding state shown when the DB is nearly empty. */
+  .welcome {
+    background: #161616;
+    border: 1px solid #252525;
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin-top: 18px;
+    color: #ccc;
+  }
+  .welcome h2 {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    color: #fff;
+    font-weight: 600;
+  }
+  .welcome p {
+    margin: 0 0 16px 0;
+    color: #aaa;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .welcome .cmd-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .welcome .cmd-list li {
+    padding: 8px 0;
+    border-top: 1px solid #232323;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    font-size: 13px;
+    color: #ccc;
+  }
+  .welcome .cmd-list li:first-child {
+    border-top: 0;
+  }
+  .welcome .cmd-list .label {
+    flex: 1;
+  }
+  .welcome .cmd-list code {
+    background: #0f0f0f;
+    border: 1px solid #252525;
+    padding: 4px 10px;
+    border-radius: 4px;
+    color: #ffd987;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .welcome .footnote {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #252525;
+    color: #888;
+    font-size: 12px;
+    line-height: 1.5;
+  }
   .session-panel {
     margin-top: 16px;
     padding-top: 16px;
@@ -901,7 +960,7 @@ INDEX_HTML = """<!DOCTYPE html>
     </div>
 
     <div class="results" id="results">
-      <div class="empty">検索クエリを入力するか、上のタグを押してください</div>
+      <div class="empty" id="search-empty-state">読み込み中…</div>
     </div>
   </section>
 
@@ -1482,8 +1541,66 @@ async function loadStats() {
   try {
     const j = await (await fetch('/api/status')).json();
     $('stats').textContent = `${j.total_records.toLocaleString()} records · ${j.total_embeddings.toLocaleString()} embedded`;
-  } catch { $('stats').textContent = 'error'; }
+    renderEmptyState(j.total_records);
+  } catch {
+    $('stats').textContent = 'error';
+    renderEmptyState(null);
+  }
 }
+
+function renderEmptyState(totalRecords) {
+  const el = $('search-empty-state');
+  if (!el) return;
+  // Welcome / onboarding for fresh installs and almost-empty DBs
+  if (totalRecords !== null && totalRecords < 200) {
+    el.outerHTML = `
+      <div class="welcome" id="search-empty-state">
+        <h2>🌀 ようこそ、分身（Bunshin）へ</h2>
+        <p>
+          記録が ${totalRecords ? totalRecords.toLocaleString() + ' 件' : 'まだありません'}。
+          まず取り込んで、それから検索できるようにします。
+          ターミナルで以下のコマンドを 1 つずつ実行してください：
+        </p>
+        <ul class="cmd-list">
+          <li>
+            <span class="label">Claude Code / Desktop の会話履歴</span>
+            <code>bunshin import-claude</code>
+          </li>
+          <li>
+            <span class="label">Apple メモ (Notes.app)</span>
+            <code>bunshin import-notes</code>
+          </li>
+          <li>
+            <span class="label">Markdown / PDF / DOCX ファイル</span>
+            <code>bunshin import-files ~/Documents</code>
+          </li>
+          <li>
+            <span class="label">ブラウザ履歴 (Safari / Chrome / Arc)</span>
+            <code>bunshin import-browser</code>
+          </li>
+          <li>
+            <span class="label">写真ライブラリ (Photos.app)</span>
+            <code>bunshin import-photos-app</code>
+          </li>
+          <li>
+            <span class="label">取り込んだら検索可能にする</span>
+            <code>bunshin embed</code>
+          </li>
+        </ul>
+        <div class="footnote">
+          💡 Gmail / カレンダー / Ollama (オフラインチャット) は <strong>⚙ 設定タブ</strong> から繋げられます。<br>
+          💡 セットアップ全体の診断は <code>bunshin doctor</code> 。<br>
+          💡 詳しい説明は <a href="https://github.com/Marine923/bunshin-ai/blob/main/docs/SETUP.md" target="_blank">セットアップガイド</a>。
+        </div>
+      </div>`;
+  } else {
+    el.outerHTML = `
+      <div class="empty" id="search-empty-state">
+        検索クエリを入力するか、上のタグを押してください
+      </div>`;
+  }
+}
+
 loadStats();
 
 // ===== Search =====
