@@ -98,6 +98,8 @@ def generate_insights(
         "upcoming_events": [],
         "recent_notes": [],
         "pending_questions": [],
+        "recent_files": [],
+        "watch_status": {},
         "setup_hints": [],
     }
 
@@ -185,7 +187,38 @@ def generate_insights(
             "date": datetime.fromtimestamp(row[1]).strftime("%Y-%m-%d %H:%M"),
         })
 
-    # ── 4. Pending questions: recent assistant turns ending with "?"
+    # ── 4. Recent file changes (surfaces the watcher's work)
+    seven_days_ago = now_ts - 86400 * 7
+    cursor = conn.execute(
+        """SELECT DISTINCT source_id, MAX(timestamp) as ts
+           FROM records
+           WHERE source = 'file' AND timestamp >= ?
+           GROUP BY source_id
+           ORDER BY ts DESC
+           LIMIT ?""",
+        (seven_days_ago, section_limit),
+    )
+    for sid, ts in cursor.fetchall():
+        if not sid:
+            continue
+        out["recent_files"].append({
+            "path": sid,
+            "name": sid.split("/")[-1] if "/" in sid else sid,
+            "modified": datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M"),
+        })
+
+    # File-watcher status (best-effort — checks if the env / dir exists)
+    import os
+    watch_dir = (
+        os.environ.get("BUNSHIN_WATCH_DIR")
+        or str(Path.home() / "Documents" / "Seiyo" / "ob")
+    )
+    out["watch_status"] = {
+        "dir": watch_dir,
+        "exists": Path(watch_dir).exists(),
+    }
+
+    # ── 5. Pending questions: recent assistant turns ending with "?"
     one_week_ago = now_ts - 86400 * 7
     cursor = conn.execute(
         """SELECT content, timestamp, metadata FROM records

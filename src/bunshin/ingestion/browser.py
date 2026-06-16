@@ -199,8 +199,26 @@ def import_browser_history(
         if url.startswith(("about:", "chrome://", "chrome-extension://", "javascript:")):
             skipped += 1
             continue
-        # Compose searchable content.
-        content = f"[{row['browser']}] {title}\n{url}" if title else url
+        # Compose searchable content. Include an ISO date so date-style
+        # queries ("先週訪問した github") work via FTS5 + vector.
+        from urllib.parse import urlparse
+        try:
+            domain = urlparse(url).hostname or ""
+        except Exception:
+            domain = ""
+        date_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else ""
+        weekday = datetime.fromtimestamp(ts).strftime("%a") if ts else ""
+        header_parts = [f"[{row['browser']}]"]
+        if date_str:
+            header_parts.append(date_str)
+            header_parts.append(weekday)
+        if domain:
+            header_parts.append(domain)
+        header = " ".join(header_parts)
+        if title:
+            content = f"{header}\n{title}\n{url}"
+        else:
+            content = f"{header}\n{url}"
         rid = insert_record(
             conn,
             source="browser",
@@ -211,6 +229,8 @@ def import_browser_history(
                 "browser": row["browser"],
                 "title": title[:300],
                 "url": url[:1000],
+                "domain": domain,
+                "date": date_str,
             },
         )
         if rid:

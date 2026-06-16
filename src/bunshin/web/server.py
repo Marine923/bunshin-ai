@@ -195,6 +195,34 @@ INDEX_HTML = """<!DOCTYPE html>
     padding: 2px 8px;
     border-radius: 10px;
     font-size: 11px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .result-meta .more-chunks:hover {
+    background: rgba(239, 175, 74, 0.25);
+  }
+  .siblings-panel {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed #2a2a2a;
+  }
+  .sibling-item {
+    padding: 10px 14px;
+    margin: 6px 0;
+    background: #0d0d0d;
+    border-left: 3px solid #efaf4a;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .sibling-item .meta {
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 4px;
+  }
+  .sibling-item .content {
+    color: #ccc;
+    white-space: pre-wrap;
+    word-wrap: break-word;
   }
   .result-meta .expand-hint { margin-left: auto; color: #555; font-size: 11px; }
   .result-content {
@@ -1134,6 +1162,21 @@ async function loadInsights() {
       html += '</div>';
     }
 
+    if (j.recent_files?.length) {
+      const watchInfo = j.watch_status?.exists
+        ? `<div style="font-size:11px;color:#5fbf6f;margin-bottom:8px;">👁 監視中: ${esc(j.watch_status.dir)}</div>`
+        : '';
+      html += '<div class="insights-section"><h2>📁 最近変更されたファイル</h2>' + watchInfo;
+      for (const f of j.recent_files) {
+        html += `
+          <div class="insights-card" style="border-left:3px solid #4a8fef;">
+            <div class="title" style="font-family: ui-monospace, monospace; font-size: 12px;">${esc(f.name)}</div>
+            <div class="meta">${esc(f.modified)} · <span style="color:#777;">${esc(f.path)}</span></div>
+          </div>`;
+      }
+      html += '</div>';
+    }
+
     if (j.recent_notes?.length) {
       html += '<div class="insights-section"><h2>📝 直近の手動メモ</h2>';
       for (const n of j.recent_notes) {
@@ -1225,7 +1268,15 @@ async function doSearch(query) {
     if (!j.results?.length) { results.innerHTML = '<div class="empty">該当なし</div>'; return; }
     results.innerHTML = j.results.map((r, i) => renderResult(r, i)).join('');
     document.querySelectorAll('.result').forEach((el, i) => {
-      el.addEventListener('click', () => toggleSession(el, j.results[i]));
+      el.addEventListener('click', (ev) => {
+        // Don't open session expand when clicking the "📚 N more" badge.
+        if (ev.target.classList.contains('more-chunks')) {
+          ev.stopPropagation();
+          toggleSiblings(el, ev.target);
+          return;
+        }
+        toggleSession(el, j.results[i]);
+      });
     });
   } catch (e) {
     results.innerHTML = `<div class="empty">エラー: ${esc(String(e))}</div>`;
@@ -1240,7 +1291,7 @@ function renderResult(r, idx) {
     ? `📄 ${(r.source_id || '').split('/').pop()}`
     : `💬 ${role || 'claude'}`;
   const more = (r.total_in_source && r.total_in_source > 1)
-    ? `<span class="more-chunks">📚 同じ会話内に他 ${r.total_in_source - 1} 件</span>`
+    ? `<span class="more-chunks" data-more-sid="${esc(r.source_id || '')}" data-more-idx="${idx}" title="クリックで展開">📚 同じ会話内に他 ${r.total_in_source - 1} 件 ▾</span>`
     : '';
   return `
     <div class="result" data-idx="${idx}">
@@ -1254,6 +1305,44 @@ function renderResult(r, idx) {
       <div class="result-content">${esc(r.content)}</div>
     </div>
   `;
+}
+
+async function toggleSiblings(resultEl, badge) {
+  const existing = resultEl.querySelector('.siblings-panel');
+  if (existing) {
+    existing.remove();
+    badge.textContent = badge.textContent.replace('▴', '▾');
+    return;
+  }
+  const sid = badge.dataset.moreSid;
+  if (!sid) return;
+
+  const panel = document.createElement('div');
+  panel.className = 'siblings-panel';
+  panel.innerHTML = '<div class="loading">読み込み中…</div>';
+  resultEl.appendChild(panel);
+  badge.textContent = badge.textContent.replace('▾', '▴');
+
+  try {
+    const params = new URLSearchParams({ q: q.value, source_id: sid, limit: 30 });
+    const j = await (await fetch(`/api/search/siblings?${params}`)).json();
+    const sibs = j.results || [];
+    if (!sibs.length) {
+      panel.innerHTML = '<div class="empty">他の一致は見つかりません</div>';
+      return;
+    }
+    // Skip the first one if it's the same as the result we expanded from
+    panel.innerHTML = sibs.slice(1).map(s => {
+      const ts = s.timestamp ? new Date(s.timestamp * 1000).toLocaleString('ja-JP') : 'n/a';
+      const role = (s.metadata && s.metadata.role) ? s.metadata.role : '';
+      return `<div class="sibling-item">
+        <div class="meta">${esc(ts)} · ${esc(s.source)}${role ? '/' + esc(role) : ''} · dist ${s.distance.toFixed(2)}</div>
+        <div class="content">${esc(s.content)}</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    panel.innerHTML = `<div class="empty">エラー: ${esc(String(e))}</div>`;
+  }
 }
 
 async function toggleSession(el, result) {
@@ -1690,6 +1779,30 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 sources=source_list,
             )
             return {"query": q, "count": len(results), "results": results}
+        finally:
+            conn.close()
+
+    @app.get("/api/search/siblings")
+    def api_search_siblings(
+        q: str = Query(..., min_length=1),
+        source_id: str = Query(..., min_length=1),
+        limit: int = Query(20, ge=1, le=100),
+        min_chars: int = Query(20),
+        mode: str = Query("hybrid", pattern="^(vector|hybrid)$"),
+    ):
+        """Return all results matching `q` that share `source_id` —
+        i.e. the chunks hidden behind the "📚 N more" badge."""
+        conn = init_db(db_path)
+        try:
+            results = search(
+                conn, q,
+                limit=max(limit * 4, 60),
+                min_content_length=min_chars,
+                mode=mode,
+                max_per_source=0,
+            )
+            siblings = [r for r in results if r["source_id"] == source_id]
+            return {"source_id": source_id, "count": len(siblings), "results": siblings[:limit]}
         finally:
             conn.close()
 
