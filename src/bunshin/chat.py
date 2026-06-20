@@ -9,12 +9,15 @@ from bunshin.search import search
 
 OLLAMA_HOST = "http://localhost:11434"
 PREFERRED_MODELS = [
-    # Best Japanese quality first
+    # Best Japanese quality first — larger models score higher.
+    "qwen2.5:72b",
+    "qwen2.5:32b",
     "qwen2.5:14b",
     "qwen2.5:7b",
     "qwen2.5:3b",
     "qwen2.5:1.5b",
-    # English-strong fallbacks
+    # Cross-lingual fallbacks.
+    "llama3.3:70b",
     "llama3.1:8b",
     "llama3.2:3b",
     "llama3.2:1b",
@@ -43,8 +46,27 @@ def pick_model(available: list[str]) -> Optional[str]:
     return available[0] if available else None
 
 
-def build_context(conn, query: str, limit: int = 5) -> str:
-    results = search(conn, query, limit=limit)
+def _augment_query_with_history(query: str, history: Optional[list[dict]]) -> str:
+    """Prefix the search query with the last 2-3 user turns so that
+    pronouns and follow-ups ("で、それいくら？", "あいつの連絡先") have
+    something to anchor against."""
+    if not history:
+        return query
+    recent_user = [h["content"] for h in history[-6:] if h.get("role") == "user"]
+    if not recent_user:
+        return query
+    context_terms = " ".join(recent_user[-2:])[:500]
+    return f"{context_terms} {query}".strip()
+
+
+def build_context(
+    conn,
+    query: str,
+    limit: int = 5,
+    history: Optional[list[dict]] = None,
+) -> str:
+    augmented = _augment_query_with_history(query, history)
+    results = search(conn, augmented, limit=limit)
     if not results:
         return ""
     lines = []
@@ -88,6 +110,12 @@ def chat_ollama(
         "5. 過去文脈が**本当に質問と無関係な場合のみ**「過去の記憶には該当情報が見当たりません」と答えてください。\n"
         "6. 「過去の記憶」を使って答えていることをユーザーに伝えるため、**日付を必ず引用**してください。\n"
         "7. 直前までの会話履歴がある場合は、**それを踏まえて連続性のある応答**をしてください。\n\n"
+        "推論の進め方（Chain of Thought）：\n"
+        "- まず**質問の核心**を 1 文で言い換える（声に出さずに頭の中で）。\n"
+        "- 次に過去文脈 [N] のうち**質問に関連するもの**を選び、**何が分かるか・分からないか**を整理する。\n"
+        "- 矛盾がある場合は**最新の日付の情報を優先**する。\n"
+        "- 推測が必要な場合は、**根拠となる事実 → 推論 → 結論**の順で示す。\n"
+        "- 最終的な回答は**ユーザーが知りたい結論を最初に**、続いて引用 [N] と日付で補強する。\n\n"
         f"=== 関連する過去文脈 ===\n{context}\n=== ここまで ==="
     )
 

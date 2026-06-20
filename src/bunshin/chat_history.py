@@ -86,26 +86,51 @@ def get_session(conn: sqlite3.Connection, session_id: str) -> Optional[dict]:
     }
 
 
-def list_sessions(conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
-    """Return most-recently-updated sessions with message counts."""
+def list_sessions(
+    conn: sqlite3.Connection,
+    limit: int = 50,
+    query: str | None = None,
+) -> list[dict]:
+    """Return most-recently-updated sessions with message counts.
+
+    If `query` is provided, only sessions whose title or any message
+    content matches (case-insensitive substring) are returned.
+    """
     init_chat_schema(conn)
-    cursor = conn.execute(
-        """SELECT s.id, s.title, s.model, s.created_at, s.updated_at,
-                  COUNT(m.id) AS message_count,
-                  (SELECT content FROM chat_messages WHERE session_id = s.id AND role = 'user' ORDER BY id ASC LIMIT 1) AS first_user_msg
-           FROM chat_sessions s
-           LEFT JOIN chat_messages m ON m.session_id = s.id
-           GROUP BY s.id
-           ORDER BY s.updated_at DESC
-           LIMIT ?""",
-        (limit,),
+    params: list = []
+    where = ""
+    if query and query.strip():
+        like = f"%{query.strip().lower()}%"
+        where = (
+            " WHERE LOWER(s.title) LIKE ? "
+            " OR s.id IN (SELECT DISTINCT session_id FROM chat_messages "
+            "             WHERE LOWER(content) LIKE ?)"
+        )
+        params = [like, like]
+    sql = (
+        "SELECT s.id, s.title, s.model, s.created_at, s.updated_at,"
+        "       COUNT(m.id) AS message_count,"
+        "       (SELECT content FROM chat_messages WHERE session_id = s.id "
+        "        AND role = 'user' ORDER BY id ASC LIMIT 1) AS first_user_msg, "
+        "       (SELECT content FROM chat_messages WHERE session_id = s.id "
+        "        ORDER BY id DESC LIMIT 1) AS last_msg "
+        "FROM chat_sessions s "
+        "LEFT JOIN chat_messages m ON m.session_id = s.id"
+        + where +
+        " GROUP BY s.id "
+        " ORDER BY s.updated_at DESC "
+        " LIMIT ?"
     )
+    params.append(limit)
+    cursor = conn.execute(sql, params)
     out = []
     for r in cursor.fetchall():
         title = r[1]
         if not title and r[6]:
             # Derive a title from the first user message
             title = (r[6][:48] + "…") if len(r[6]) > 48 else r[6]
+        last = (r[7] or "").strip().replace("\n", " ")
+        preview = (last[:80] + "…") if len(last) > 80 else last
         out.append({
             "id": r[0],
             "title": title or "(empty)",
@@ -113,6 +138,7 @@ def list_sessions(conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
             "created_at": r[3],
             "updated_at": r[4],
             "message_count": r[5],
+            "preview": preview,
         })
     return out
 

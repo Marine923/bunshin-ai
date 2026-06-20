@@ -48,8 +48,222 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
+    _migrate_signals(conn)
     conn.commit()
     return conn
+
+
+def _migrate_signals(conn: sqlite3.Connection) -> None:
+    """Idempotent migration: add signal/learning columns + the rules table."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(records)").fetchall()}
+    if 'signal_score' not in cols:
+        conn.execute("ALTER TABLE records ADD COLUMN signal_score REAL")
+    if 'user_signal' not in cols:
+        # 0 = untouched, 1 = user said "hide", 2 = user said "important"
+        conn.execute("ALTER TABLE records ADD COLUMN user_signal INTEGER DEFAULT 0")
+    if 'sender' not in cols:
+        conn.execute("ALTER TABLE records ADD COLUMN sender TEXT")
+    if 'sender_domain' not in cols:
+        conn.execute("ALTER TABLE records ADD COLUMN sender_domain TEXT")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS learning_rules (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_type       TEXT NOT NULL,
+            pattern         TEXT NOT NULL,
+            action          TEXT NOT NULL,
+            source_filter   TEXT,
+            applied_count   INTEGER DEFAULT 0,
+            created_at      INTEGER NOT NULL
+        )"""
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_rules_unique "
+        "ON learning_rules(rule_type, pattern, action)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_records_signal_score ON records(signal_score DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_records_user_signal ON records(user_signal)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_records_sender ON records(sender)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_records_sender_domain ON records(sender_domain)")
+
+
+def recompute_signals(conn: sqlite3.Connection, only_missing: bool = False) -> int:
+    """Re-score every record's signal_score and cache sender / domain.
+
+    Used at startup (with only_missing=True, fast) and from the CLI
+    `bunshin recompute-signals` (with only_missing=False, slower).
+    """
+    from bunshin.signals import compute_signal_score, extract_sender
+    if only_missing:
+        rows = conn.execute(
+            "SELECT id, source, metadata, content FROM records WHERE signal_score IS NULL"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id, source, metadata, content FROM records"
+        ).fetchall()
+    updated = 0
+    for rid, source, metadata, content in rows:
+        sender, domain = extract_sender(metadata)
+        score = compute_signal_score(content or "", source, sender, domain)
+        conn.execute(
+            "UPDATE records SET signal_score = ?, sender = ?, sender_domain = ? WHERE id = ?",
+            (score, sender, domain, rid),
+        )
+        updated += 1
+        if updated % 500 == 0:
+            conn.commit()
+    conn.commit()
+    return updated
+
+
+# ---- Learning-rule helpers (called by the FastAPI endpoints) -----------
+
+def apply_mark(
+    conn: sqlite3.Connection,
+    record_id: str,
+    action: str,
+    scope: str,
+) -> dict:
+    """Mark a record (and optionally a sender/domain) as hide or important.
+
+    action: 'hide' or 'star'
+    scope:  'record' | 'sender' | 'domain'
+    Returns {applied, rule_id, sender, domain}.
+    """
+    import time
+    row = conn.execute(
+        "SELECT sender, sender_domain, source FROM records WHERE id = ?", (record_id,)
+    ).fetchone()
+    if not row:
+        return {"applied": 0, "error": "record not found"}
+    sender, domain, source = row
+    target = 1 if action == "hide" else 2
+    rule_id = None
+    applied = 0
+    if scope == "record":
+        cur = conn.execute(
+            "UPDATE records SET user_signal = ? WHERE id = ?", (target, record_id)
+        )
+        applied = cur.rowcount
+    elif scope == "sender" and sender:
+        cur = conn.execute(
+            "UPDATE records SET user_signal = ? WHERE sender = ? AND user_signal = 0",
+            (target, sender),
+        )
+        applied = cur.rowcount or 0
+        # Always record at least the source record's flip.
+        conn.execute(
+            "UPDATE records SET user_signal = ? WHERE id = ?", (target, record_id)
+        )
+        if applied == 0:
+            applied = 1
+        conn.execute(
+            """INSERT INTO learning_rules
+                 (rule_type, pattern, action, source_filter, applied_count, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(rule_type, pattern, action)
+               DO UPDATE SET applied_count = applied_count + excluded.applied_count""",
+            ("sender", sender, action, None, applied, int(time.time())),
+        )
+        rule_id = conn.execute(
+            "SELECT id FROM learning_rules WHERE rule_type=? AND pattern=? AND action=?",
+            ("sender", sender, action),
+        ).fetchone()[0]
+    elif scope == "domain" and domain:
+        cur = conn.execute(
+            "UPDATE records SET user_signal = ? WHERE sender_domain = ? AND user_signal = 0",
+            (target, domain),
+        )
+        applied = cur.rowcount or 0
+        conn.execute(
+            "UPDATE records SET user_signal = ? WHERE id = ?", (target, record_id)
+        )
+        if applied == 0:
+            applied = 1
+        conn.execute(
+            """INSERT INTO learning_rules
+                 (rule_type, pattern, action, source_filter, applied_count, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(rule_type, pattern, action)
+               DO UPDATE SET applied_count = applied_count + excluded.applied_count""",
+            ("domain", domain, action, None, applied, int(time.time())),
+        )
+        rule_id = conn.execute(
+            "SELECT id FROM learning_rules WHERE rule_type=? AND pattern=? AND action=?",
+            ("domain", domain, action),
+        ).fetchone()[0]
+    else:
+        # Sender/domain scope but record has no parseable sender — fall back.
+        conn.execute(
+            "UPDATE records SET user_signal = ? WHERE id = ?", (target, record_id)
+        )
+        applied = 1
+        scope = "record"
+    conn.commit()
+    return {
+        "applied": applied,
+        "scope": scope,
+        "rule_id": rule_id,
+        "sender": sender,
+        "domain": domain,
+    }
+
+
+def undo_rule(conn: sqlite3.Connection, rule_id: int) -> dict:
+    """Reverse a learning rule: flip its records back to user_signal=0 and delete."""
+    row = conn.execute(
+        "SELECT rule_type, pattern, action FROM learning_rules WHERE id = ?", (rule_id,)
+    ).fetchone()
+    if not row:
+        return {"ok": False, "error": "rule not found"}
+    rule_type, pattern, action = row
+    target = 1 if action == "hide" else 2
+    col = "sender" if rule_type == "sender" else "sender_domain"
+    cur = conn.execute(
+        f"UPDATE records SET user_signal = 0 WHERE user_signal = ? AND {col} = ?",
+        (target, pattern),
+    )
+    reverted = cur.rowcount or 0
+    conn.execute("DELETE FROM learning_rules WHERE id = ?", (rule_id,))
+    conn.commit()
+    return {"ok": True, "reverted": reverted, "pattern": pattern}
+
+
+def undo_record_mark(conn: sqlite3.Connection, record_id: str) -> dict:
+    conn.execute("UPDATE records SET user_signal = 0 WHERE id = ?", (record_id,))
+    conn.commit()
+    return {"ok": True}
+
+
+def reset_learning(conn: sqlite3.Connection) -> dict:
+    conn.execute("UPDATE records SET user_signal = 0")
+    cur = conn.execute("DELETE FROM learning_rules")
+    conn.commit()
+    return {"ok": True, "rules_deleted": cur.rowcount or 0}
+
+
+def list_learning_rules(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, rule_type, pattern, action, applied_count, created_at "
+        "FROM learning_rules ORDER BY created_at DESC"
+    ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "rule_type": r[1],
+            "pattern": r[2],
+            "action": r[3],
+            "applied_count": r[4],
+            "created_at": r[5],
+        }
+        for r in rows
+    ]
+
+
+def hidden_count(conn: sqlite3.Connection) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) FROM records WHERE user_signal = 1"
+    ).fetchone()[0]
 
 
 def insert_record(

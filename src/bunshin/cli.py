@@ -425,17 +425,26 @@ def chat_cmd(query: str, model: Optional[str], context_limit: int, db: Path):
 )
 @click.option("--initial-days", default=90, help="Days back to fetch on first run")
 @click.option(
+    "--full",
+    is_flag=True,
+    help="Ignore last-sync marker. Combine with --initial-days 36500 to backfill everything the browser still has on disk.",
+)
+@click.option(
     "--db",
     type=click.Path(path_type=Path),
     default=DEFAULT_DB_PATH,
 )
-def import_browser_cmd(browsers: tuple[str, ...], initial_days: int, db: Path):
+def import_browser_cmd(browsers: tuple[str, ...], initial_days: int, full: bool, db: Path):
     """Import Safari / Chrome / Arc visit history."""
     from bunshin.ingestion.browser import import_browser_history
     conn = init_db(db)
     chosen = list(browsers) if browsers else None
+    if full and initial_days == 90:
+        initial_days = 36500
+    if full:
+        console.print("[yellow]Full re-sync: ignoring last-sync marker.[/yellow]")
     console.print(f"Importing browser history (browsers={chosen or 'all'})…")
-    stats = import_browser_history(conn, browsers=chosen, initial_days=initial_days)
+    stats = import_browser_history(conn, browsers=chosen, initial_days=initial_days, full=full)
     table = Table(title="Browser import")
     table.add_column("Metric", style="cyan")
     table.add_column("Count", justify="right")
@@ -1267,6 +1276,11 @@ def setup_gmail_cmd(email: str, app_password: str):
 @click.option("--limit", type=int, default=None, help="Max emails to fetch")
 @click.option("--initial-days", default=90, help="Days back to fetch on first run")
 @click.option(
+    "--full",
+    is_flag=True,
+    help="Ignore last-sync marker and refetch the full initial-days range (use with --initial-days 36500 for everything)",
+)
+@click.option(
     "--folder",
     default='"[Gmail]/All Mail"',
     help='IMAP folder (default: all mail)',
@@ -1280,6 +1294,7 @@ def setup_gmail_cmd(email: str, app_password: str):
 def import_gmail_cmd(
     limit: Optional[int],
     initial_days: int,
+    full: bool,
     folder: str,
     verbose: bool,
     db: Path,
@@ -1293,8 +1308,15 @@ def import_gmail_cmd(
         console.print("Run: [bold]bunshin setup-gmail --email you@gmail.com[/bold]")
         return
 
+    # `--full` without an explicit --initial-days means "everything" —
+    # IMAP SINCE doesn't need an exact date, ~100 years is plenty.
+    if full and initial_days == 90:
+        initial_days = 36500
+
     conn = init_db(db)
     console.print(f"Connecting to Gmail as [cyan]{creds['email']}[/cyan]...")
+    if full:
+        console.print("[yellow]Full re-sync: ignoring last-sync marker.[/yellow]")
     stats = import_gmail(
         conn,
         creds["email"],
@@ -1303,6 +1325,7 @@ def import_gmail_cmd(
         limit=limit,
         initial_days=initial_days,
         verbose=verbose,
+        full=full,
     )
 
     if stats.get("error_msg"):

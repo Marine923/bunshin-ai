@@ -143,11 +143,14 @@ def import_gmail(
     limit: Optional[int] = None,
     initial_days: int = 90,
     verbose: bool = False,
+    full: bool = False,
 ) -> dict:
     """Connect to Gmail via IMAP, fetch new emails since last run, index them.
 
     First run: fetches last `initial_days` days.
     Subsequent runs: fetches since last successful import date.
+    Pass `full=True` to ignore the last-sync marker and refetch from
+    `initial_days` ago — used when the user wants to backfill history.
     """
     try:
         from bunshin.storage import load_vec_extension
@@ -185,7 +188,7 @@ def import_gmail(
             stats["error_msg"] = f"Cannot select folder {folder}"
             return stats
 
-        last_date = _get_last_date(conn)
+        last_date = None if full else _get_last_date(conn)
         if last_date:
             search_criteria = f'(SINCE "{last_date}")'
         else:

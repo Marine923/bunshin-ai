@@ -15,17 +15,17 @@
   .splash {
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, #1a1f3a 0%, #0a0a14 100%);
+    background: linear-gradient(135deg, #312e81 0%, #1e1b4b 100%);
     border-radius: 18px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: #e5e5e5;
+    color: #e5e7ff;
     padding: 32px;
     -webkit-app-region: drag;
   }
-  /* Concentric rings (matching app icon design) */
+  /* Concentric rings matching app icon (indigo + pink ribbon + yellow core) */
   .logo {
     position: relative;
     width: 140px;
@@ -39,7 +39,7 @@
   }
   .ring.outer {
     inset: 0;
-    border-color: #4a8fef;
+    border-color: #818cf8;
     animation: spin-cw 4s linear infinite;
   }
   .ring.outer::before {
@@ -51,11 +51,11 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #4a8fef;
+    background: #818cf8;
   }
   .ring.inner {
     inset: 35px;
-    border-color: #5fbf6f;
+    border-color: #f472b6;
     animation: spin-ccw 3s linear infinite;
   }
   .ring.inner::before {
@@ -67,7 +67,7 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: #5fbf6f;
+    background: #f472b6;
   }
   .core {
     position: absolute;
@@ -77,8 +77,8 @@
     height: 22px;
     margin: -11px 0 0 -11px;
     border-radius: 50%;
-    background: radial-gradient(circle, #fff 0%, #c8d4ef 100%);
-    box-shadow: 0 0 24px rgba(255,255,255,0.5);
+    background: radial-gradient(circle, #fef3c7 0%, #fbbf24 100%);
+    box-shadow: 0 0 24px rgba(254, 243, 199, 0.55);
   }
   @keyframes spin-cw  { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   @keyframes spin-ccw { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
@@ -91,12 +91,12 @@
   }
   .subtitle {
     font-size: 12px;
-    color: #888;
+    color: #a5a8d8;
     margin-bottom: 24px;
   }
   .status {
     font-size: 13px;
-    color: #aaa;
+    color: #c4c7f0;
     text-align: center;
     min-height: 18px;
   }
@@ -104,14 +104,14 @@
     margin-top: 16px;
     width: 200px;
     height: 3px;
-    background: #1a1f3a;
+    background: #1e1b4b;
     border-radius: 2px;
     overflow: hidden;
   }
   .progress-bar {
     height: 100%;
     width: 30%;
-    background: linear-gradient(90deg, #4a8fef, #a04aef);
+    background: linear-gradient(90deg, #818cf8, #f472b6);
     border-radius: 2px;
     animation: slide 1.4s ease-in-out infinite;
   }
@@ -136,7 +136,6 @@
   </div>
 
 <script>
-  // Listen for status updates from main process via IPC if exposed
   window.addEventListener('DOMContentLoaded', () => {
     if (window.bunshinSplash && window.bunshinSplash.onStatus) {
       window.bunshinSplash.onStatus((msg) => {

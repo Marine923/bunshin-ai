@@ -149,11 +149,15 @@ def import_browser_history(
     browsers: Optional[list[str]] = None,
     initial_days: int = 90,
     verbose: bool = False,
+    full: bool = False,
 ) -> dict:
     """Import recent browser visits.
 
     First run: covers the last `initial_days` days.
     Subsequent runs: incremental from the last seen timestamp.
+    Pass `full=True` to ignore the last-sync marker and re-scan the
+    full `initial_days` window (use with initial_days=36500 for
+    everything the browser still has on disk).
     """
     try:
         from bunshin.storage import load_vec_extension
@@ -163,9 +167,8 @@ def import_browser_history(
 
     stats = {"safari": 0, "chrome": 0, "arc": 0, "skipped": 0, "errors": 0}
 
-    last_ts = _get_last_browser_ts(conn)
+    last_ts = None if full else _get_last_browser_ts(conn)
     if last_ts is None:
-        # First run — go back initial_days days.
         last_ts = int(datetime.now().timestamp()) - initial_days * 86400
 
     sources = browsers or ["safari", "chrome", "arc"]

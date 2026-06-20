@@ -72,6 +72,37 @@ def backup_db(
     return stats
 
 
+def restore_backup(db_path: Path, backup_path: Path) -> dict:
+    """Restore the live DB from a backup snapshot.
+
+    Safety: we copy the current DB aside first so a botched restore is
+    recoverable.
+    """
+    import shutil
+    import time
+    out = {"ok": False, "restored_from": None, "previous_saved_to": None, "error": None}
+    if not backup_path.exists() or not backup_path.is_file():
+        out["error"] = f"backup not found: {backup_path}"
+        return out
+    try:
+        if db_path.exists():
+            stash = db_path.parent / f"{db_path.name}.pre-restore-{int(time.time())}"
+            shutil.copy2(db_path, stash)
+            out["previous_saved_to"] = str(stash)
+        # Also stash the WAL / SHM files if present so the restored DB
+        # doesn't accidentally see partial writes.
+        for sidecar in ("-wal", "-shm"):
+            sc = Path(str(db_path) + sidecar)
+            if sc.exists():
+                sc.unlink()
+        shutil.copy2(backup_path, db_path)
+        out["ok"] = True
+        out["restored_from"] = str(backup_path)
+    except Exception as e:
+        out["error"] = str(e)
+    return out
+
+
 def list_backups(backup_dir: Path = DEFAULT_BACKUP_DIR) -> list[dict]:
     if not backup_dir.exists():
         return []

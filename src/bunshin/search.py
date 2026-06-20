@@ -24,6 +24,112 @@ _ORDER_CLAUSES = {
 }
 
 
+def _extract_query_tokens(q: str) -> list[str]:
+    """Pull meaningful tokens (>=2 chars) out of a free-text query."""
+    tokens = re.findall(r"[\w　-鿿々]+", q)
+    return [t for t in tokens if len(t) >= 2]
+
+
+def _normalize_query(q: str) -> str:
+    """Normalize a search query to absorb common notation drift:
+
+    - full-width ASCII → half-width (Ｓｋｙ → Sky)
+    - full-width space → ASCII space (　 → space)
+    - smart quotes → straight quotes
+
+    Embedding similarity is mostly notation-invariant, but FTS5 BM25
+    treats `Ｓｋｙ` and `Sky` as different tokens, so we normalize before
+    handing the query to either pass.
+    """
+    if not q:
+        return q
+    out_chars = []
+    for ch in q:
+        code = ord(ch)
+        if 0xFF01 <= code <= 0xFF5E:
+            out_chars.append(chr(code - 0xFEE0))  # FW ASCII → HW
+        elif code == 0x3000:
+            out_chars.append(" ")               # FW space
+        elif ch in '“”„‟':
+            out_chars.append('"')
+        elif ch in '‘’‚‛':
+            out_chars.append("'")
+        else:
+            out_chars.append(ch)
+    return "".join(out_chars).strip()
+
+
+# Cache for LLM-based query expansions so a repeat query doesn't pay
+# the inference cost twice. Keyed by lower-cased + normalized query.
+_QUERY_EXPANSION_CACHE: dict[str, list[str]] = {}
+
+
+def expand_query_with_llm(
+    query: str,
+    model: Optional[str] = None,
+    host: str = "http://localhost:11434",
+    timeout: float = 8.0,
+    max_variants: int = 3,
+) -> list[str]:
+    """Ask Ollama for 2–3 reword variants of the query.
+
+    The response is cached in-memory so the second hit on the same query
+    is free. Returns an empty list on any failure — callers should fall
+    back to the original query.
+    """
+    key = query.strip().lower()
+    if not key:
+        return []
+    if key in _QUERY_EXPANSION_CACHE:
+        return _QUERY_EXPANSION_CACHE[key]
+    try:
+        from bunshin.chat import check_ollama, pick_model
+        import httpx
+        ok, available = check_ollama(host)
+        if not ok or not available:
+            _QUERY_EXPANSION_CACHE[key] = []
+            return []
+        chosen = model or pick_model(available)
+        if not chosen:
+            _QUERY_EXPANSION_CACHE[key] = []
+            return []
+        prompt = (
+            "次の検索クエリの言い換えバリエーションを 2-3 個生成してください。"
+            "同義語、関連語、英語表記、漢字／ひらがな／カタカナの揺れを意識してください。"
+            "余計な説明はせず、バリエーションだけを 1 行に 1 つ書いてください。\n\n"
+            f"検索クエリ: {query}\n\nバリエーション:"
+        )
+        r = httpx.post(
+            f"{host}/api/generate",
+            json={
+                "model": chosen,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.2, "num_predict": 80},
+            },
+            timeout=timeout,
+        )
+        if r.status_code != 200:
+            _QUERY_EXPANSION_CACHE[key] = []
+            return []
+        text = r.json().get("response", "") or ""
+        variants: list[str] = []
+        for line in text.splitlines():
+            v = line.strip().strip("-・*0123456789.) ")
+            if not v or len(v) > 80:
+                continue
+            if v.lower() == key:
+                continue
+            variants.append(v)
+            if len(variants) >= max_variants:
+                break
+        _QUERY_EXPANSION_CACHE[key] = variants
+        return variants
+    except Exception:
+        _QUERY_EXPANSION_CACHE[key] = []
+        return []
+
+
 def _sanitize_fts_query(q: str) -> str:
     """Convert a free-text query into a safe FTS5 MATCH expression.
 
@@ -31,8 +137,7 @@ def _sanitize_fts_query(q: str) -> str:
     syntax errors on user input we extract token-like substrings and join
     them with OR, quoting each. This loses some power but is robust.
     """
-    tokens = re.findall(r"[\w　-鿿々]+", q)
-    tokens = [t for t in tokens if len(t) >= 2]
+    tokens = _extract_query_tokens(q)
     if not tokens:
         return ""
     return " OR ".join(f'"{t.replace(chr(34), "")}"' for t in tokens)
@@ -45,6 +150,7 @@ def _fts_search(
     min_content_length: int,
     from_ts: Optional[int],
     to_ts: Optional[int],
+    sources: Optional[list[str]] = None,
 ) -> dict[str, dict[str, Any]]:
     """Return {record_id: {bm25_rank, ...}} from FTS5 BM25 scoring.
 
@@ -63,6 +169,10 @@ def _fts_search(
         if to_ts is not None:
             where.append("r.timestamp <= ?")
             params.append(to_ts)
+        if sources:
+            placeholders = ",".join(["?"] * len(sources))
+            where.append(f"r.source IN ({placeholders})")
+            params.extend(sources)
         sql = f"""
             SELECT r.id AS record_id, bm25(records_fts) AS bm25_score
             FROM records_fts
@@ -92,7 +202,12 @@ def search(
     max_per_source: int = 1,
     mode: str = "hybrid",
     sources: Optional[list[str]] = None,
+    rerank: bool = True,
+    expand: bool = False,
 ) -> list[dict[str, Any]]:
+    # Normalize notation (full-width → half-width, etc) so the same query
+    # written different ways finds the same records.
+    query = _normalize_query(query)
     """Search records by semantic similarity to query.
 
     sort: "relevance" (default), "newest", or "oldest"
@@ -108,6 +223,18 @@ def search(
     "OK", "お願いします", etc.) which tend to be semantic noise.
     """
     load_vec_extension(conn)
+
+    # Original query is kept separately because the cross-encoder rerank
+    # at the end should score against the user's literal intent, not the
+    # augmented form.
+    original_query = query
+    if expand:
+        variants = expand_query_with_llm(query)
+        if variants:
+            # Concatenate so both the vector and FTS passes see the extra
+            # terms. The embedding model averages contributions; FTS5
+            # tokenizes and ORs them.
+            query = query + " " + " ".join(variants)
 
     query_vec = embed_query(query)
     blob = np.asarray(query_vec, dtype=np.float32).tobytes()
@@ -203,6 +330,7 @@ def search(
             candidate_limit=max(limit * 8, 100),
             min_content_length=min_content_length,
             from_ts=from_ts, to_ts=to_ts,
+            sources=sources,
         )
         if fts_hits:
             # Build vector_rank map for RRF.
@@ -247,6 +375,26 @@ def search(
                 r["score_components"]["rrf"] = rrf
                 scored.append(r)
 
+            # All-tokens-match boost: when the user types multiple terms
+            # (e.g. "Sky MISSION 相見積もり"), records that contain ALL of
+            # them should jump above records that only match one. We bump
+            # those records' RRF score by a generous constant.
+            tokens = _extract_query_tokens(query)
+            if len(tokens) >= 2:
+                lower_tokens = [t.lower() for t in tokens]
+                for r in scored:
+                    content_lower = (r.get("content") or "").lower()
+                    matches = sum(1 for t in lower_tokens if t in content_lower)
+                    r["score_components"]["matched_tokens"] = matches
+                    r["score_components"]["total_tokens"] = len(lower_tokens)
+                    if matches == len(lower_tokens):
+                        r["score_components"]["all_terms_match"] = True
+                        # Lift this record above all single-match records.
+                        r["score_components"]["rrf"] += 0.5
+                    elif matches >= 2 and matches < len(lower_tokens):
+                        # Partial multi-match — small bump.
+                        r["score_components"]["rrf"] += 0.1 * matches
+
             # Re-sort by RRF descending and trim.
             if sort == "relevance":
                 scored.sort(key=lambda r: -r["score_components"]["rrf"])
@@ -254,6 +402,19 @@ def search(
                 scored.sort(key=lambda r: -(r["timestamp"] or 0))
             elif sort == "oldest":
                 scored.sort(key=lambda r: (r["timestamp"] or 0))
-            results = scored[:limit]
+            # Hold onto a wider candidate pool so the cross-encoder has
+            # room to reshuffle. We cap at 4× the user-requested limit
+            # because rerank latency grows linearly with candidate count.
+            results = scored[: max(limit * 4, 30)]
+
+    # Cross-encoder rerank (only meaningful for the relevance sort —
+    # newest/oldest already have a deterministic ordering).
+    if rerank and sort == "relevance" and len(results) > 1:
+        from bunshin.rerank import rerank as cross_encode_rerank
+        # Rerank against the original (un-expanded) query so the
+        # scorer judges relevance to the user's actual intent.
+        results = cross_encode_rerank(original_query, results, top_k=limit)
+    else:
+        results = results[:limit]
 
     return results

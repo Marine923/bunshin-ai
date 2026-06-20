@@ -4,6 +4,86 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-19
+
+The "actually useful daily" release. The flashback widget brings the
+day back to you, the noise filter learns from your taste, and the UI
+got much quieter — fewer chrome lines, denser sidebars, a real
+foothold for new users on the first launch.
+
+### Added — Flashback widget
+- **Today's flashback** on the search tab — three retrospective cards
+  ("先週の今日 / 3 ヶ月前 / 5 年前") populated from records on the
+  same calendar date in the past. Click a card to drill into the
+  full day's records.
+- The three retrospective windows now adapt to how much history
+  Bunshin actually has, so users on a 30-day-old DB see
+  "1 ヶ月前 / 2 週間前 / 先週" instead of empty year-old cards.
+- New `/api/records?from=&to=` endpoint — plain time-range listing
+  (no FTS) used by the flashback drill-down.
+
+### Added — Learning-based noise filter
+- New `signals.py` with a per-record `signal_score` (0–100). Computed
+  at insert time and backfilled on server start for any record still
+  missing it.
+- `clean_for_display()` strips URLs, mail headers, tracking blobs,
+  long hash-like tokens, HTML tags, empty `( )` pairs, decoration
+  lines (▲▲▲ / ─── / ===), and collapses the runaway blank lines
+  that HTML email bodies leave behind.
+- **Mark UI** — `🗑 要らない` button on every flashback card and
+  drill-down row, with a modal asking *learn this record / this
+  sender / this domain*. Marked rules persist in a new
+  `learning_rules` table.
+- **Undo toast** — 5-second window to take back a mark, with live
+  countdown and one-click revert.
+- **Settings → 🧠 学習** dashboard lists every rule with per-rule
+  delete and a "全部リセット" button.
+- **Auto-filter** — records with `signal_score` below a configurable
+  threshold (default 30) are excluded from search and flashback.
+  Header shows a `2,717件自動フィルター中` chip explaining what's
+  hidden. New setting: `min_signal_score` (search section, 0–100).
+
+### Added — Quality-of-life
+- **Header stats are now stats to brag about**: `10,711 records ·
+  137 entities · 8 sources · 2015年から · 47件非表示`.
+- **Source chips show per-source counts** (`💬 Claude (3,422)`,
+  `📧 Gmail (1,660)`, etc.) and dim to ~40% opacity when the source
+  has zero records.
+- New chip: **📸 写真ライブラリ** distinguishes Photos.app library
+  imports from manual photo-OCR records.
+- Empty-state copy rewritten across all four tabs ("過去の自分に
+  聞いてみてください", "分身は、過去のあなたを全部読んでいます",
+  etc.).
+
+### Changed — UI density and polish
+- **Chat sidebar redesigned**: flat `+ 新規チャット` button,
+  explicit 設定 / 履歴 sections, search icon embedded in input,
+  session cards now show last-message preview + model + count + date.
+- The chat tab no longer leaves a gap between the left nav rail and
+  the history sidebar — `body.chat-mode` drops main's padding to
+  zero for that tab only.
+- Header underline removed across all tabs for a flatter look.
+- Splash screen palette aligned with the app icon (indigo +
+  pink ribbon + yellow core), replacing the old blue/green.
+
+### Fixed
+- Relationship graph: clicking an entity in the list now actually
+  re-centers the spider-web, not just the right-hand detail pane.
+- Chat session list now carries `preview` (last message) so the
+  redesigned sidebar can show a real "what did we talk about" hint.
+
+### Importers
+- `import-gmail --full` and `import-browser --full` ignore the
+  last-sync marker and refetch the full `--initial-days` window
+  (use with `--initial-days 36500` to backfill everything still
+  on the IMAP server / browser DB).
+
+### Schema migration
+- Idempotent migration in `init_db()`: adds `signal_score`,
+  `user_signal`, `sender`, `sender_domain` columns to `records`
+  and creates the `learning_rules` table. Existing databases
+  upgrade in place; no manual step required.
+
 ## [0.3.3] - 2026-06-16
 
 The "works on a clean Mac" release. Self-contained DMG, no Python
