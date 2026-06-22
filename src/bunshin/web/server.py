@@ -2,6 +2,7 @@
 import datetime
 import json
 import sqlite3
+import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
@@ -527,6 +528,9 @@ INDEX_HTML = """<!DOCTYPE html>
   .filter-row select:focus { outline: none; border-color: var(--accent-1); }
   .chips-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     padding: 5px 10px;
     background: var(--bg-1);
     border: 1px solid var(--border-2);
@@ -536,6 +540,8 @@ INDEX_HTML = """<!DOCTYPE html>
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   }
+  .filter-chip svg { color: var(--text-3); flex-shrink: 0; }
+  .filter-chip:hover svg, .filter-chip.active svg { color: var(--accent-2); }
   .filter-chip:hover { background: var(--bg-2); color: var(--text-1); }
   .filter-chip.active {
     background: var(--accent-soft);
@@ -545,6 +551,148 @@ INDEX_HTML = """<!DOCTYPE html>
   /* Dim source chips that have zero records in the current DB. */
   .filter-chip.chip-empty { opacity: 0.4; }
   .filter-chip.chip-empty:hover { opacity: 0.7; }
+
+  /* ── Inline SVG icon layout helpers (used everywhere) ── */
+  /* Settings section headers: "<icon> Backup" etc. */
+  .settings-section h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .settings-section h2 .h2-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--accent-2);
+  }
+  /* Timeline source pills (used inside timeline day cards) */
+  .src-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .src-pill svg { color: var(--text-3); flex-shrink: 0; }
+  /* Flashback source line: "<icon> Claude · 他 117 件" */
+  .fb-source svg { color: var(--text-3); margin-right: 2px; vertical-align: -2px; }
+  .flashback-result-meta svg { color: var(--text-3); margin-right: 3px; vertical-align: -2px; }
+  /* Mark / hide button — replaces the 🗑 emoji */
+  .card-hide-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* Learning-rule icon column */
+  .rule-row .rule-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-3);
+  }
+  /* Wizard warning banner: icon + body in a row */
+  .onboarding-content .step-warn {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .onboarding-content .step-warn .warn-icon {
+    flex-shrink: 0;
+    color: #c98000;
+    margin-top: 1px;
+  }
+  :root.theme-light .onboarding-content .step-warn .warn-icon { color: #b45309; }
+  /* Model recommendation banner (settings → chat → preferred model) */
+  .model-rec-loading {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--bg-2);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .model-rec {
+    margin-top: 8px;
+    padding: 12px 14px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-1);
+    border-radius: 8px;
+    font-size: 12.5px;
+    color: var(--text-1);
+  }
+  .model-rec-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    font-size: 13.5px;
+  }
+  .model-rec-head svg { color: var(--accent-2); flex-shrink: 0; }
+  .model-rec-head b { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .model-rec-ram { color: var(--text-3); font-size: 11.5px; margin-left: 4px; }
+  .model-rec-why { color: var(--text-2); font-size: 12px; margin-bottom: 8px; }
+  .model-rec-installed {
+    display: flex; align-items: center; gap: 5px;
+    color: #5fbf6f;
+    font-size: 11.5px;
+  }
+  .model-rec-install {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--text-2);
+    flex-wrap: wrap;
+  }
+  .model-rec-install code {
+    background: var(--bg-0);
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border-1);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+  }
+  .copy-btn-mini {
+    background: transparent;
+    border: 1px solid var(--border-2);
+    color: var(--text-3);
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s;
+  }
+  .copy-btn-mini:hover { background: var(--bg-2); color: var(--text-1); }
+
+  /* Inline tip icon (used in chat empty state, settings tips, etc.) */
+  .inline-tip-icon {
+    width: 13px;
+    height: 13px;
+    color: #c98000;
+    vertical-align: -2px;
+    margin-right: 4px;
+    flex-shrink: 0;
+  }
+  :root.theme-light .inline-tip-icon { color: #b45309; }
+  /* Wizard tip bullets in the final step */
+  .onboarding-content .step-tips {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0 0;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .onboarding-content .step-tips li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 4px 0;
+    line-height: 1.6;
+  }
+  .onboarding-content .step-tips li svg {
+    flex-shrink: 0;
+    margin-top: 3px;
+    color: #c98000;
+  }
+  :root.theme-light .onboarding-content .step-tips li svg { color: #b45309; }
 
   /* ── Flashback widget (Bunshin's signature daily reminder) ── */
   .flashback-section {
@@ -863,6 +1011,163 @@ INDEX_HTML = """<!DOCTYPE html>
   .learning-dashboard .reset-btn:hover { background: #2a0a0a; color: #fff; }
   :root.theme-light .learning-dashboard .reset-btn { border-color: #d4a3a3; color: #b03030; }
   :root.theme-light .learning-dashboard .reset-btn:hover { background: #fbeaea; }
+
+  /* ── Onboarding Wizard ── */
+  .onboarding-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 12, 20, 0.85);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+  :root.theme-light .onboarding-overlay { background: rgba(255,255,255,0.85); }
+  .onboarding-modal {
+    background: var(--bg-1);
+    border: 1px solid var(--border-2);
+    border-radius: 16px;
+    padding: 32px 36px 24px;
+    width: min(560px, 92vw);
+    max-height: 88vh;
+    overflow-y: auto;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .onboarding-dots {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+  }
+  .onboarding-dot {
+    width: 28px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border-2);
+    transition: background 0.2s;
+  }
+  .onboarding-dot.active { background: var(--accent-1); }
+  .onboarding-dot.done   { background: var(--accent-2); opacity: 0.6; }
+  .onboarding-content { min-height: 240px; }
+  .onboarding-content h2 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 4px 0 4px;
+    color: var(--text-1);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .onboarding-content .step-label {
+    font-size: 11px;
+    color: var(--accent-2);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+  .onboarding-content .step-body {
+    font-size: 14px;
+    color: var(--text-2);
+    line-height: 1.7;
+    margin: 10px 0 14px;
+  }
+  .onboarding-content .step-cmd {
+    background: var(--bg-0);
+    border: 1px solid var(--border-1);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+    color: var(--text-1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+  }
+  .onboarding-content .step-cmd code { flex: 1; word-break: break-all; }
+  .onboarding-content .step-cmd .copy-btn {
+    background: transparent;
+    border: 1px solid var(--border-2);
+    color: var(--text-3);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s;
+  }
+  .onboarding-content .step-cmd .copy-btn:hover { background: var(--bg-2); color: var(--text-1); }
+  .onboarding-content .step-cmd .copy-btn.copied {
+    color: var(--accent-2);
+    border-color: var(--accent-1);
+  }
+  .onboarding-content .step-warn {
+    background: rgba(234, 179, 8, 0.08);
+    border-left: 3px solid #facc15;
+    padding: 9px 12px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    color: var(--text-2);
+    margin: 10px 0;
+    line-height: 1.6;
+  }
+  :root.theme-light .onboarding-content .step-warn {
+    background: #fef9c3;
+    color: #713f12;
+  }
+  .onboarding-content .step-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    margin: 12px 0;
+  }
+  .onboarding-content .step-stat {
+    background: var(--bg-2);
+    padding: 10px 12px;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .onboarding-content .step-stat .num {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-1);
+    display: block;
+  }
+  .onboarding-content .step-stat .label {
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .onboarding-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-1);
+  }
+  .onboarding-skip, .onboarding-back, .onboarding-next {
+    padding: 8px 16px;
+    border-radius: 7px;
+    border: 1px solid var(--border-2);
+    background: transparent;
+    color: var(--text-2);
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .onboarding-skip:hover, .onboarding-back:hover { background: var(--bg-2); color: var(--text-1); }
+  .onboarding-next {
+    background: var(--accent-1);
+    border-color: var(--accent-1);
+    color: #fff;
+    font-weight: 500;
+  }
+  .onboarding-next:hover { filter: brightness(1.1); }
 
   /* Hidden-count chip in the header stats */
   .stats .hidden-chip {
@@ -1336,7 +1641,7 @@ INDEX_HTML = """<!DOCTYPE html>
     background: rgba(129,140,248,0.22);
     color: var(--text-1);
   }
-  .file-mention::before { content: "📄 "; opacity: 0.7; }
+  .file-mention::before { content: "· "; opacity: 0.6; }
   /* Tone down the [assistant] [user] [tool_use:...] markers that
      come out of the Claude transcript — they're useful structure
      but were dominating the page visually. */
@@ -1360,23 +1665,139 @@ INDEX_HTML = """<!DOCTYPE html>
   /* Welcome / onboarding state shown when the DB is nearly empty. */
   .welcome {
     background: var(--bg-1);
-    border: 1px solid #252525;
-    border-radius: 10px;
-    padding: 24px 28px;
+    border: 1px solid var(--border-1);
+    border-radius: 14px;
+    padding: 32px 36px;
     margin-top: 18px;
     color: var(--text-2);
   }
+  .welcome-hero {
+    text-align: center;
+    padding: 12px 0 24px;
+    border-bottom: 1px solid var(--border-1);
+    margin-bottom: 24px;
+  }
+  .welcome-icon-big {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-2);
+    margin-bottom: 14px;
+  }
   .welcome h2 {
     margin: 0 0 10px 0;
-    font-size: 18px;
-    color: #fff;
+    font-size: 22px;
+    color: var(--text-1);
     font-weight: 600;
+    letter-spacing: -0.01em;
   }
   .welcome p {
-    margin: 0 0 16px 0;
-    color: var(--text-3);
+    margin: 0 0 12px 0;
+    color: var(--text-2);
     font-size: 14px;
+    line-height: 1.7;
+  }
+  .welcome-tagline {
+    max-width: 520px;
+    margin: 0 auto !important;
+    color: var(--text-3) !important;
+  }
+  .welcome-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .welcome-step {
+    display: flex;
+    gap: 16px;
+    padding: 16px 18px;
+    border: 1px solid var(--border-1);
+    border-radius: 10px;
+    background: var(--bg-0);
+    align-items: flex-start;
+  }
+  .welcome-step.welcome-step-action {
+    border-color: var(--accent-1);
+    background: var(--accent-soft);
+  }
+  .welcome-step-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--bg-2);
+    color: var(--text-2);
+    font-weight: 600;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .welcome-step-action .welcome-step-num {
+    background: var(--accent-1);
+    color: #fff;
+  }
+  .welcome-step-body { flex: 1; }
+  .welcome-step-body h3 {
+    margin: 2px 0 6px;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+  .welcome-step-body p {
+    margin: 0 0 10px;
+    font-size: 13px;
     line-height: 1.6;
+    color: var(--text-3);
+  }
+  .welcome-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 1px solid var(--border-2);
+    background: transparent;
+    color: var(--text-1);
+    border-radius: 7px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .welcome-btn:hover { background: var(--bg-2); border-color: var(--accent-1); }
+  .welcome-btn-primary {
+    background: var(--accent-1);
+    border-color: var(--accent-1);
+    color: #fff;
+  }
+  .welcome-btn-primary:hover { filter: brightness(1.1); background: var(--accent-1); }
+  .welcome-tips {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-1);
+  }
+  .welcome-tips p {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 4px 0 !important;
+    font-size: 12.5px !important;
+    color: var(--text-3) !important;
+    line-height: 1.6;
+  }
+  .welcome-tips p svg { flex-shrink: 0; margin-top: 3px; color: #c98000; }
+  :root.theme-light .welcome-tips p svg { color: #b45309; }
+  .welcome-tips code {
+    background: var(--bg-2);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11.5px;
   }
   .welcome .cmd-list {
     margin: 0;
@@ -2437,8 +2858,10 @@ INDEX_HTML = """<!DOCTYPE html>
   .settings-save-bar {
     position: sticky;
     bottom: 0;
-    background: linear-gradient(to top, #0a0a0a 60%, transparent);
-    padding: 16px 0 0;
+    background: var(--bg-0);
+    border-top: 1px solid var(--border-1);
+    padding: 14px 0 14px;
+    margin-top: 16px;
     display: flex;
     justify-content: flex-end;
     gap: 12px;
@@ -2564,18 +2987,18 @@ INDEX_HTML = """<!DOCTYPE html>
     <div class="filter-row">
       <span>ソース:</span>
       <div class="chips-row" id="sources">
-        <span class="filter-chip active" data-source="">全部</span>
-        <span class="filter-chip" data-source="claude">💬 Claude</span>
-        <span class="filter-chip" data-source="gmail">📧 Gmail</span>
-        <span class="filter-chip" data-source="file">📄 ファイル</span>
-        <span class="filter-chip" data-source="manual">📝 メモ</span>
-        <span class="filter-chip" data-source="calendar">📅 予定</span>
-        <span class="filter-chip" data-source="line">💬 LINE</span>
-        <span class="filter-chip" data-source="browser">🌐 ブラウザ</span>
-        <span class="filter-chip" data-source="notes">📓 メモ帳</span>
-        <span class="filter-chip" data-source="imessage">💌 iMessage</span>
-        <span class="filter-chip" data-source="photos_app">📸 写真ライブラリ</span>
-        <span class="filter-chip" data-source="photo">📷 写真OCR</span>
+        <span class="filter-chip active" data-source="" data-label="全部">全部</span>
+        <span class="filter-chip" data-source="claude" data-label="Claude">Claude</span>
+        <span class="filter-chip" data-source="gmail" data-label="Gmail">Gmail</span>
+        <span class="filter-chip" data-source="file" data-label="ファイル">ファイル</span>
+        <span class="filter-chip" data-source="manual" data-label="メモ">メモ</span>
+        <span class="filter-chip" data-source="calendar" data-label="予定">予定</span>
+        <span class="filter-chip" data-source="line" data-label="LINE">LINE</span>
+        <span class="filter-chip" data-source="browser" data-label="ブラウザ">ブラウザ</span>
+        <span class="filter-chip" data-source="notes" data-label="メモ帳">メモ帳</span>
+        <span class="filter-chip" data-source="imessage" data-label="iMessage">iMessage</span>
+        <span class="filter-chip" data-source="photos_app" data-label="写真ライブラリ">写真ライブラリ</span>
+        <span class="filter-chip" data-source="photo" data-label="写真OCR">写真OCR</span>
       </div>
     </div>
 
@@ -2681,7 +3104,8 @@ INDEX_HTML = """<!DOCTYPE html>
           <div class="empty">
             分身（Bunshin）は、過去のあなたを全部読んでいます。<br>
             気になることを聞いてみてください。<br><br>
-            💡 「<b>覚えといて: 来週火曜10時に漁協ミーティング</b>」のように<br>
+            <svg class="inline-tip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
+            「<b>覚えといて: 来週火曜10時に漁協ミーティング</b>」のように<br>
             先頭に <code>覚えといて:</code> や <code>メモ:</code> を付けると、AI に聞かずに記憶に保存だけします。
           </div>
         </div>
@@ -2743,6 +3167,22 @@ INDEX_HTML = """<!DOCTYPE html>
   <span class="undo-countdown" id="undo-countdown">5</span>
 </div>
 
+<!-- ===== Onboarding Wizard (shown only on first launch with empty DB) ===== -->
+<div class="onboarding-overlay" id="onboarding-overlay" style="display:none;">
+  <div class="onboarding-modal">
+    <div class="onboarding-dots" id="onboarding-dots"></div>
+    <div class="onboarding-content" id="onboarding-content">
+      <!-- step body rendered by JS -->
+    </div>
+    <div class="onboarding-footer">
+      <button class="onboarding-skip" id="onboarding-skip">スキップ</button>
+      <div style="flex:1;"></div>
+      <button class="onboarding-back" id="onboarding-back" style="display:none;">← 戻る</button>
+      <button class="onboarding-next" id="onboarding-next">次へ →</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ===== Theme (dark / light) — applied before anything else so the page
 // doesn't briefly flash the wrong palette. =====
@@ -2769,6 +3209,72 @@ INDEX_HTML = """<!DOCTYPE html>
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; };
+
+// ===== Icon library (inline SVG, Feather/Lucide-style, currentColor) =====
+// Replaces every emoji in the UI with a real outline icon so Bunshin
+// reads as a tool, not a chat-thread. All icons share viewBox 24x24 +
+// stroke=2 + round joins, and inherit color from the parent.
+const _ICON_PATHS = {
+  message:    '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
+  'message-square': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  mail:       '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+  'file-text':'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>',
+  edit:       '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  calendar:   '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  globe:      '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  notebook:   '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+  image:      '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+  camera:     '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  sparkles:   '<path d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"/>',
+  lightbulb:  '<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>',
+  lock:       '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  'alert-triangle': '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  trash:      '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1.5 14.5a2 2 0 0 1-2 1.5h-7a2 2 0 0 1-2-1.5L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+  star:       '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  brain:      '<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3 2.5 2.5 0 0 1 2.46-2.04Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3 2.5 2.5 0 0 0-2.46-2.04Z"/>',
+  download:   '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  archive:    '<polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/>',
+  clock:      '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  check:      '<polyline points="20 6 9 17 4 12"/>',
+  plus:       '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  database:   '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+  search:     '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  hash:       '<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>',
+  link:       '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  settings:   '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  layers:     '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+  newspaper:  '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8z"/>',
+  flame:      '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  eye:        '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  folder:     '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+  tool:       '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+  mic:        '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>',
+  bell:       '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+  'check-circle': '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  flag:       '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
+};
+
+function icon(name, size) {
+  const path = _ICON_PATHS[name];
+  if (!path) return '';
+  const s = size || 16;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+}
+
+// Source-type → icon name. Used by source chips, search results, flashback cards.
+const SOURCE_ICON_NAME = {
+  claude:     'message',
+  gmail:      'mail',
+  file:       'file-text',
+  manual:     'edit',
+  calendar:   'calendar',
+  line:       'message-square',
+  browser:    'globe',
+  notes:      'notebook',
+  imessage:   'message-square',
+  photos_app: 'image',
+  photo:      'camera',
+};
 
 // ===== Sidebar tabs =====
 const PANE_TITLES = {
@@ -2804,16 +3310,16 @@ let settingsSchemaCache = null;
 let settingsCurrent = {};
 
 const SECTION_TITLES = {
-  notifications: { ja: '🔔 通知', en: 'Notifications' },
-  search:        { ja: '🔍 検索',  en: 'Search' },
-  chat:          { ja: '💬 チャット', en: 'Chat' },
-  ingestion:     { ja: '📥 取り込み', en: 'Ingestion' },
+  notifications: { ja: '通知',    en: 'Notifications', icon: 'bell' },
+  search:        { ja: '検索',    en: 'Search',        icon: 'search' },
+  chat:          { ja: 'チャット', en: 'Chat',          icon: 'message' },
+  ingestion:     { ja: '取り込み', en: 'Ingestion',     icon: 'download' },
 };
 
 function renderBackupPanel() {
   return `
     <div class="settings-section" id="backup-section">
-      <h2>💾 バックアップ</h2>
+      <h2><span class="h2-icon">${icon('archive', 18)}</span> バックアップ</h2>
       <div class="settings-field" style="grid-template-columns: 1fr 220px;">
         <div>
           <div class="settings-label">DB のバックアップ</div>
@@ -2830,7 +3336,7 @@ function renderBackupPanel() {
 function renderExportPanel() {
   return `
     <div class="settings-section">
-      <h2>📤 エクスポート</h2>
+      <h2><span class="h2-icon">${icon('download', 18)}</span> エクスポート</h2>
       <div class="settings-field" style="grid-template-columns: 1fr 220px;">
         <div>
           <div class="settings-label">記憶を持ち出す</div>
@@ -2844,10 +3350,113 @@ function renderExportPanel() {
     </div>`;
 }
 
+function renderSchedulerPanel() {
+  return `
+    <div class="settings-section">
+      <h2><span class="h2-icon">${icon('clock', 18)}</span> 自動取り込み</h2>
+      <div class="settings-field" style="grid-template-columns: 1fr 220px;">
+        <div>
+          <div class="settings-label">1 時間ごとに自動更新</div>
+          <div class="settings-help">
+            ターミナル不要。Bunshin が裏で Claude 会話・ファイル・Gmail を取り込み続けます。
+            <br>Mac のログイン時に自動起動 (macOS では launchd を使用)。
+          </div>
+          <div id="scheduler-status" style="margin-top:8px;font-size:12px;color:var(--text-3);">状態確認中…</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+          <label class="settings-toggle" id="scheduler-toggle-wrap">
+            <input type="checkbox" id="scheduler-toggle">
+            <span class="knob"></span>
+          </label>
+          <button class="settings-save-btn" id="scheduler-run-now" style="background:var(--bg-2);color:var(--text-1);font-size:12px;padding:6px 14px;">今すぐ更新</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function loadSchedulerStatus() {
+  const statusEl = $('scheduler-status');
+  const toggle = $('scheduler-toggle');
+  const wrap = $('scheduler-toggle-wrap');
+  if (!statusEl || !toggle) return;
+  try {
+    const j = await (await fetch('/api/scheduler/status')).json();
+    const isInstalled = !!j.installed;
+    toggle.checked = isInstalled;
+    if (wrap) wrap.classList.toggle('on', isInstalled);
+    if (isInstalled) {
+      statusEl.innerHTML = `${icon('check-circle', 12)} 有効 — ${esc(j.path || '')}`;
+      statusEl.style.color = '#5fbf6f';
+      statusEl.style.display = 'flex';
+      statusEl.style.alignItems = 'center';
+      statusEl.style.gap = '4px';
+    } else {
+      statusEl.textContent = '未設定 — トグルで有効化';
+      statusEl.style.color = 'var(--text-3)';
+    }
+  } catch (e) {
+    statusEl.textContent = '状態取得エラー: ' + e;
+  }
+}
+
+function wireSchedulerPanel() {
+  const wrap = $('scheduler-toggle-wrap');
+  const toggle = $('scheduler-toggle');
+  const runNow = $('scheduler-run-now');
+  const statusEl = $('scheduler-status');
+  if (!toggle || !wrap) return;
+
+  wrap.addEventListener('click', async (ev) => {
+    // The wrapper handles clicks (knob is visual only).
+    ev.preventDefault();
+    const turningOn = !toggle.checked;
+    toggle.checked = turningOn;
+    wrap.classList.toggle('on', turningOn);
+    statusEl.textContent = turningOn ? '有効化中…' : '無効化中…';
+    statusEl.style.color = 'var(--text-3)';
+    try {
+      const url = turningOn ? '/api/scheduler/install' : '/api/scheduler/uninstall';
+      const r = await fetch(url, {method: 'POST'});
+      const j = await r.json();
+      if (!j.ok) {
+        statusEl.textContent = 'エラー: ' + (j.message || '不明');
+        statusEl.style.color = '#f87171';
+        // Revert the toggle since the operation failed.
+        toggle.checked = !turningOn;
+        wrap.classList.toggle('on', !turningOn);
+        return;
+      }
+      loadSchedulerStatus();
+    } catch (e) {
+      statusEl.textContent = 'エラー: ' + e;
+      statusEl.style.color = '#f87171';
+    }
+  });
+
+  if (runNow) {
+    runNow.addEventListener('click', async () => {
+      runNow.disabled = true;
+      runNow.textContent = '実行中…';
+      try {
+        const r = await fetch('/api/scheduler/run-now', {method: 'POST'});
+        const j = await r.json();
+        runNow.textContent = j.ok ? '✓ 開始しました' : 'エラー';
+        setTimeout(() => {
+          runNow.textContent = '今すぐ更新';
+          runNow.disabled = false;
+        }, 3000);
+      } catch (e) {
+        runNow.textContent = 'エラー';
+        runNow.disabled = false;
+      }
+    });
+  }
+}
+
 function renderLearningDashboard() {
   return `
     <div class="settings-section">
-      <h2>🧠 学習</h2>
+      <h2><span class="h2-icon">${icon('brain', 18)}</span> 学習</h2>
       <div class="learning-dashboard">
         <h3>あなたが Bunshin に教えたこと</h3>
         <p class="desc">「要らない」マークした記録から学習したルール。クリックで取り消せます。</p>
@@ -2869,18 +3478,18 @@ async function refreshLearningRules() {
     const j = await (await fetch('/api/learning/rules')).json();
     const rules = j.rules || [];
     if (!rules.length) {
-      root.innerHTML = '<div style="font-size:12px;color:var(--text-4);padding:6px 0;">まだ何も学習していません。フラッシュバックや検索結果のカードの 🗑 を押すと、ここに記録されます。</div>';
+      root.innerHTML = '<div style="font-size:12px;color:var(--text-4);padding:6px 0;">まだ何も学習していません。フラッシュバックや検索結果のカードの「要らない」ボタンを押すと、ここに記録されます。</div>';
       return;
     }
     root.innerHTML = rules.map(r => {
-      const icon = r.action === 'hide' ? '🗑' : '⭐';
+      const iconHtml = icon(r.action === 'hide' ? 'trash' : 'star', 14);
       const typeLabel = r.rule_type === 'sender' ? '送信者'
                        : r.rule_type === 'domain' ? 'ドメイン'
                        : '記録単体';
       const date = new Date(r.created_at * 1000).toLocaleDateString('ja-JP');
       return `
         <div class="rule-row">
-          <span class="rule-icon">${icon}</span>
+          <span class="rule-icon">${iconHtml}</span>
           <span class="rule-type-badge">${esc(typeLabel)}</span>
           <span class="rule-pattern">${esc(r.pattern)}</span>
           <span class="rule-count">${r.applied_count.toLocaleString()}件・${esc(date)}</span>
@@ -2902,6 +3511,81 @@ async function refreshLearningRules() {
     });
   } catch (e) {
     root.innerHTML = '<div style="font-size:12px;color:#f87171;">読み込み失敗</div>';
+  }
+}
+
+async function loadModelRecommendation() {
+  const el = $('model-rec');
+  const selectEl = $('chat-model-select');
+  if (!el && !selectEl) return;
+  try {
+    const j = await (await fetch('/api/system/recommend-model')).json();
+    const ram = j.ram_gb || 0;
+    const model = j.recommended;
+    const why = j.recommended_why || '';
+    const installed = j.is_installed;
+    const installCmd = `ollama pull ${model}`;
+
+    // ---- Populate the model dropdown ----
+    if (selectEl) {
+      const current = selectEl.value || 'auto';
+      const ladder = j.ladder || [];
+      const installedSet = new Set(j.installed || []);
+      // Build options: auto + every ladder model + current (if it's a
+      // custom name the user typed in by hand). Mark each with status.
+      const seen = new Set();
+      const opts = [];
+      opts.push({value: 'auto', label: 'auto（自動選択 — おすすめ）', status: 'auto'});
+      for (const t of ladder) {
+        const isRec = t.model === j.recommended;
+        const isInstalled = installedSet.has(t.model);
+        let suffix = '';
+        if (isRec && isInstalled) suffix = '  ★ 推奨・インストール済み';
+        else if (isRec) suffix = '  ★ 推奨（未ダウンロード）';
+        else if (isInstalled) suffix = '  ✓ インストール済み';
+        else suffix = '  · 未ダウンロード';
+        opts.push({value: t.model, label: `${t.model}  —  ${t.headline}${suffix}`});
+        seen.add(t.model);
+      }
+      // If the current value is a custom model name not in the ladder, keep it as an option.
+      if (current && !seen.has(current) && current !== 'auto') {
+        opts.unshift({value: current, label: `${current}  （カスタム）`});
+      }
+      selectEl.innerHTML = opts
+        .map(o => `<option value="${esc(o.value)}" ${o.value === current ? 'selected' : ''}>${esc(o.label)}</option>`)
+        .join('');
+    }
+
+    if (!el) return;
+    el.classList.remove('model-rec-loading');
+    el.classList.add('model-rec');
+    el.innerHTML = `
+      <div class="model-rec-head">
+        ${icon('sparkles', 14)}
+        <span><b>${esc(model)}</b> がおすすめ</span>
+        <span class="model-rec-ram">（${ram} GB RAM）</span>
+      </div>
+      <div class="model-rec-why">${esc(why)}</div>
+      ${installed
+        ? `<div class="model-rec-installed">${icon('check-circle', 12)} ダウンロード済み — そのまま使えます</div>`
+        : `<div class="model-rec-install">
+            <span>未ダウンロード:</span>
+            <code>${esc(installCmd)}</code>
+            <button class="copy-btn-mini" data-copy="${esc(installCmd)}">コピー</button>
+          </div>`}
+    `;
+    // Wire copy button
+    const btn = el.querySelector('.copy-btn-mini');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+          btn.textContent = '✓';
+          setTimeout(() => { btn.textContent = 'コピー'; }, 1500);
+        });
+      });
+    }
+  } catch (e) {
+    el.style.display = 'none';
   }
 }
 
@@ -3009,14 +3693,19 @@ async function loadSettings() {
 
     let html = '';
     for (const section of Object.keys(bySection)) {
-      const title = (SECTION_TITLES[section] || { ja: section }).ja;
-      html += `<div class="settings-section"><h2>${esc(title)}</h2>`;
+      const meta = SECTION_TITLES[section] || { ja: section, icon: null };
+      const iconHtml = meta.icon ? `<span class="h2-icon">${icon(meta.icon, 18)}</span> ` : '';
+      html += `<div class="settings-section"><h2>${iconHtml}${esc(meta.ja)}</h2>`;
       for (const [key, meta] of bySection[section]) {
         const current = settingsCurrent[key];
+        const extra = key === 'chat_preferred_model'
+          ? '<div id="model-rec" class="model-rec-loading">あなたの Mac に最適なモデルを判定中…</div>'
+          : '';
         html += `<div class="settings-field">
           <div>
             <div class="settings-label">${esc(meta.label_ja || key)}</div>
             <div class="settings-help">${esc(meta.help_ja || '')}</div>
+            ${extra}
           </div>
           <div>${renderSettingControl(key, meta, current)}</div>
         </div>`;
@@ -3028,6 +3717,7 @@ async function loadSettings() {
       <button class="settings-save-btn" id="settings-save-btn">保存</button>
     </div>`;
     // Extra panels that don't fit the schema-driven flow.
+    html += renderSchedulerPanel();
     html += renderBackupPanel();
     html += renderExportPanel();
     html += renderLearningDashboard();
@@ -3035,6 +3725,9 @@ async function loadSettings() {
     settingsLoaded = true;
     wireBackupPanel();
     wireLearningDashboard();
+    wireSchedulerPanel();
+    loadModelRecommendation();
+    loadSchedulerStatus();
 
     // Attach toggle behaviour
     root.querySelectorAll('.settings-toggle').forEach(el => {
@@ -3062,6 +3755,13 @@ async function loadSettings() {
 }
 
 function renderSettingControl(key, meta, current) {
+  // Chat model field gets a dynamic dropdown — populated in
+  // loadModelRecommendation() once we know which models are installed.
+  if (key === 'chat_preferred_model') {
+    return `<select class="settings-input" data-key="${esc(key)}" id="chat-model-select">
+      <option value="${esc(current || 'auto')}" selected>${esc(current || 'auto')}</option>
+    </select>`;
+  }
   if (meta.type === 'bool') {
     const on = current ? 'on' : '';
     return `<label class="settings-toggle ${on}">
@@ -3178,7 +3878,7 @@ function renderEntityDetailFromAPI(e, related) {
     </div>
     ${e.description ? `<div class="description">${esc(e.description)}</div>` : ''}
     <div class="section">
-      <h3>🔗 関連エンティティ（特異性スコア順）</h3>
+      <h3><span class="h3-icon">${icon('link', 14)}</span> 関連エンティティ（特異性スコア順）</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;">
         ${related.slice(0, 16).map(r => `
           <div class="entity-pill" data-id="${r.id}" style="margin:0;cursor:pointer;">
@@ -3453,7 +4153,7 @@ async function loadEntityDetail(entityId) {
     if (j.relations?.length) {
       html += `
         <div class="section">
-          <h3>🔗 関連エンティティ（特異性スコア順）</h3>
+          <h3><span class="h3-icon">${icon('link', 14)}</span> 関連エンティティ（特異性スコア順）</h3>
           <div class="hint" style="margin-bottom:12px;color:#888;font-size:12px;">
             ${esc(e.name)} と一緒に登場する記録ベース。特異性 = 「その相手が登場する記録のうち、${esc(e.name)} と一緒の割合」が高いほど真の関係性が強い。
           </div>
@@ -3531,8 +4231,8 @@ function renderTimelineDay(d) {
   const sources = Object.entries(d.sources)
     .sort((a,b) => b[1] - a[1])
     .map(([src, cnt]) => {
-      const icon = TIMELINE_SOURCE_ICONS[src] || '❓';
-      return `<span class="src-pill" data-src="${src}" data-date="${d.date}">${icon} ${cnt}</span>`;
+      const iconHtml = icon(SOURCE_ICON_NAME[src] || 'file-text', 13);
+      return `<span class="src-pill" data-src="${src}" data-date="${d.date}">${iconHtml} ${cnt}</span>`;
     }).join('');
   return `
     <div class="timeline-day" data-date="${d.date}">
@@ -3664,7 +4364,7 @@ async function loadInsights() {
     // LLM digest section first — shown only as a button, fetched on click.
     html += `
       <div class="insights-section">
-        <h2>📰 過去7日間のサマリ（AI 生成）</h2>
+        <h2><span class="h2-icon">${icon('newspaper', 18)}</span> 過去7日間のサマリ（AI 生成）</h2>
         <div id="digest-area">
           <button id="digest-btn" class="settings-save-btn" style="background:#3a5a8a;padding:8px 18px;font-size:13px;">
             AI でサマリを作成（30 秒〜2 分）
@@ -3674,7 +4374,7 @@ async function loadInsights() {
     `;
 
     if (j.setup_hints?.length) {
-      html += '<div class="insights-section"><h2>🛠 セットアップ案内</h2>';
+      html += `<div class="insights-section"><h2><span class="h2-icon">${icon('tool', 18)}</span> セットアップ案内</h2>`;
       for (const h of j.setup_hints) {
         html += `
           <div class="insights-card" style="border-left:3px solid #efaf4a;">
@@ -3685,7 +4385,7 @@ async function loadInsights() {
     }
 
     if (j.inactive_projects?.length) {
-      html += '<div class="insights-section"><h2>🔥 長期未活動プロジェクト</h2>';
+      html += `<div class="insights-section"><h2><span class="h2-icon">${icon('flame', 18)}</span> 長期未活動プロジェクト</h2>`;
       for (const p of j.inactive_projects) {
         html += `
           <div class="insights-card alert">
@@ -3698,7 +4398,7 @@ async function loadInsights() {
     }
 
     if (j.upcoming_events?.length) {
-      html += '<div class="insights-section"><h2>📅 直近の予定（14日以内）</h2>';
+      html += `<div class="insights-section"><h2><span class="h2-icon">${icon('calendar', 18)}</span> 直近の予定（14日以内）</h2>`;
       for (const e of j.upcoming_events) {
         const loc = e.location ? ` @ ${esc(e.location)}` : '';
         html += `
@@ -3712,9 +4412,9 @@ async function loadInsights() {
 
     if (j.recent_files?.length) {
       const watchInfo = j.watch_status?.exists
-        ? `<div style="font-size:11px;color:#5fbf6f;margin-bottom:8px;">👁 監視中: ${esc(j.watch_status.dir)}</div>`
+        ? `<div style="font-size:11px;color:#5fbf6f;margin-bottom:8px;display:flex;align-items:center;gap:6px;">${icon('eye', 12)}<span>監視中: ${esc(j.watch_status.dir)}</span></div>`
         : '';
-      html += '<div class="insights-section"><h2>📁 最近変更されたファイル</h2>' + watchInfo;
+      html += `<div class="insights-section"><h2><span class="h2-icon">${icon('folder', 18)}</span> 最近変更されたファイル</h2>` + watchInfo;
       for (const f of j.recent_files) {
         html += `
           <div class="insights-card" style="border-left:3px solid #4a8fef;">
@@ -3726,7 +4426,7 @@ async function loadInsights() {
     }
 
     if (j.recent_notes?.length) {
-      html += '<div class="insights-section"><h2>📝 直近の手動メモ</h2>';
+      html += `<div class="insights-section"><h2><span class="h2-icon">${icon('edit', 18)}</span> 直近の手動メモ</h2>`;
       for (const n of j.recent_notes) {
         html += `
           <div class="insights-card note">
@@ -3738,7 +4438,7 @@ async function loadInsights() {
     }
 
     if (j.pending_questions?.length) {
-      html += '<div class="insights-section"><h2>❓ 直近1週間で未回答の質問</h2>';
+      html += `<div class="insights-section"><h2><span class="h2-icon">${icon('search', 18)}</span> 直近1週間で未回答の質問</h2>`;
       for (const q of j.pending_questions) {
         html += `
           <div class="insights-card pending">
@@ -3816,16 +4516,20 @@ async function loadStats() {
 }
 
 // Annotate each source chip with its record count so users see the
-// breadth of memory at a glance — "📷 写真 (2,725)".
+// breadth of memory at a glance — "[mail-icon] Gmail (1,660)".
 function updateSourceChipCounts(sources) {
   document.querySelectorAll('#sources .filter-chip').forEach(chip => {
     const src = chip.dataset.source;
-    if (!src) return; // "全部" chip has no source filter
-    // Cache the label-without-count once so repeated calls don't double-append.
-    if (!chip.dataset.baseLabel) chip.dataset.baseLabel = chip.textContent.trim();
-    const base = chip.dataset.baseLabel;
+    const label = chip.dataset.label || chip.textContent.trim();
+    if (!src) {
+      // "全部" chip: just the label, no icon.
+      chip.innerHTML = label;
+      return;
+    }
+    const iconName = SOURCE_ICON_NAME[src] || 'file-text';
     const count = sources[src] || 0;
-    chip.textContent = count ? `${base} (${count.toLocaleString()})` : base;
+    const countTxt = count ? ` (${count.toLocaleString()})` : '';
+    chip.innerHTML = `${icon(iconName, 13)}<span>${label}${countTxt}</span>`;
     chip.classList.toggle('chip-empty', !count);
   });
 }
@@ -3838,46 +4542,75 @@ function renderEmptyState(stats) {
     : stats; // backwards-compat: callers might still pass a number
   // Welcome / onboarding for fresh installs and almost-empty DBs
   if (totalRecords !== null && totalRecords < 200) {
+    const count = totalRecords ? totalRecords.toLocaleString() : '0';
     el.outerHTML = `
       <div class="welcome" id="search-empty-state">
-        <h2>🌀 ようこそ、分身（Bunshin）へ</h2>
-        <p>
-          記録が ${totalRecords ? totalRecords.toLocaleString() + ' 件' : 'まだありません'}。
-          まず取り込んで、それから検索できるようにします。
-          ターミナルで以下のコマンドを 1 つずつ実行してください：
-        </p>
-        <ul class="cmd-list">
-          <li>
-            <span class="label">Claude Code / Desktop の会話履歴</span>
-            <code>bunshin import-claude</code>
-          </li>
-          <li>
-            <span class="label">Apple メモ (Notes.app)</span>
-            <code>bunshin import-notes</code>
-          </li>
-          <li>
-            <span class="label">Markdown / PDF / DOCX ファイル</span>
-            <code>bunshin import-files ~/Documents</code>
-          </li>
-          <li>
-            <span class="label">ブラウザ履歴 (Safari / Chrome / Arc)</span>
-            <code>bunshin import-browser</code>
-          </li>
-          <li>
-            <span class="label">写真ライブラリ (Photos.app)</span>
-            <code>bunshin import-photos-app</code>
-          </li>
-          <li>
-            <span class="label">取り込んだら検索可能にする</span>
-            <code>bunshin embed</code>
-          </li>
-        </ul>
-        <div class="footnote">
-          💡 Gmail / カレンダー / Ollama (オフラインチャット) は <strong>⚙ 設定タブ</strong> から繋げられます。<br>
-          💡 セットアップ全体の診断は <code>bunshin doctor</code> 。<br>
-          💡 詳しい説明は <a href="https://github.com/Marine923/bunshin-ai/blob/main/docs/SETUP.md" target="_blank">セットアップガイド</a>。
+        <div class="welcome-hero">
+          <div class="welcome-icon-big">${icon('sparkles', 36)}</div>
+          <h2>今日から、あなたの記憶が育ち始めます</h2>
+          <p class="welcome-tagline">
+            ${totalRecords > 0
+              ? `すでに <b>${count}</b> 件の記憶が集まっています。あと少しで Bunshin はあなたの "もう一人の自分" になります。`
+              : `Bunshin は、あなたの過去の記憶を集めて、いつでも思い出させてくれる AI です。<br>最初の一歩から始めましょう。`}
+          </p>
+        </div>
+
+        <div class="welcome-steps">
+          <div class="welcome-step welcome-step-action">
+            <div class="welcome-step-num">1</div>
+            <div class="welcome-step-body">
+              <h3>5 分で全部つなぐ</h3>
+              <p>ウィザードに沿って Gmail・写真・メモを取り込み。最初の数千件があっという間に揃います。</p>
+              <button class="welcome-btn welcome-btn-primary" id="welcome-open-wizard">
+                ${icon('sparkles', 14)}<span>ウィザードを開く</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="welcome-step">
+            <div class="welcome-step-num">2</div>
+            <div class="welcome-step-body">
+              <h3>チャットで最初の記憶を保存</h3>
+              <p>「<code>覚えといて: 今日の出来事</code>」とチャットに書くだけ。AI に聞かずに記憶だけが保存されます。</p>
+              <button class="welcome-btn" id="welcome-open-chat">
+                ${icon('message', 14)}<span>チャットを開く</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="welcome-step">
+            <div class="welcome-step-num">3</div>
+            <div class="welcome-step-body">
+              <h3>自動取り込みを ON</h3>
+              <p>毎時間バックグラウンドで Gmail・ファイルを自動取り込み。あとは Bunshin に任せて OK。</p>
+              <button class="welcome-btn" id="welcome-open-settings">
+                ${icon('settings', 14)}<span>設定タブを開く</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="welcome-tips">
+          <p>${icon('lightbulb', 13)}<span><b>あなたのデータはこの Mac から出ません。</b>AI モデルもローカルで動きます。</span></p>
+          <p>${icon('lightbulb', 13)}<span>古い Gmail も遡って取り込みたいときは <code>bunshin import-gmail --full</code></span></p>
+          <p>${icon('lightbulb', 13)}<span>詳しい説明は <a href="https://github.com/Marine923/bunshin-ai/blob/main/docs/SETUP.md" target="_blank">セットアップガイド</a>。</span></p>
         </div>
       </div>`;
+    // Wire the welcome action buttons.
+    setTimeout(() => {
+      const w = $('welcome-open-wizard');
+      const c = $('welcome-open-chat');
+      const s = $('welcome-open-settings');
+      if (w) w.addEventListener('click', () => openOnboarding(true));
+      if (c) c.addEventListener('click', () => {
+        const tab = document.querySelector('.sidebar-tab[data-pane="chat"]');
+        if (tab) tab.click();
+      });
+      if (s) s.addEventListener('click', () => {
+        const tab = document.querySelector('.sidebar-tab[data-pane="settings"]');
+        if (tab) tab.click();
+      });
+    }, 30);
   } else {
     const year = (stats && stats.oldest_ts) ? new Date(stats.oldest_ts * 1000).getFullYear() : null;
     el.outerHTML = `
@@ -3922,18 +4655,18 @@ async function loadFlashback() {
             <div class="fb-empty">この日は静かでした</div>
           </div>`;
       }
-      const icon = TIMELINE_SOURCE_ICONS[it.source] || '📄';
+      const iconHtml = icon(SOURCE_ICON_NAME[it.source] || 'file-text', 13);
       const label = FLASHBACK_SOURCE_LABEL[it.source] || it.source;
       const more = (w.total_count || 1) - 1;
       const sender = it.sender || '';
       const domain = it.domain || '';
       return `
         <div class="flashback-card" data-date="${esc(w.date)}" data-id="${esc(it.id)}" data-sender="${esc(sender)}" data-domain="${esc(domain)}">
-          <button class="card-hide-btn" title="この記録は要らない" aria-label="非表示">🗑</button>
+          <button class="card-hide-btn" title="この記録は要らない" aria-label="非表示">${icon('trash', 14)}</button>
           <div class="fb-when">${esc(w.label_ja)}</div>
           <div class="fb-date">${esc(w.date)} (${esc(w.weekday)})</div>
           <div class="fb-preview">${esc(it.content)}</div>
-          <div class="fb-source">${icon} ${esc(label)}${more > 0 ? ` · 他 ${more} 件` : ''}</div>
+          <div class="fb-source">${iconHtml} ${esc(label)}${more > 0 ? ` · 他 ${more} 件` : ''}</div>
         </div>`;
     }).join('');
     // Card body → drill-down by date; trash button → mark modal.
@@ -3984,7 +4717,7 @@ function runDateSearch(fromTs, toTs, dateStr) {
           <span>${esc(dateStr)} の記録 (${j.results.length}件)</span>
         </div>
         ` + j.results.map(r => {
-          const icon = TIMELINE_SOURCE_ICONS[r.source] || '📄';
+          const iconHtml = icon(SOURCE_ICON_NAME[r.source] || 'file-text', 13);
           const label = FLASHBACK_SOURCE_LABEL[r.source] || r.source;
           const time = new Date((r.timestamp||0) * 1000).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
           const content = (r.content || '').slice(0, 500);
@@ -3992,8 +4725,8 @@ function runDateSearch(fromTs, toTs, dateStr) {
           const domain = sender.includes('@') ? sender.split('@')[1] : '';
           return `
             <div class="flashback-result" data-id="${esc(r.id)}" data-sender="${esc(sender)}" data-domain="${esc(domain)}">
-              <button class="card-hide-btn" title="この記録は要らない" aria-label="非表示">🗑</button>
-              <div class="flashback-result-meta">${icon} ${esc(label)} · ${esc(time)}</div>
+              <button class="card-hide-btn" title="この記録は要らない" aria-label="非表示">${icon('trash', 14)}</button>
+              <div class="flashback-result-meta">${iconHtml} ${esc(label)} · ${esc(time)}</div>
               <div class="flashback-result-content">${esc(content)}</div>
             </div>`;
         }).join('');
@@ -4013,6 +4746,225 @@ function runDateSearch(fromTs, toTs, dateStr) {
 }
 
 loadFlashback();
+
+// ===== Onboarding Wizard =====
+// Shown only on first launch with an essentially-empty DB. The user can
+// dismiss it from any step; we set localStorage so it never reappears
+// on this Mac, even if the DB gets emptied later.
+const ONBOARDING_STEPS = [
+  {
+    label: '1 / 5',
+    title: () => `${icon('sparkles', 22)} ようこそ、分身（Bunshin）へ`,
+    body: () => `
+      <p class="step-body">
+        分身は、あなたの過去の記憶を集めて、いつでも思い出させてくれる AI です。
+        Claude の会話、Gmail、写真、メモ — ぜんぶを横断して検索できます。
+      </p>
+      <div class="step-warn">
+        <span class="warn-icon">${icon('lock', 16)}</span>
+        <span>
+          <b>あなたのデータは、この Mac から一歩も出ません。</b><br>
+          AI モデルもローカル（Ollama）で動きます。外部サービスへの送信はありません。
+        </span>
+      </div>
+    `,
+  },
+  {
+    label: '2 / 5',
+    title: () => `${icon('mail', 22)} Gmail を読みますか？`,
+    body: () => `
+      <p class="step-body">
+        過去のメールから「あの店なんだっけ」「あの予約いつだっけ」を思い出せるようになります。
+        まず接続設定 → その後 import コマンドで取り込み。
+      </p>
+      <div class="step-cmd">
+        <code>bunshin setup-gmail --email YOUR@gmail.com</code>
+        <button class="copy-btn" data-copy="bunshin setup-gmail --email YOUR@gmail.com">コピー</button>
+      </div>
+      <div class="step-cmd">
+        <code>bunshin import-gmail --full</code>
+        <button class="copy-btn" data-copy="bunshin import-gmail --full">コピー</button>
+      </div>
+      <div class="step-warn">
+        <span class="warn-icon">${icon('alert-triangle', 16)}</span>
+        <span>
+          App Password が必要です（通常パスワードでは入りません）。
+          Google アカウント → セキュリティ → 2段階認証 → App Password。
+        </span>
+      </div>
+    `,
+  },
+  {
+    label: '3 / 5',
+    title: () => `${icon('image', 22)} 写真ライブラリを読みますか？`,
+    body: () => `
+      <p class="step-body">
+        Photos.app から写真の撮影日・場所・OCR テキストを取り込みます。
+        「先月の旅行の写真」が日付・場所・内容で探せるように。
+      </p>
+      <div class="step-cmd">
+        <code>bunshin import-photos-app</code>
+        <button class="copy-btn" data-copy="bunshin import-photos-app">コピー</button>
+      </div>
+      <div class="step-warn">
+        <span class="warn-icon">${icon('alert-triangle', 16)}</span>
+        <span>
+          次に macOS が「写真へのアクセス許可」を求めます。
+          「<b>すべての写真</b>」を選ぶと全期間取り込めます。
+        </span>
+      </div>
+    `,
+  },
+  {
+    label: '4 / 5',
+    title: () => `${icon('notebook', 22)} Apple メモ・iMessage を読みますか？`,
+    body: () => `
+      <p class="step-body">
+        Notes.app のメモ、iMessage の履歴、ブラウザの閲覧履歴を取り込めます。
+        必要なものだけターミナルで実行してください。
+      </p>
+      <div class="step-cmd">
+        <code>bunshin import-notes</code>
+        <button class="copy-btn" data-copy="bunshin import-notes">コピー</button>
+      </div>
+      <div class="step-cmd">
+        <code>bunshin import-imessage</code>
+        <button class="copy-btn" data-copy="bunshin import-imessage">コピー</button>
+      </div>
+      <div class="step-cmd">
+        <code>bunshin import-browser --full</code>
+        <button class="copy-btn" data-copy="bunshin import-browser --full">コピー</button>
+      </div>
+      <div class="step-warn">
+        <span class="warn-icon">${icon('alert-triangle', 16)}</span>
+        <span>
+          iMessage / Notes は「フルディスクアクセス」が必要です。
+          macOS が設定画面を開いたら、リストに <b>Terminal</b>（または iTerm）を追加してください。
+          データはこの Mac 内のみで処理されます。
+        </span>
+      </div>
+    `,
+  },
+  {
+    label: '5 / 5',
+    title: () => `${icon('sparkles', 22)} 準備できました`,
+    body: (stats) => {
+      const total = (stats && stats.total_records) || 0;
+      const ent = (stats && stats.total_entities) || 0;
+      const src = (stats && stats.sources) ? Object.keys(stats.sources).length : 0;
+      const oldestYear = (stats && stats.oldest_ts) ? new Date(stats.oldest_ts * 1000).getFullYear() : null;
+      return `
+        <p class="step-body">
+          ${total > 0
+            ? `${total.toLocaleString()} 件の記憶があなたを待っています。`
+            : '取り込みが終わると、ここに件数が表示されます。'}
+        </p>
+        <div class="step-stats">
+          <div class="step-stat"><span class="num">${total.toLocaleString()}</span><span class="label">記録</span></div>
+          <div class="step-stat"><span class="num">${ent.toLocaleString()}</span><span class="label">エンティティ</span></div>
+          <div class="step-stat"><span class="num">${src}</span><span class="label">ソース</span></div>
+          ${oldestYear ? `<div class="step-stat"><span class="num">${oldestYear}</span><span class="label">最古</span></div>` : ''}
+        </div>
+        <ul class="step-tips">
+          <li>${icon('lightbulb', 13)}<span>「<b>覚えといて: ◯◯</b>」とチャットで書くと、AI に聞かずに記憶に追加されます。</span></li>
+          <li>${icon('lightbulb', 13)}<span>設定タブでフィルター強度や接続を調整できます。</span></li>
+        </ul>
+      `;
+    },
+  },
+];
+
+let _onboardingIdx = 0;
+
+function shouldShowOnboarding() {
+  if (localStorage.getItem('bunshin.onboarded') === '1') return false;
+  // Only auto-show if the DB looks essentially empty. Power users with
+  // existing data shouldn't be greeted by an onboarding screen.
+  if (_latestStats && _latestStats.total_records > 200) {
+    localStorage.setItem('bunshin.onboarded', '1');
+    return false;
+  }
+  return true;
+}
+
+function openOnboarding(force) {
+  _onboardingIdx = 0;
+  if (force || shouldShowOnboarding()) {
+    $('onboarding-overlay').style.display = 'flex';
+    renderOnboarding();
+  }
+}
+
+function closeOnboarding() {
+  localStorage.setItem('bunshin.onboarded', '1');
+  $('onboarding-overlay').style.display = 'none';
+}
+
+function renderOnboarding() {
+  const step = ONBOARDING_STEPS[_onboardingIdx];
+  if (!step) { closeOnboarding(); return; }
+
+  const dotsEl = $('onboarding-dots');
+  dotsEl.innerHTML = ONBOARDING_STEPS.map((_, i) => {
+    const cls = i === _onboardingIdx ? 'active' : (i < _onboardingIdx ? 'done' : '');
+    return `<div class="onboarding-dot ${cls}"></div>`;
+  }).join('');
+
+  const contentEl = $('onboarding-content');
+  contentEl.innerHTML = `
+    <div class="step-label">${esc(step.label)}</div>
+    <h2>${typeof step.title === 'function' ? step.title() : step.title}</h2>
+    ${step.body(_latestStats)}
+  `;
+
+  // Wire copy buttons
+  contentEl.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const text = btn.dataset.copy;
+      navigator.clipboard.writeText(text).then(() => {
+        btn.classList.add('copied');
+        btn.textContent = '✓ コピー済み';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.textContent = 'コピー';
+        }, 2000);
+      });
+    });
+  });
+
+  $('onboarding-back').style.display = _onboardingIdx === 0 ? 'none' : '';
+  $('onboarding-next').textContent =
+    _onboardingIdx === ONBOARDING_STEPS.length - 1 ? '使ってみる →' : '次へ →';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const skipBtn = $('onboarding-skip');
+  const backBtn = $('onboarding-back');
+  const nextBtn = $('onboarding-next');
+  if (skipBtn) skipBtn.addEventListener('click', closeOnboarding);
+  if (backBtn) backBtn.addEventListener('click', () => {
+    if (_onboardingIdx > 0) { _onboardingIdx--; renderOnboarding(); }
+  });
+  if (nextBtn) nextBtn.addEventListener('click', () => {
+    if (_onboardingIdx < ONBOARDING_STEPS.length - 1) {
+      _onboardingIdx++;
+      renderOnboarding();
+    } else {
+      closeOnboarding();
+    }
+  });
+});
+
+// Auto-open the wizard once the very first loadStats() resolves and we
+// can confirm the DB really is empty. Subsequent reloads do nothing
+// because localStorage now flags the user as onboarded.
+(async function tryOpenOnboarding() {
+  // Give loadStats time to finish (it runs at module load).
+  for (let i = 0; i < 30 && _latestStats === null; i++) {
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (shouldShowOnboarding()) openOnboarding(false);
+})();
 
 // ===== Mark / Learning UI =====
 let _markCtx = {recordId: null, sender: '', domain: ''};
@@ -4304,7 +5256,7 @@ function renderResultMedia(r) {
   if (PDF_EXTS.includes(ext)) {
     return `
       <div class="result-media">
-        <div class="thumb" data-preview="pdf" data-url="${esc(url)}" style="display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:11px;">📄 PDF</div>
+        <div class="thumb" data-preview="pdf" data-url="${esc(url)}" style="display:flex;align-items:center;justify-content:center;gap:4px;color:var(--text-3);font-size:11px;">${icon('file-text', 14)} PDF</div>
       </div>`;
   }
   return '';
@@ -4347,15 +5299,15 @@ function relevanceLabel(r) {
     return {
       pct,
       kind: 'rerank',
-      icon: pct >= 80 ? '⭐' : pct >= 60 ? '✨' : '·',
+      icon: pct >= 80 ? icon('star', 12) : pct >= 60 ? icon('sparkles', 12) : '',
     };
   }
   // Otherwise approximate from the e5-large distance.
   // Empirically: 13-15 = great, 16-18 = ok, 20+ = weak.
   const d = r.distance;
-  if (d == null || d >= 999) return { pct: null, kind: 'none', icon: '·' };
+  if (d == null || d >= 999) return { pct: null, kind: 'none', icon: '' };
   const pct = Math.max(0, Math.min(100, Math.round(100 - (d - 10) * 6)));
-  return { pct, kind: 'vector', icon: pct >= 80 ? '⭐' : pct >= 60 ? '✨' : '·' };
+  return { pct, kind: 'vector', icon: pct >= 80 ? icon('star', 12) : pct >= 60 ? icon('sparkles', 12) : '' };
 }
 
 function renderResult(r, idx) {
@@ -4366,7 +5318,7 @@ function renderResult(r, idx) {
     ? `${badge.label} · ${(r.source_id || '').split('/').pop()}`
     : (role ? `${badge.label} · ${role}` : badge.label);
   const more = (r.total_in_source && r.total_in_source > 1)
-    ? `<span class="more-chunks" data-more-sid="${esc(r.source_id || '')}" data-more-idx="${idx}" title="クリックで展開">📚 同じ会話内に他 ${r.total_in_source - 1} 件 ▾</span>`
+    ? `<span class="more-chunks" data-more-sid="${esc(r.source_id || '')}" data-more-idx="${idx}" title="クリックで展開">${icon('layers', 12)} <span>同じ会話内に他 ${r.total_in_source - 1} 件</span> ▾</span>`
     : '';
   const snippet = makeSnippet(compactBlankLines(r.content || ''), _currentQuery);
   const body = linkifyFileMentions(styleMarkers(highlight(snippet, _currentQuery)));
@@ -4492,7 +5444,7 @@ function showLightboxByExt(lb, fname, ext, url) {
     const panelStyle = "color:#fff;text-align:center;background:#1c2030;padding:32px;border-radius:12px;max-width:420px;font-size:14px;line-height:1.6;";
     body = `
       <div class="lightbox-body"><div style="${panelStyle}">
-        <div style="font-size:42px;margin-bottom:12px;">📄</div>
+        <div style="margin-bottom:12px;color:var(--text-3);">${icon('file-text', 48)}</div>
         <div style="font-weight:600;margin-bottom:4px;">${esc(fname)}</div>
         <div style="color:#9aa;font-size:12px;margin-bottom:18px;">${esc(ext)} はブラウザで直接表示できません</div>
         <a href="${url}" target="_blank" style="display:inline-block;padding:8px 18px;background:#818cf8;color:#fff;border-radius:6px;text-decoration:none;font-weight:500;">ダウンロード / 開く</a>
@@ -4825,7 +5777,7 @@ loadModelList();
     const empty = chatMessages.querySelector('.empty');
     if (empty) empty.remove();
     appendMsg('user', `📎 ${f.name}`);
-    const status = appendMsg('assistant', '📷 画像を解析中…');
+    const status = appendMsg('assistant', '画像を解析中…');
     const fd = new FormData();
     fd.append('image', f);
     try {
@@ -4836,7 +5788,7 @@ loadModelList();
         return;
       }
       const j = await r.json();
-      const lines = ['✅ 記憶に追加しました'];
+      const lines = ['記憶に追加しました'];
       if (j.exif?.date) {
         lines.push(`- 撮影日: ${new Date(j.exif.date*1000).toLocaleString('ja-JP')}`);
       }
@@ -4952,14 +5904,14 @@ if (window.speechSynthesis) {
     listening = true;
     chatMic.classList.add('recording');
     chatMic.title = 'クリックで停止';
-    chatStatus.textContent = '🎙 聞いています…';
+    chatStatus.textContent = '聞いています…';
   }
   function stop() {
     listening = false;
     try { rec.stop(); } catch {}
     chatMic.classList.remove('recording');
     chatMic.title = '音声入力 (Web Speech API)';
-    if (chatStatus.textContent === '🎙 聞いています…') chatStatus.textContent = '';
+    if (chatStatus.textContent === '聞いています…') chatStatus.textContent = '';
   }
 
   rec.onresult = (e) => {
@@ -5071,7 +6023,8 @@ function startNewChat() {
   currentSessionId = null;
   chatMessages.innerHTML = `<div class="empty">
     新しい会話を始めましょう。<br><br>
-    💡 「覚えといて: ...」「メモ: ...」で記憶への保存だけもできます。
+    <svg class="inline-tip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
+    「覚えといて: ...」「メモ: ...」で記憶への保存だけもできます。
   </div>`;
   loadSessionList();
 }
@@ -5166,7 +6119,7 @@ function showHelpModal() {
         <div class="help-section">
           <div class="help-section-title">チャットの便利機能</div>
           <div class="help-row"><span class="help-tip"><code>覚えといて: ◯◯</code> → AI に聞かずに記憶へ保存</span></div>
-          <div class="help-row"><span class="help-tip">🎙 ボタン → 音声で入力（日本語認識）</span></div>
+          <div class="help-row"><span class="help-tip">マイクボタン → 音声で入力（日本語認識）</span></div>
           <div class="help-row"><span class="help-tip">📎 ボタン → 画像アップロード（OCR 自動）</span></div>
         </div>
       </div>
@@ -5355,7 +6308,7 @@ function appendMsg(role, content, contextList) {
   if (contextList && contextList.length) {
     const toggle = document.createElement('span');
     toggle.className = 'ctx-toggle';
-    toggle.textContent = `📚 参照した過去記憶 ${contextList.length}件 ▾`;
+    toggle.innerHTML = `${icon('layers', 13)} <span>参照した過去記憶 ${contextList.length}件</span> ▾`;
     const listId = 'ctx-' + Math.random().toString(36).slice(2, 8);
     const list = document.createElement('div');
     list.className = 'ctx-list';
@@ -5415,7 +6368,7 @@ async function saveMemo(content) {
   const empty = chatMessages.querySelector('.empty');
   if (empty) empty.remove();
   appendMsg('user', content);
-  const note = appendMsg('assistant', '📝 メモを保存中…');
+  const note = appendMsg('assistant', 'メモを保存中…');
   try {
     const resp = await fetch('/api/note', {
       method: 'POST',
@@ -5424,7 +6377,7 @@ async function saveMemo(content) {
     });
     const j = await resp.json();
     if (j.saved) {
-      note.textContent = `✅ メモを記憶に保存しました（${content.length}文字）。後で「`+ content.slice(0, 20) + `」で検索できます。`;
+      note.textContent = `メモを記憶に保存しました（${content.length}文字）。後で「`+ content.slice(0, 20) + `」で検索できます。`;
       loadStats();
     } else {
       note.textContent = `エラー: ${j.error || '保存できませんでした'}`;
@@ -5510,7 +6463,7 @@ chatForm.addEventListener('submit', async (e) => {
       respMsg.innerHTML = linkifyCitations(fullText, contextList);
       const toggle = document.createElement('span');
       toggle.className = 'ctx-toggle';
-      toggle.textContent = `📚 参照した過去記憶 ${contextList.length}件 ▾`;
+      toggle.innerHTML = `${icon('layers', 13)} <span>参照した過去記憶 ${contextList.length}件</span> ▾`;
       const listId = 'ctx-' + Math.random().toString(36).slice(2, 8);
       const list = document.createElement('div');
       list.className = 'ctx-list';
@@ -5940,6 +6893,113 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             return reset_learning(conn)
         finally:
             conn.close()
+
+    # ───── Auto-import scheduler (launchd / systemd / cron) ────────────────
+    @app.get("/api/scheduler/status")
+    def api_scheduler_status():
+        from bunshin.scheduler import scheduler_status
+        try:
+            return scheduler_status()
+        except Exception as e:
+            return {"installed": False, "error": str(e)}
+
+    @app.post("/api/scheduler/install")
+    def api_scheduler_install():
+        from bunshin.scheduler import install_scheduler
+        try:
+            ok, msg = install_scheduler()
+            return {"ok": ok, "message": msg}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+
+    @app.post("/api/scheduler/uninstall")
+    def api_scheduler_uninstall():
+        from bunshin.scheduler import uninstall_scheduler
+        try:
+            ok, msg = uninstall_scheduler()
+            return {"ok": ok, "message": msg}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+
+    @app.post("/api/scheduler/run-now")
+    def api_scheduler_run_now():
+        """Trigger one immediate update — useful for testing."""
+        from bunshin.scheduler import get_bunshin_binary
+        import subprocess as _sub
+        try:
+            # Fire-and-forget; output is appended to ~/.bunshin/logs/update.out.log
+            _sub.Popen(
+                [get_bunshin_binary(), "update", "--quiet"],
+                stdout=_sub.DEVNULL, stderr=_sub.DEVNULL,
+            )
+            return {"ok": True, "message": "更新をバックグラウンドで開始しました"}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+
+    @app.get("/api/system/recommend-model")
+    def api_recommend_model():
+        """Detect this Mac's RAM and recommend an Ollama model that fits.
+
+        Rule of thumb for quantized Q4 models:
+          - llama3.2:1b   needs ~ 1.5 GB free
+          - llama3.2:3b   needs ~  3  GB free
+          - qwen2.5:7b    needs ~  6  GB free
+          - qwen2.5:14b   needs ~ 12  GB free
+          - qwen2.5:32b   needs ~ 22  GB free
+          - qwen2.5:72b   needs ~ 48  GB free
+        We recommend the largest model the user's RAM can comfortably run
+        (roughly half the total RAM, leaving headroom for the OS + apps).
+        """
+        # ---- RAM detection (macOS only, falls back to 0 on other OSes) ----
+        ram_gb = 0
+        try:
+            out = subprocess.check_output(["sysctl", "-n", "hw.memsize"], timeout=2)
+            ram_gb = int(out.strip()) // (1024 ** 3)
+        except Exception:
+            try:
+                # Fallback for non-macOS Unix.
+                import os as _os
+                ram_gb = _os.sysconf("SC_PAGE_SIZE") * _os.sysconf("SC_PHYS_PAGES") // (1024 ** 3)
+            except Exception:
+                ram_gb = 0
+
+        # ---- Installed Ollama models ----
+        installed: list[str] = []
+        try:
+            out = subprocess.check_output(["ollama", "list"], timeout=5, text=True)
+            for line in out.splitlines()[1:]:
+                parts = line.split()
+                if parts:
+                    installed.append(parts[0])
+        except Exception:
+            pass
+
+        # ---- Ladder: (min_ram_gb, model, headline, why) ----
+        ladder = [
+            (1,  "llama3.2:1b",  "省メモリ機向け",       "小さいけど日本語もそこそこ"),
+            (6,  "llama3.2:3b",  "軽快に動作",          "ちょっとした質問に十分"),
+            (12, "qwen2.5:7b",   "バランス重視",        "日常使いの推奨ライン"),
+            (20, "qwen2.5:14b",  "賢めの回答",          "複雑な指示も追える"),
+            (28, "qwen2.5:32b",  "高品質",             "Claude / GPT-4 に迫る品質"),
+            (56, "qwen2.5:72b",  "最高品質",           "ローカルで動く最高峰"),
+        ]
+        best = ladder[0]
+        for tier in ladder:
+            if ram_gb >= tier[0]:
+                best = tier
+
+        return {
+            "ram_gb": ram_gb,
+            "recommended": best[1],
+            "recommended_headline": best[2],
+            "recommended_why": best[3],
+            "installed": installed,
+            "is_installed": best[1] in installed,
+            "ladder": [
+                {"min_ram_gb": t[0], "model": t[1], "headline": t[2], "why": t[3]}
+                for t in ladder
+            ],
+        }
 
     @app.get("/api/flashback")
     def api_flashback():

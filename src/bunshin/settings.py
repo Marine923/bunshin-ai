@@ -82,8 +82,8 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "type": "string",
         "label_ja": "優先するチャットモデル",
         "label_en": "Preferred chat model",
-        "help_ja": "Ollama のモデル名。`auto` で自動選択。",
-        "help_en": "Ollama model name. Use 'auto' for automatic selection.",
+        "help_ja": "「auto」のままで OK — 下のおすすめが自動で使われます。特定モデルに固定したいときだけモデル名を入力（例: qwen2.5:32b）。",
+        "help_en": "Leave 'auto' to use the recommendation below. Override with a model name (e.g. qwen2.5:32b) to pin one.",
         "section": "chat",
     },
     "search_rerank": {

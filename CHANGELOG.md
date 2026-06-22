@@ -4,6 +4,59 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-22
+
+The "ready for friends" release. Everything a first-time user needs to go
+from "what is this app" to "Bunshin is now remembering me" — without ever
+touching Terminal.
+
+### Added — Onboarding wizard
+- **5-step wizard** auto-shown on first launch (DB < 200 records).
+  Welcome → Gmail → Photos → Notes/iMessage → Done, with per-step
+  skip / back / next navigation.
+- Each step **pre-explains the macOS permission dialog** that's about
+  to appear, so users aren't scared by "full disk access" out of
+  nowhere.
+- Final step shows live stats: records / entities / sources / oldest
+  year. Onboarding flag persisted in `localStorage` so the wizard
+  never reappears once dismissed.
+
+### Added — Mac spec detection & model recommendation
+- `/api/system/recommend-model` detects this Mac's RAM via
+  `sysctl hw.memsize` and recommends the largest Ollama model that
+  fits comfortably (ladder: 1b → 3b → 7b → 14b → 32b → 72b).
+- Recommendation banner in **Settings → チャット** shows
+  "`qwen2.5:32b` がおすすめ (32 GB RAM)" with installed / not-installed
+  status and a one-click copy of the `ollama pull` command if missing.
+- Chat model field is now a **dropdown** populated with every model
+  in the ladder, each annotated with ★ 推奨・✓ インストール済み・
+  · 未ダウンロード.
+
+### Added — Auto-import scheduler UI
+- **Settings → 自動取り込み** section with a toggle that installs or
+  removes the launchd plist (macOS) / systemd timer (Linux) directly.
+  No more `bunshin install-scheduler` from Terminal.
+- "今すぐ更新" button fires off a background `bunshin update --quiet`.
+- Status line shows the active plist path or "未設定 — トグルで有効化".
+
+### Changed — Visual identity
+- **Every emoji in the system UI replaced with inline SVG**
+  (Feather / Lucide style, outline, stroke 2). Bunshin now reads as
+  a real tool, not a chat thread. Affected: tabs, source chips,
+  search-result icons, flashback cards, learning rules, settings
+  section headers (📤 → download, 🧠 → brain, 💾 → archive, …),
+  wizard step titles, insights tab, ctx-toggle, score icons.
+- **Empty-state welcome page rewritten** from "run these terminal
+  commands" to "今日から、あなたの記憶が育ち始めます" with three
+  action cards (open wizard / open chat / open settings) — zero
+  command-line requirements for first-time users.
+- Settings → チャット → 優先するチャットモデル now reads
+  "auto のままで OK — 下のおすすめが自動で使われます".
+
+### Fixed
+- Light mode no longer leaks a black gradient at the bottom of the
+  settings tab (`.settings-save-bar` was hardcoded to `#0a0a0a`).
+
 ## [0.4.0] - 2026-06-19
 
 The "actually useful daily" release. The flashback widget brings the
