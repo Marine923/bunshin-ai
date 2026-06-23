@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from bunshin.search import search
@@ -405,6 +405,118 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   .theme-toggle:hover { background: var(--bg-3); color: var(--text-1); transform: rotate(15deg); }
   .theme-icon { width: 15px; height: 15px; }
+  /* Add-memory button (header right) */
+  .add-memory-btn {
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    color: var(--text-1);
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .add-memory-btn:hover { background: var(--bg-3); color: var(--text-0); border-color: var(--border-2); }
+  .add-memory-btn svg { width: 14px; height: 14px; stroke-width: 2.2; }
+  @media (max-width: 640px) {
+    .add-memory-btn .add-memory-label { display: none; }
+    .add-memory-btn { padding: 0; width: 32px; justify-content: center; }
+  }
+  /* Add-memory modal */
+  .add-memory-modal {
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: 14px;
+    padding: 22px;
+    width: min(480px, calc(100vw - 40px));
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  }
+  .add-memory-modal h3 { margin: 0 0 6px; font-size: 16px; color: var(--text-0); }
+  .add-memory-modal .sub { margin: 0 0 14px; font-size: 12px; color: var(--text-3); }
+  .add-memory-modal textarea {
+    width: 100%;
+    min-height: 140px;
+    padding: 12px;
+    border: 1px solid var(--border-1);
+    border-radius: 8px;
+    background: var(--bg-0);
+    color: var(--text-0);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+  .add-memory-modal textarea:focus {
+    outline: none;
+    border-color: var(--accent, #6a6dff);
+    box-shadow: 0 0 0 3px rgba(106,109,255,0.12);
+  }
+  .add-memory-modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+  .add-memory-modal .btn { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-1); background: var(--bg-2); color: var(--text-0); font-size: 13px; cursor: pointer; }
+  .add-memory-modal .btn:hover { background: var(--bg-3); }
+  .add-memory-modal .btn.primary { background: linear-gradient(135deg, #4c4d8a, #3b3f7a); border-color: transparent; color: #fff; }
+  .add-memory-modal .btn.primary:hover { filter: brightness(1.1); }
+  .add-memory-modal .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .add-memory-modal .status { margin-top: 10px; font-size: 12px; color: var(--text-3); min-height: 16px; }
+  .add-memory-modal .status.success { color: #58cc6e; }
+  .add-memory-modal .status.error { color: #ff6b6b; }
+  /* In-app tour (post-onboarding) */
+  .tour-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 9998;
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.2s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+  .tour-card {
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: 16px;
+    padding: 28px 28px 22px;
+    max-width: 420px;
+    width: calc(100% - 40px);
+    text-align: center;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+    animation: tourPop 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+  }
+  @keyframes tourPop { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+  .tour-card .tour-icon {
+    width: 48px; height: 48px;
+    margin: 0 auto 14px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #4c4d8a 0%, #3b3f7a 100%);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tour-card .tour-icon svg { width: 24px; height: 24px; stroke-width: 2; }
+  .tour-card h3 { margin: 0 0 10px; font-size: 18px; font-weight: 600; color: var(--text-0); }
+  .tour-card p { margin: 0 0 18px; font-size: 14px; line-height: 1.65; color: var(--text-2); }
+  .tour-card .tour-dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; }
+  .tour-card .tour-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-1); }
+  .tour-card .tour-dot.active { background: var(--accent-1, #6a6dff); transform: scale(1.2); }
+  .tour-card .tour-dot.done { background: var(--text-3); }
+  .tour-card .tour-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .tour-card .tour-skip {
+    background: none; border: none;
+    color: var(--text-3); font-size: 12px;
+    cursor: pointer; padding: 6px 10px;
+  }
+  .tour-card .tour-skip:hover { color: var(--text-1); }
+  .tour-card .tour-next {
+    background: linear-gradient(135deg, #4c4d8a 0%, #3b3f7a 100%);
+    color: #fff; border: none;
+    padding: 10px 20px; border-radius: 8px;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .tour-card .tour-next:hover { filter: brightness(1.12); }
   /* Dark mode shows the sun (switch to light); light mode shows the moon. */
   :root .theme-icon-light { display: none; }
   :root.theme-light .theme-icon-dark { display: none; }
@@ -2187,6 +2299,70 @@ INDEX_HTML = """<!DOCTYPE html>
     padding: 20px 24px;
     min-height: 0;
   }
+  .ollama-status-banner {
+    margin: 16px 24px 0;
+    padding: 18px 20px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255,193,7,0.08), rgba(255,193,7,0.03));
+    border: 1px solid rgba(255,193,7,0.35);
+    color: var(--text-1);
+    font-size: 13px;
+    line-height: 1.6;
+    animation: chat-msg-in 0.2s ease;
+  }
+  .ollama-status-banner.state-ready { display: none; }
+  .ollama-status-banner h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-0);
+  }
+  .ollama-status-banner h3 svg { width: 18px; height: 18px; stroke-width: 2.2; }
+  .ollama-status-banner p { margin: 6px 0; color: var(--text-2); }
+  .ollama-status-banner .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+  .ollama-status-banner .btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border-1);
+    background: var(--bg-1);
+    color: var(--text-0);
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.12s;
+  }
+  .ollama-status-banner .btn:hover { background: var(--bg-2); }
+  .ollama-status-banner .btn.primary {
+    background: linear-gradient(135deg, #4c4d8a 0%, #3b3f7a 100%);
+    border-color: transparent;
+    color: #fff;
+  }
+  .ollama-status-banner .btn.primary:hover { filter: brightness(1.1); }
+  .ollama-status-banner .pull-log {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(0,0,0,0.18);
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-3);
+    max-height: 120px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  :root.theme-light .ollama-status-banner .pull-log { background: rgba(0,0,0,0.04); }
+  .ollama-status-banner .hint { color: var(--text-3); font-size: 12px; margin-top: 8px; }
   .chat-msg {
     margin-bottom: 14px;
     padding: 14px 18px;
@@ -3081,6 +3257,10 @@ INDEX_HTML = """<!DOCTYPE html>
 <header>
   <h1 id="pane-title">検索</h1>
   <div class="header-right">
+    <button class="add-memory-btn" id="add-memory-btn" type="button" title="メモを記憶に追加 (⌘N)" aria-label="メモ追加">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span class="add-memory-label">記憶</span>
+    </button>
     <button class="theme-toggle" id="theme-toggle" type="button" title="テーマを切替" aria-label="テーマ切替">
       <svg class="theme-icon theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       <svg class="theme-icon theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -3229,6 +3409,7 @@ INDEX_HTML = """<!DOCTYPE html>
         </div>
       </aside>
       <div class="chat-container">
+        <div class="ollama-status-banner" id="ollama-status-banner" hidden></div>
         <div class="chat-messages" id="chat-messages">
           <div class="empty">
             分身（Bunshin）は、過去のあなたを全部読んでいます。<br>
@@ -3255,6 +3436,20 @@ INDEX_HTML = """<!DOCTYPE html>
   </section>
 </main>
 </div><!-- /.main-area -->
+
+<!-- ===== Add-memory modal (lives in body, opened by header button or ⌘N) ===== -->
+<div class="mark-modal-backdrop" id="add-memory-modal" style="display:none;">
+  <div class="add-memory-modal">
+    <h3>記憶に追加</h3>
+    <p class="sub">あとで検索・チャットから参照できます。日付や場所、固有名詞を入れると見つけやすくなります。</p>
+    <textarea id="add-memory-text" placeholder="例: 2026/6/23 漁協ミーティング 来週火曜 10 時 / 神社ガイド事業の試算は月 30 万円目標 / 桃ピザの試作レシピ 卵 1, 桃 3..." autofocus></textarea>
+    <div class="status" id="add-memory-status"></div>
+    <div class="actions">
+      <button class="btn" type="button" id="add-memory-cancel">キャンセル</button>
+      <button class="btn primary" type="button" id="add-memory-save">保存 (⌘↵)</button>
+    </div>
+  </div>
+</div>
 
 <!-- ===== Mark / learning modal (lives in body, opened by JS) ===== -->
 <div class="mark-modal-backdrop" id="mark-modal" style="display:none;">
@@ -3336,6 +3531,102 @@ INDEX_HTML = """<!DOCTYPE html>
   });
 })();
 
+// ===== Add-memory modal =====
+(function setupAddMemory() {
+  function openModal() {
+    const m = document.getElementById('add-memory-modal');
+    const t = document.getElementById('add-memory-text');
+    const s = document.getElementById('add-memory-status');
+    if (!m || !t) return;
+    if (s) { s.textContent = ''; s.className = 'status'; }
+    m.style.display = 'flex';
+    setTimeout(() => t.focus(), 30);
+  }
+  function closeModal() {
+    const m = document.getElementById('add-memory-modal');
+    const t = document.getElementById('add-memory-text');
+    if (m) m.style.display = 'none';
+    if (t) t.value = '';
+  }
+  async function save() {
+    const t = document.getElementById('add-memory-text');
+    const s = document.getElementById('add-memory-status');
+    const btn = document.getElementById('add-memory-save');
+    if (!t || !s || !btn) return;
+    const content = (t.value || '').trim();
+    if (!content) {
+      s.textContent = '内容を入力してください';
+      s.className = 'status error';
+      return;
+    }
+    btn.disabled = true;
+    s.textContent = '保存中…';
+    s.className = 'status';
+    try {
+      const r = await fetch('/api/note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      const j = await r.json();
+      if (j.saved) {
+        s.textContent = '✓ 記憶に保存しました（' + content.length + ' 文字）';
+        s.className = 'status success';
+        setTimeout(closeModal, 700);
+        // Refresh stats badge if present.
+        if (typeof loadStats === 'function') { try { loadStats(); } catch {} }
+      } else {
+        s.textContent = '✗ ' + (j.error || '保存に失敗しました');
+        s.className = 'status error';
+      }
+    } catch (e) {
+      s.textContent = '✗ ネットワークエラー';
+      s.className = 'status error';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const trigger = document.getElementById('add-memory-btn');
+    if (trigger) trigger.addEventListener('click', openModal);
+
+    const cancel = document.getElementById('add-memory-cancel');
+    if (cancel) cancel.addEventListener('click', closeModal);
+
+    const saveBtn = document.getElementById('add-memory-save');
+    if (saveBtn) saveBtn.addEventListener('click', save);
+
+    const backdrop = document.getElementById('add-memory-modal');
+    if (backdrop) {
+      backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) closeModal();
+      });
+    }
+
+    const ta = document.getElementById('add-memory-text');
+    if (ta) {
+      ta.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); save(); }
+      });
+    }
+  });
+
+  // Global ⌘N (and ⌃N) — capture before browser's "new window" intercepts it.
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'n' || e.key === 'N') && !e.shiftKey && !e.altKey) {
+      // Don't hijack when user is typing in an input/textarea, unless modal is already open.
+      const m = document.getElementById('add-memory-modal');
+      if (m && m.style.display === 'flex') return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      openModal();
+    }
+  });
+})();
+
 const $ = (id) => document.getElementById(id);
 const esc = (s) => { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; };
 
@@ -3381,6 +3672,9 @@ const _ICON_PATHS = {
   bell:       '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
   'check-circle': '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
   flag:       '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
+  'life-buoy': '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/>',
+  copy:       '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  'external-link': '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
 };
 
 function icon(name, size) {
@@ -3478,6 +3772,162 @@ function renderExportPanel() {
         </div>
       </div>
     </div>`;
+}
+
+function renderUninstallPanel() {
+  return `
+    <div class="settings-section">
+      <h2><span class="h2-icon">${icon('trash', 18)}</span> Bunshin を辞める</h2>
+      <div class="settings-help" style="margin-bottom:12px;">
+        合わなかった時のための、完全削除の手順です。理由を 1 つだけ教えてもらえると、次の人がもっと使いやすくなります（任意）。
+      </div>
+      <button class="settings-save-btn" id="uninstall-btn" type="button" style="background:var(--bg-2);color:var(--text-1);">
+        ${icon('trash', 14)} アンインストール手順を見る
+      </button>
+    </div>`;
+}
+
+function wireUninstallPanel() {
+  const btn = document.getElementById('uninstall-btn');
+  if (btn) btn.addEventListener('click', openUninstallModal);
+}
+
+function openUninstallModal() {
+  let bd = document.getElementById('uninstall-modal');
+  if (!bd) {
+    bd = document.createElement('div');
+    bd.id = 'uninstall-modal';
+    bd.className = 'mark-modal-backdrop';
+    bd.style.display = 'none';
+    document.body.appendChild(bd);
+  }
+  bd.innerHTML = `
+    <div class="add-memory-modal" style="max-width:500px;">
+      <h3>Bunshin を辞める</h3>
+      <p class="sub">合わなくて辞めるとき、一番の理由を 1 つだけ教えてもらえると助かります（任意・匿名でも送れます）。送信しないで手順だけ見ることもできます。</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;"><input type="radio" name="uninstall-reason" value="heavy">動作が重い・遅い</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;"><input type="radio" name="uninstall-reason" value="hard">使い方がわからない・難しい</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;"><input type="radio" name="uninstall-reason" value="mismatch">想像と違った・必要なかった</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;"><input type="radio" name="uninstall-reason" value="bug">バグ・エラーが多い</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;"><input type="radio" name="uninstall-reason" value="other">その他</label>
+      </div>
+      <textarea id="uninstall-comment" placeholder="補足があれば（任意）— 例: 「Gmail 取り込みが Apple Pass... のところでつまずいた」" style="width:100%;min-height:70px;padding:10px;border:1px solid var(--border-1);border-radius:8px;background:var(--bg-0);color:var(--text-0);font:inherit;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+      <div class="actions" style="margin-top:14px;">
+        <button class="btn" type="button" id="uninstall-cancel">キャンセル</button>
+        <button class="btn" type="button" id="uninstall-skip">送信しないで手順だけ見る</button>
+        <button class="btn primary" type="button" id="uninstall-send">送信して手順を見る</button>
+      </div>
+      <div id="uninstall-steps" hidden style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border-1);">
+        <h4 style="margin:0 0 10px;font-size:14px;">削除手順（残骸ゼロ）</h4>
+        <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;color:var(--text-1);">
+          <li>Bunshin を終了する（メニューバー ∞ → 終了）</li>
+          <li>Finder で <code>/Applications/Bunshin.app</code> を ゴミ箱へ</li>
+          <li>ターミナルで <code>rm -rf ~/.bunshin</code> を実行（データ完全消去）</li>
+          <li>必要なら <code>launchctl unload ~/Library/LaunchAgents/com.bunshin.update.plist</code> + plist 削除</li>
+        </ol>
+        <p style="margin-top:10px;color:var(--text-3);font-size:12px;">ありがとうございました。フィードバックは https://github.com/Marine923/bunshin-ai/issues でも歓迎です。</p>
+      </div>
+    </div>
+  `;
+  bd.style.display = 'flex';
+
+  const close = () => { bd.style.display = 'none'; };
+  document.getElementById('uninstall-cancel').addEventListener('click', close);
+  bd.addEventListener('click', (e) => { if (e.target === bd) close(); });
+
+  const showSteps = () => {
+    const steps = document.getElementById('uninstall-steps');
+    if (steps) steps.hidden = false;
+  };
+
+  document.getElementById('uninstall-skip').addEventListener('click', showSteps);
+
+  document.getElementById('uninstall-send').addEventListener('click', () => {
+    const reason = (document.querySelector('input[name="uninstall-reason"]:checked') || {}).value || 'unspecified';
+    const comment = (document.getElementById('uninstall-comment').value || '').trim();
+    const reasonLabel = {
+      heavy: '動作が重い・遅い',
+      hard: '使い方がわからない・難しい',
+      mismatch: '想像と違った・必要なかった',
+      bug: 'バグ・エラーが多い',
+      other: 'その他',
+      unspecified: '未選択',
+    }[reason] || reason;
+    const subj = `[Bunshin] アンインストール理由: ${reasonLabel}`;
+    const body = `理由: ${reasonLabel}\\n\\n補足:\\n${comment || '(なし)'}\\n\\n--- 環境 ---\\nBunshin version: ${(typeof STATS_BUNSHIN_VERSION === 'string') ? STATS_BUNSHIN_VERSION : '0.7.0'}\\nOS: ${navigator.platform}\\n`;
+    const mailto = `mailto:?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+    window.open(mailto, '_blank');
+    showSteps();
+  });
+}
+
+function renderTroubleshootPanel() {
+  return `
+    <div class="settings-section">
+      <h2><span class="h2-icon">${icon('life-buoy', 18)}</span> 困った時は</h2>
+      <div class="settings-help" style="margin-bottom:12px;">
+        うまく動かない時は、下のボタンで診断情報を取得して、開発者にメールで送ってください。
+        個人データ（メール本文・写真・記憶）は含まれません。OS バージョン・Bunshin バージョン・Ollama 状態・直近のログ 100 行だけです。
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="settings-save-btn" id="diag-fetch-btn" type="button" style="background:var(--bg-2);color:var(--text-1);">
+          ${icon('search', 14)} 診断情報を取得
+        </button>
+        <button class="settings-save-btn" id="diag-copy-btn" type="button" hidden style="background:var(--bg-2);color:var(--text-1);">
+          ${icon('copy', 14)} コピー
+        </button>
+        <a class="settings-save-btn" id="diag-mail-btn" href="#" hidden style="text-decoration:none;text-align:center;">
+          ${icon('mail', 14)} メールで送る
+        </a>
+        <a class="settings-save-btn" href="https://github.com/Marine923/bunshin-ai/issues/new/choose" target="_blank" rel="noopener" style="background:var(--bg-2);color:var(--text-1);text-decoration:none;text-align:center;">
+          ${icon('external-link', 14)} GitHub Issues
+        </a>
+      </div>
+      <textarea id="diag-output" hidden readonly
+        style="width:100%;min-height:200px;padding:12px;border:1px solid var(--border-1);border-radius:8px;background:var(--bg-0);color:var(--text-1);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.5;resize:vertical;box-sizing:border-box;"
+        placeholder="ここに診断情報が出ます"></textarea>
+    </div>`;
+}
+
+function wireTroubleshootPanel() {
+  const btn = document.getElementById('diag-fetch-btn');
+  const out = document.getElementById('diag-output');
+  const copy = document.getElementById('diag-copy-btn');
+  const mail = document.getElementById('diag-mail-btn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = '取得中…';
+    try {
+      const r = await fetch('/api/diagnostics');
+      const j = await r.json();
+      const text = JSON.stringify(j, null, 2);
+      if (out) { out.value = text; out.hidden = false; }
+      if (copy) copy.hidden = false;
+      if (mail) {
+        mail.hidden = false;
+        const subj = `Bunshin 困りごと (v${j.bunshin_version || '?'})`;
+        const body = '下記の問題が起きました：\\n\\n[ここに状況を書いてください — 何をしたら、何が起きたか]\\n\\n--- 診断情報（自動生成） ---\\n' + text;
+        mail.href = `mailto:?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+      }
+    } catch (e) {
+      if (out) { out.value = '取得に失敗しました。Bunshin を再起動してもう一度お試しください。'; out.hidden = false; }
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = btn.innerHTML.replace('取得中…', '再取得');
+    }
+  });
+  if (copy && out) {
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(out.value);
+        const orig = copy.innerHTML;
+        copy.textContent = '✓ コピー済み';
+        setTimeout(() => { copy.innerHTML = orig; }, 1500);
+      } catch {}
+    });
+  }
 }
 
 function renderPrivacyPanel() {
@@ -3945,11 +4395,15 @@ async function loadSettings() {
     html += renderBackupPanel();
     html += renderExportPanel();
     html += renderLearningDashboard();
+    html += renderTroubleshootPanel();
+    html += renderUninstallPanel();
     root.innerHTML = html;
     settingsLoaded = true;
     wireBackupPanel();
     wireLearningDashboard();
     wireSchedulerPanel();
+    wireTroubleshootPanel();
+    wireUninstallPanel();
     loadModelRecommendation();
     loadSchedulerStatus();
     loadPrivacyStatus();
@@ -5123,6 +5577,90 @@ function openOnboarding(force) {
 function closeOnboarding() {
   localStorage.setItem('bunshin.onboarded', '1');
   $('onboarding-overlay').style.display = 'none';
+  // After the setup wizard, run a short visual tour the very first time
+  // so the user sees what each tab actually does.
+  try {
+    if (localStorage.getItem('bunshin.tour') !== '1') {
+      setTimeout(() => { if (typeof startTour === 'function') startTour(); }, 350);
+    }
+  } catch {}
+}
+
+// ===== In-app tour (3 steps, first launch only) =====
+const TOUR_STEPS = [
+  {
+    pane: 'search',
+    iconKey: 'search',
+    title: '記憶を検索する',
+    body: '過去のメール・写真・メモ・Claude 会話を、ぜんぶ横断して検索できます。日本語で「あの店なんだっけ」のように聞いてみてください。',
+  },
+  {
+    pane: 'chat',
+    iconKey: 'message',
+    title: 'AI に聞いてみる',
+    body: 'チャットタブで、ローカル AI が <b>あなたの過去記憶を踏まえて</b> 答えます。データは Mac の中だけで処理されます。',
+  },
+  {
+    pane: 'graph',
+    iconKey: 'link',
+    title: '人と場所の繋がり',
+    body: '関係性タブで、あなたの記憶に出てきた人・プロジェクト・場所が、どう繋がっているかを地図のように見られます。',
+  },
+];
+
+function _tourSwitchTab(pane) {
+  const tab = document.querySelector('.sidebar-tab[data-pane="' + pane + '"]');
+  if (tab) tab.click();
+}
+
+function startTour() {
+  let idx = 0;
+
+  function render() {
+    if (idx >= TOUR_STEPS.length) { endTour(); return; }
+    const s = TOUR_STEPS[idx];
+    _tourSwitchTab(s.pane);
+
+    let bd = document.getElementById('tour-backdrop');
+    if (!bd) {
+      bd = document.createElement('div');
+      bd.id = 'tour-backdrop';
+      bd.className = 'tour-backdrop';
+      document.body.appendChild(bd);
+    }
+    const dots = TOUR_STEPS.map((_, k) => {
+      const cls = k === idx ? 'active' : (k < idx ? 'done' : '');
+      return `<span class="tour-dot ${cls}"></span>`;
+    }).join('');
+    const isLast = idx === TOUR_STEPS.length - 1;
+    bd.innerHTML = `
+      <div class="tour-card">
+        <div class="tour-icon">${icon(s.iconKey, 24)}</div>
+        <div class="tour-dots">${dots}</div>
+        <h3>${s.title}</h3>
+        <p>${s.body}</p>
+        <div class="tour-actions">
+          <button class="tour-skip" type="button" id="tour-skip-btn">スキップ</button>
+          <button class="tour-next" type="button" id="tour-next-btn">${isLast ? '触ってみる' : '次へ →'}</button>
+        </div>
+      </div>
+    `;
+    bd.style.display = 'flex';
+    const next = document.getElementById('tour-next-btn');
+    const skip = document.getElementById('tour-skip-btn');
+    if (next) next.addEventListener('click', () => { idx++; render(); });
+    if (skip) skip.addEventListener('click', endTour);
+  }
+
+  function endTour() {
+    const bd = document.getElementById('tour-backdrop');
+    if (bd) bd.remove();
+    try { localStorage.setItem('bunshin.tour', '1'); } catch {}
+  }
+
+  // Expose for the Esc key handler if we ever wire one.
+  window._endTour = endTour;
+  render();
 }
 
 function renderOnboarding() {
@@ -5989,6 +6527,138 @@ chatModel.addEventListener('change', () => {
 });
 loadModelList();
 
+// ===== Ollama setup wizard (chat tab) =====
+const ollamaBanner = $('ollama-status-banner');
+let _ollamaPullInProgress = false;
+
+function ollamaBannerHTML(state, info) {
+  const ico = (path) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  const warn = ico('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>');
+  const dl   = ico('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
+  const play = ico('<polygon points="5 3 19 12 5 21 5 3"/>');
+  const box  = ico('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>');
+  const model = info && info.recommended_model || 'qwen2.5:3b';
+
+  if (state === 'not_installed') {
+    return `
+      <h3>${warn} チャット機能には Ollama が必要です</h3>
+      <p>Ollama は、あなたの Mac の中だけで動く無料の AI です。インストールするとチャット機能が使えるようになります。</p>
+      <div class="actions">
+        <a class="btn primary" href="https://ollama.com/download/mac" target="_blank" rel="noopener">${dl} Ollama をダウンロード</a>
+        <button class="btn" type="button" onclick="refreshOllamaStatus()">インストール済みなら再チェック</button>
+      </div>
+      <p class="hint">ダウンロード後、Ollama の指示に従ってインストールしてください。検索・タイムライン・関係性タブは Ollama なしでも動きます。</p>
+    `;
+  }
+  if (state === 'not_running') {
+    return `
+      <h3>${warn} Ollama が起動していません</h3>
+      <p>Ollama アプリを起動するとチャットが使えます。</p>
+      <div class="actions">
+        <button class="btn primary" type="button" onclick="launchOllamaApp()">${play} Ollama を起動</button>
+        <button class="btn" type="button" onclick="refreshOllamaStatus()">起動済みなら再チェック</button>
+      </div>
+    `;
+  }
+  if (state === 'no_models') {
+    return `
+      <h3>${box} AI モデルが入っていません</h3>
+      <p>軽量モデル <code>${esc(model)}</code> をダウンロードします（約 1.9 GB、Wi-Fi で数分）。</p>
+      <div class="actions">
+        <button class="btn primary" type="button" id="ollama-pull-btn" onclick="pullDefaultModel('${esc(model)}')">${dl} ${esc(model)} を入手</button>
+      </div>
+      <pre class="pull-log" id="ollama-pull-log" hidden></pre>
+    `;
+  }
+  return '';
+}
+
+async function refreshOllamaStatus() {
+  if (!ollamaBanner) return;
+  if (_ollamaPullInProgress) return;  // don't disrupt an in-flight pull
+  try {
+    const r = await fetch('/api/ollama/status');
+    const s = await r.json();
+    if (s.state === 'ready') {
+      ollamaBanner.hidden = true;
+      ollamaBanner.innerHTML = '';
+      // Refresh the model selector now that Ollama is ready.
+      loadModelList();
+      return;
+    }
+    ollamaBanner.hidden = false;
+    ollamaBanner.innerHTML = ollamaBannerHTML(s.state, s);
+  } catch {
+    // Network or parse error — keep banner state untouched.
+  }
+}
+
+async function launchOllamaApp() {
+  try {
+    const r = await fetch('/api/ollama/launch', { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok) {
+      alert('Ollama アプリが見つかりません。先にインストールしてください。');
+      return;
+    }
+    // Give Ollama 3 s to start the server, then recheck.
+    setTimeout(refreshOllamaStatus, 3000);
+  } catch {
+    alert('Ollama の起動に失敗しました');
+  }
+}
+
+async function pullDefaultModel(model) {
+  const log = $('ollama-pull-log');
+  const btn = $('ollama-pull-btn');
+  if (!log || !btn) return;
+  if (_ollamaPullInProgress) return;
+  _ollamaPullInProgress = true;
+  log.hidden = false;
+  log.textContent = `pulling ${model}...`;
+  btn.disabled = true;
+  btn.textContent = 'ダウンロード中…';
+  try {
+    const r = await fetch(`/api/ollama/pull?model=${encodeURIComponent(model)}`, { method: 'POST' });
+    if (!r.body) throw new Error('no stream');
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let lastLine = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\\n');
+      buffer = lines.pop() || '';
+      for (const ln of lines) {
+        if (!ln.trim()) continue;
+        try {
+          const j = JSON.parse(ln);
+          if (j.line) { lastLine = j.line; log.textContent = lastLine; log.scrollTop = log.scrollHeight; }
+          if (j.done) {
+            if (j.code === 0) {
+              log.textContent = lastLine + '\\n✓ ダウンロード完了';
+            } else {
+              log.textContent = lastLine + `\\n✗ エラー (code ${j.code})`;
+            }
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    log.textContent += '\\n✗ ' + (e && e.message || 'error');
+  } finally {
+    _ollamaPullInProgress = false;
+    btn.disabled = false;
+    btn.textContent = `${model} を入手`;
+    // Recheck so banner disappears on success.
+    setTimeout(refreshOllamaStatus, 800);
+  }
+}
+
+refreshOllamaStatus();
+
 // ===== Image upload → OCR → save as record =====
 (function setupImageUpload() {
   const btn = $('chat-attach');
@@ -6770,8 +7440,59 @@ def _start_background_watcher(db_path: Path) -> None:
         print(f"[bunshin] file watcher failed: {e}", flush=True)
 
 
+def friendly_error(exc: Exception, fallback: str = "予期しないエラーが発生しました") -> dict:
+    """Translate an internal exception to a JP-language payload safe for the UI.
+
+    Never returns Python class names, tracebacks, or paths the user can't act on.
+    The {error, hint, code} shape is what the frontend renders.
+    """
+    if isinstance(exc, FileNotFoundError):
+        return {
+            "error": "ファイルが見つかりません",
+            "hint": "リネームや移動をした場合は再取り込みしてください",
+            "code": "file_not_found",
+        }
+    if isinstance(exc, PermissionError):
+        return {
+            "error": "権限がありません",
+            "hint": "macOS の「フルディスクアクセス」や App Password の設定を確認してください",
+            "code": "permission_denied",
+        }
+    if isinstance(exc, (ConnectionError, ConnectionRefusedError)):
+        return {
+            "error": "接続に失敗しました",
+            "hint": "対象のサービスが起動しているか、ネットワークを確認してください",
+            "code": "connection_failed",
+        }
+    if isinstance(exc, TimeoutError):
+        return {
+            "error": "タイムアウトしました",
+            "hint": "ネットワークを確認するか、もう一度試してください",
+            "code": "timeout",
+        }
+    if isinstance(exc, ValueError):
+        return {
+            "error": "入力が正しくありません",
+            "hint": "値を確認してもう一度お試しください",
+            "code": "invalid_value",
+        }
+    return {
+        "error": fallback,
+        "hint": "ターミナルの bunshin web のログに詳細が出ています",
+        "code": "internal_error",
+    }
+
+
 def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
     app = FastAPI(title="分身 (Bunshin)")
+
+    @app.exception_handler(Exception)
+    async def _all_exceptions(_request, exc):
+        """Catch-all so users never see a raw Python traceback in the UI."""
+        import traceback
+        traceback.print_exc()  # full stack still goes to the dev terminal
+        return JSONResponse(friendly_error(exc), status_code=500)
+
     _start_background_watcher(db_path)
 
     # ---- One-time signal computation on first launch after schema migration ----
@@ -6834,10 +7555,10 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         finally:
             conn.close()
         if not row:
-            raise HTTPException(status_code=404, detail="not indexed")
+            raise HTTPException(status_code=404, detail="この記録はインデックスされていません")
         path = Path(row[0])
         if not path.is_file():
-            raise HTTPException(status_code=404, detail="not on disk")
+            raise HTTPException(status_code=404, detail="ファイルがディスク上に見つかりません")
         mime = _FILE_MIME.get(path.suffix.lower(), "application/octet-stream")
         return FileResponse(str(path), media_type=mime)
 
@@ -6859,7 +7580,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         from bunshin.backup import restore_backup
         res = restore_backup(db_path, Path(req.path))
         if not res.get("ok"):
-            raise HTTPException(status_code=400, detail=res.get("error", "restore failed"))
+            raise HTTPException(status_code=400, detail=res.get("error", "バックアップの復元に失敗しました"))
         return res
 
     @app.delete("/api/records/{record_id}")
@@ -6879,7 +7600,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             )
             row = cur.fetchone()
             if not row:
-                raise HTTPException(status_code=404, detail="record not found")
+                raise HTTPException(status_code=404, detail="該当する記録が見つかりません")
             try:
                 conn.execute(
                     "DELETE FROM records_vec WHERE record_id = ?", (record_id,)
@@ -6951,12 +7672,82 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         from bunshin.chat import check_ollama, pick_model
         ok, available = check_ollama()
         if not ok:
-            return {"ok": False, "models": [], "default": None, "error": "Ollama not running"}
+            return {"ok": False, "models": [], "default": None, "error": "Ollama が起動していません"}
         return {
             "ok": True,
             "models": available,
             "default": pick_model(available),
         }
+
+    @app.get("/api/ollama/status")
+    def api_ollama_status():
+        """Return 4-state Ollama readiness for onboarding UI.
+
+        States: not_installed, not_running, no_models, ready.
+        Used by the chat tab to render a contextual help banner when chat
+        cannot work, with a one-click resolution path for each state.
+        """
+        from bunshin.chat import check_ollama_status
+        return check_ollama_status()
+
+    @app.post("/api/ollama/launch")
+    def api_ollama_launch():
+        """Try to launch Ollama.app on macOS so the user doesn't have to
+        hunt for it in /Applications. No-op on other platforms."""
+        import subprocess
+        from bunshin.chat import detect_ollama_app
+        app_path = detect_ollama_app()
+        if not app_path:
+            return JSONResponse(
+                {"ok": False, "error": "Ollama アプリが見つかりません"}, status_code=404
+            )
+        try:
+            subprocess.Popen(["open", "-a", app_path])
+        except OSError as e:
+            return JSONResponse(
+                {"ok": False, **friendly_error(e, fallback="Ollama の起動に失敗しました")},
+                status_code=500,
+            )
+        return {"ok": True, "launched": app_path}
+
+    @app.post("/api/ollama/pull")
+    async def api_ollama_pull(model: str = "qwen2.5:3b"):
+        """Stream `ollama pull <model>` output line by line as NDJSON.
+
+        The frontend uses the stream to show download progress (e.g. "pulling
+        manifest", "downloading 1.2 GB"). Final line is {"done": true, "code": N}.
+        """
+        import asyncio
+        import json as _json
+        from bunshin.chat import detect_ollama_binary
+
+        binary = detect_ollama_binary()
+        if not binary:
+            return JSONResponse(
+                {"ok": False, "error": "Ollama がインストールされていません"},
+                status_code=400,
+            )
+
+        async def stream():
+            proc = await asyncio.create_subprocess_exec(
+                binary,
+                "pull",
+                model,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            assert proc.stdout is not None
+            while True:
+                chunk = await proc.stdout.readline()
+                if not chunk:
+                    break
+                line = chunk.decode("utf-8", errors="replace").rstrip()
+                if line:
+                    yield _json.dumps({"line": line}, ensure_ascii=False) + "\n"
+            rc = await proc.wait()
+            yield _json.dumps({"done": True, "code": rc, "model": model}) + "\n"
+
+        return StreamingResponse(stream(), media_type="application/x-ndjson")
 
     @app.post("/api/upload-image")
     async def api_upload_image(image: UploadFile = File(...)):
@@ -7182,13 +7973,74 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         return out
 
     # ───── Auto-import scheduler (launchd / systemd / cron) ────────────────
+    @app.get("/api/diagnostics")
+    def api_diagnostics():
+        """Aggregate everything a maintainer needs to debug a stuck install:
+        OS, versions, Ollama 4-state, DB stats, last 100 lines of update logs.
+        Deliberately omits user records, file contents, and email bodies.
+        """
+        import platform as _platform
+        from bunshin.chat import check_ollama_status as _check_status
+
+        bunshin_version = "unknown"
+        try:
+            from importlib.metadata import version as _pkg_version
+            bunshin_version = _pkg_version("bunshin")
+        except Exception:
+            # PyInstaller bundle has no .dist-info — fall back to __version__.
+            try:
+                from bunshin import __version__ as bunshin_version  # type: ignore
+            except Exception:
+                pass
+
+        log_dir = Path.home() / ".bunshin" / "logs"
+        logs = {}
+        for name in ("update.out.log", "update.err.log"):
+            p = log_dir / name
+            if p.exists():
+                try:
+                    with p.open() as f:
+                        lines = f.readlines()[-100:]
+                    logs[name] = "".join(lines)
+                except Exception:
+                    logs[name] = "(読み込みエラー)"
+
+        db_size = db_path.stat().st_size if db_path.exists() else 0
+        record_count = -1
+        try:
+            _conn = init_db(db_path)
+            try:
+                row = _conn.execute("SELECT COUNT(*) FROM records").fetchone()
+                record_count = row[0] if row else -1
+            finally:
+                _conn.close()
+        except Exception:
+            pass
+
+        return {
+            "bunshin_version": bunshin_version,
+            "os": {
+                "platform": _platform.platform(),
+                "python": _platform.python_version(),
+                "machine": _platform.machine(),
+            },
+            "ollama": _check_status(),
+            "db": {
+                "path": str(db_path),
+                "size_bytes": db_size,
+                "size_mb": round(db_size / 1024 / 1024, 2),
+                "record_count": record_count,
+            },
+            "logs": logs,
+        }
+
     @app.get("/api/scheduler/status")
     def api_scheduler_status():
         from bunshin.scheduler import scheduler_status
         try:
             return scheduler_status()
         except Exception as e:
-            return {"installed": False, "error": str(e)}
+            return {"installed": False, **friendly_error(e, fallback="スケジューラの状態を取得できませんでした")}
 
     @app.post("/api/scheduler/install")
     def api_scheduler_install():
@@ -7197,7 +8049,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             ok, msg = install_scheduler()
             return {"ok": ok, "message": msg}
         except Exception as e:
-            return {"ok": False, "message": str(e)}
+            return {"ok": False, "message": friendly_error(e, fallback="自動取り込みの設定に失敗しました")["error"]}
 
     @app.post("/api/scheduler/uninstall")
     def api_scheduler_uninstall():
@@ -7206,7 +8058,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             ok, msg = uninstall_scheduler()
             return {"ok": ok, "message": msg}
         except Exception as e:
-            return {"ok": False, "message": str(e)}
+            return {"ok": False, "message": friendly_error(e, fallback="自動取り込みの解除に失敗しました")["error"]}
 
     @app.post("/api/scheduler/run-now")
     def api_scheduler_run_now():
@@ -7221,7 +8073,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             )
             return {"ok": True, "message": "更新をバックグラウンドで開始しました"}
         except Exception as e:
-            return {"ok": False, "message": str(e)}
+            return {"ok": False, "message": friendly_error(e, fallback="更新の起動に失敗しました")["error"]}
 
     @app.get("/api/system/recommend-model")
     def api_recommend_model():
@@ -7869,7 +8721,12 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                         full_response.append(delta)
                         yield json.dumps({"delta": delta}, ensure_ascii=False) + "\n"
                 except Exception as e:
-                    yield json.dumps({"error": str(e)}, ensure_ascii=False) + "\n"
+                    import traceback
+                    traceback.print_exc()
+                    yield json.dumps(
+                        friendly_error(e, fallback="AI からの応答中にエラーが発生しました"),
+                        ensure_ascii=False,
+                    ) + "\n"
                     return
 
                 # Save the assistant turn.

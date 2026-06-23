@@ -4,6 +4,96 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-06-23
+
+The "壱岐の友人に渡せる" release. Quality pass before sharing with
+non-technical first users — every install-blocker, every silent confusion
+point, every "?" moment that an early test surfaced has a one-click answer.
+
+### Added — Demo GIF build pipeline
+- New **`scripts/build-demo-gif.sh`** converts a QuickTime `.mov` recording
+  into an optimized `docs/demo.gif` (1200px wide, 12fps, ffmpeg palette
+  pass + optional gifsicle lossy pass). Target output ≤ 8 MB so GitHub
+  renders it inline in the README.
+- README recipe in `docs/screenshots/README.md` documents the 30-second
+  shot list (検索 → チャット → 関係性) and the markdown snippet to
+  embed the GIF at the top of the project README.
+
+### Added — Uninstall feedback path
+- 設定タブの末尾に「Bunshin を辞める」セクション。「アンインストール
+  手順を見る」ボタンで modal を開くと、5 つの理由 (重い / 難しい /
+  想像と違った / バグ / その他) + 任意の補足コメント + 環境情報を
+  `mailto` のテンプレートとしてプリフィルしてメールクライアントを開きます。
+- 送信せずに手順だけ見ることもできます。アンインストール手順は
+  Bunshin.app 削除 + `~/.bunshin/` 完全消去 + launchd plist の unload
+  を 4 ステップで明示。
+
+### Added — Post-onboarding tour
+- New **3-step visual tour** runs once after the setup wizard completes:
+  検索 → チャット → 関係性 タブを順番に切り替えながら、各タブで何ができ
+  るかを 1 〜 2 行で説明します。スキップ可、`localStorage` に `bunshin.tour`
+  を立てて 2 回目以降は出ません。Wizard だけだと「データの入れ方」しか
+  分からず、何のためのアプリかが見えない問題への一手。
+
+### Added — "困った時は" diagnostics panel
+- New section at the bottom of the settings tab. One click gathers OS,
+  Bunshin version, Ollama 4-state, DB size + record count, and the last
+  100 lines of `update.out.log` / `update.err.log` into a single JSON
+  payload via the new **`/api/diagnostics`** endpoint.
+- Buttons to **copy to clipboard** and **prefill a mailto** template
+  (`Bunshin 困りごと (v0.6.0)` subject + diagnostic JSON in body),
+  plus a deep link to **GitHub Issues** for users who prefer that.
+- Excludes records, file contents, email bodies, and entity data — only
+  ships infrastructural facts so the user can debug without worrying
+  about leaking personal memory.
+
+### Changed — Japanese error messages everywhere
+- **`friendly_error()` helper** translates Python exceptions
+  (`FileNotFoundError`, `PermissionError`, `ConnectionError`, `TimeoutError`,
+  `ValueError`, etc.) to `{error, hint, code}` payloads in 日本語.
+- **Global FastAPI exception handler** ensures unhandled errors never
+  leak a raw Python traceback to the UI — the full stack still prints
+  to the dev terminal, but users see a calm Japanese message.
+- Replaced six English error strings (`"not indexed"`, `"not on disk"`,
+  `"restore failed"`, `"record not found"`, `"Ollama not running"`,
+  `"Ollama.app not found"`) with proper Japanese equivalents.
+- Six remaining `str(e)` leaks (scheduler endpoints, Ollama launch,
+  chat streaming) now route through `friendly_error()` instead.
+
+### Added — Quick memory capture
+- **"+ 記憶" button** in the top-right header (every tab). One click opens
+  a modal with a textarea and "保存 (⌘↵)" / "キャンセル" buttons.
+- **⌘N global shortcut** opens the same modal from anywhere except while
+  typing in another input.
+- Persists via the existing `/api/note` endpoint (same path as the
+  `覚えといて: …` chat prefix), so vectors and search indexing are
+  shared with the rest of the pipeline.
+- Replaces the previous "type a magic prefix in chat" workflow as the
+  primary discoverable entry point — the prefix still works for power
+  users.
+
+### Added — DMG install hint
+- DMG background now carries a footer band explaining the first-launch
+  step (`right-click → 開く`) so users don't hit the macOS gatekeeper
+  warning with no guidance.
+
+### Added — Ollama onboarding
+- New **`/api/ollama/status`** endpoint returns a 4-state readiness
+  signal: `not_installed` / `not_running` / `no_models` / `ready`. Looks
+  for the `ollama` binary in `shutil.which` plus the standard macOS
+  install paths (`/usr/local/bin`, `/opt/homebrew/bin`,
+  `Ollama.app/Contents/Resources`), so detection works even when the
+  bundled Python has a minimal `PATH`.
+- **Chat tab now self-explains** what's missing when chat can't work,
+  with a one-click resolution for each state:
+  - `not_installed` → "Ollama をダウンロード" button (deep link to
+    `ollama.com/download/mac`).
+  - `not_running` → "Ollama を起動" button (`open -a Ollama.app` via
+    new `/api/ollama/launch`).
+  - `no_models` → "qwen2.5:3b を入手" button that streams `ollama pull`
+    progress inline via new `/api/ollama/pull`.
+- Banner disappears automatically once Ollama reaches the `ready` state.
+
 ## [0.6.0] - 2026-06-23
 
 The "OSS-ready" release. Bunshin can now be opened from the menu bar

@@ -43,7 +43,7 @@ read it, *locally*.
 | 1 | **Local-First** | All data stays on YOUR device | SQLite + sqlite-vec |
 | 2 | **AI-Agnostic** | Works with any LLM (Claude, GPT, Gemini, Llama, …) | MCP protocol |
 | 3 | **Offline-Capable** | Functions without internet | Ollama integration |
-| 4 | **Omni-Source** | Ingests email, files, chats, notes, photos, browser history, calendar | 9 ingestion paths |
+| 4 | **Omni-Source** | Ingests email, files, chats, notes, photos, browser history, calendar | 11 ingestion paths |
 
 **To our knowledge, no other product satisfies all 4 conditions** (as of 2026-06).
 
@@ -55,7 +55,7 @@ Today's AI products tie your memory to the vendor:
 
 - ChatGPT remembers you, but you can't take that memory elsewhere
 - Claude has memory features, but only in Anthropic's ecosystem
-- Mem0, Letta, etc. are cloud-based services
+- Mem0, Letta, etc. are cloud-based services by default (OSS self-host variants exist, but the hosted offering is the mainline product)
 
 If your AI vendor changes pricing, shuts down, or you simply want to switch, **all your accumulated memory is gone**.
 
@@ -88,7 +88,7 @@ Claude Code, Claude Desktop, or any MCP-aware LLM can call `search_memory` and `
 
 ---
 
-## Ingestion sources (9 paths)
+## Ingestion sources (11 paths)
 
 | Source | What goes in | Path |
 |--------|--------------|------|

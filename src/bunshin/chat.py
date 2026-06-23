@@ -1,4 +1,6 @@
 """Chat with bunshin memory via local LLM (Ollama)."""
+import os
+import shutil
 from datetime import datetime
 from typing import Optional
 
@@ -24,6 +26,7 @@ PREFERRED_MODELS = [
     "llama3.2",
     "phi3:mini",
 ]
+DEFAULT_RECOMMENDED_MODEL = "qwen2.5:3b"  # 1.9GB — entry-level for first-time users
 
 
 def check_ollama(host: str = OLLAMA_HOST) -> tuple[bool, list[str]]:
@@ -35,6 +38,79 @@ def check_ollama(host: str = OLLAMA_HOST) -> tuple[bool, list[str]]:
     except (httpx.RequestError, KeyError, ValueError):
         pass
     return False, []
+
+
+def detect_ollama_binary() -> Optional[str]:
+    """Find the ollama executable on disk. Returns absolute path or None.
+
+    Bunshin's bundled Python has a minimal PATH, so shutil.which often fails
+    even when the user has Ollama installed via the official .pkg.
+    """
+    path = shutil.which("ollama")
+    if path:
+        return path
+    candidates = [
+        "/usr/local/bin/ollama",
+        "/opt/homebrew/bin/ollama",
+        "/Applications/Ollama.app/Contents/Resources/ollama",
+        os.path.expanduser("~/Applications/Ollama.app/Contents/Resources/ollama"),
+    ]
+    for p in candidates:
+        if os.path.exists(p) and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def detect_ollama_app() -> Optional[str]:
+    """Return path to Ollama.app if installed, for launching via 'open -a'."""
+    for p in (
+        "/Applications/Ollama.app",
+        os.path.expanduser("~/Applications/Ollama.app"),
+    ):
+        if os.path.isdir(p):
+            return p
+    return None
+
+
+def _get_ollama_version(host: str = OLLAMA_HOST) -> Optional[str]:
+    try:
+        r = httpx.get(f"{host}/api/version", timeout=1.0)
+        if r.status_code == 200:
+            return r.json().get("version")
+    except (httpx.RequestError, KeyError, ValueError):
+        pass
+    return None
+
+
+def check_ollama_status(host: str = OLLAMA_HOST) -> dict:
+    """Return detailed Ollama state for onboarding UI.
+
+    state values:
+      - "not_installed": no ollama binary anywhere
+      - "not_running":   binary present but server not reachable
+      - "no_models":     server reachable but no models pulled
+      - "ready":         server reachable and at least one model pulled
+    """
+    binary = detect_ollama_binary()
+    app_path = detect_ollama_app()
+    reachable, models = check_ollama(host)
+
+    if reachable:
+        state = "ready" if models else "no_models"
+    elif binary or app_path:
+        state = "not_running"
+    else:
+        state = "not_installed"
+
+    return {
+        "state": state,
+        "binary_path": binary,
+        "app_path": app_path,
+        "models": models,
+        "preferred_model": pick_model(models),
+        "version": _get_ollama_version(host) if reachable else None,
+        "recommended_model": DEFAULT_RECOMMENDED_MODEL,
+    }
 
 
 def pick_model(available: list[str]) -> Optional[str]:

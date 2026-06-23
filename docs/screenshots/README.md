@@ -44,13 +44,37 @@ hero is to show "this thing remembers everything").
 
 3 枚で「記憶を貯める / 構造化する / 質問する」の全フローが画像で伝わる。
 
-## 動画版（v0.7 以降）
+## 30 秒デモ GIF（README ヒーロー用）
 
-`docs/screenshots/demo.mp4`（60 秒、画面録画）も入れたい。
-QuickTime Player → 新規画面収録 → Bunshin ウィンドウだけ選択 →
-- 起動 → 検索 → フラッシュバック → カードクリック → 検索結果 → チャット
-の流れを 1 分で見せる。`ffmpeg -i input.mov -c:v libx264 -preset slow
--crf 28 -movflags +faststart output.mp4` で圧縮して README に
-`![demo](docs/screenshots/demo.mp4)` で埋め込み。
+`docs/demo.gif` を README の最上部（ヒーロー画像の前）に置くと、
+「これ何ができるアプリ？」が 5 秒で伝わる。
 
-優先度低。スクショ 3 枚が先。
+### 撮影レシピ
+
+1. **準備**:
+   - Bunshin を 1600×1000 にリサイズ、Light mode
+   - Ollama 起動済み、チャット可能な状態
+   - 検索クエリ・チャット質問は事前に決めておく（録画中に考えると間延びする）
+2. **QuickTime Player** → ファイル → 新規画面収録 → Bunshin ウィンドウだけ選択
+3. **30 秒以内** で次のフロー:
+   - 検索タブ → クエリ入力 → 結果 1 件クリック → 会話展開（10 秒）
+   - チャットタブ → 質問入力 → AI ストリーム応答（15 秒）
+   - 関係性タブ → 蜘蛛の巣 → エンティティクリック（5 秒）
+4. **停止** → デスクトップに `.mov` 保存
+5. **GIF 変換** — リポジトリで:
+   ```bash
+   scripts/build-demo-gif.sh ~/Desktop/bunshin-demo.mov
+   ```
+   `docs/demo.gif` が出力されます（1200px 幅、12fps、palette 最適化）。
+   `brew install gifsicle` も入れておくと更に ~30% 小さくなります。
+6. **README に挿入**:
+   ```markdown
+   <p align="center">
+     <img src="docs/demo.gif" width="800" alt="30 秒で見る Bunshin" />
+   </p>
+   ```
+
+### サイズ目安
+
+- 30 秒・1200×750・12fps → 5〜8 MB
+- 超えた時は `.mov` をトリミングするか、`build-demo-gif.sh` 内の `fps=12` を `10` に下げる
