@@ -403,9 +403,10 @@ def search(
             elif sort == "oldest":
                 scored.sort(key=lambda r: (r["timestamp"] or 0))
             # Hold onto a wider candidate pool so the cross-encoder has
-            # room to reshuffle. We cap at 4× the user-requested limit
-            # because rerank latency grows linearly with candidate count.
-            results = scored[: max(limit * 4, 30)]
+            # room to reshuffle. 2× the user-requested limit keeps rerank
+            # latency under ~3 s on Apple Silicon for limit=20 while still
+            # giving the model enough headroom to reorder meaningfully.
+            results = scored[: max(limit * 2, 20)]
 
     # Cross-encoder rerank (only meaningful for the relevance sort —
     # newest/oldest already have a deterministic ordering).

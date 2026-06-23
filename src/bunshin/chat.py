@@ -113,13 +113,61 @@ def check_ollama_status(host: str = OLLAMA_HOST) -> dict:
     }
 
 
-def pick_model(available: list[str]) -> Optional[str]:
-    """Choose the best model from those available."""
+def _detect_ram_gb() -> int:
+    """Best-effort total RAM in GiB. Returns 0 if undetectable."""
+    try:
+        import subprocess
+        out = subprocess.check_output(["sysctl", "-n", "hw.memsize"], timeout=2)
+        return int(out.strip()) // (1024 ** 3)
+    except Exception:
+        try:
+            import os as _os
+            return _os.sysconf("SC_PAGE_SIZE") * _os.sysconf("SC_PHYS_PAGES") // (1024 ** 3)
+        except Exception:
+            return 0
+
+
+# Approximate Q4-quantized model footprints in billions of params.
+_MODEL_PARAM_B = {
+    "qwen2.5:72b": 72, "qwen2.5:32b": 32, "qwen2.5:14b": 14,
+    "qwen2.5:7b": 7,   "qwen2.5:3b": 3,   "qwen2.5:1.5b": 1.5,
+    "llama3.3:70b": 70, "llama3.1:8b": 8,
+    "llama3.2:3b": 3,  "llama3.2:1b": 1, "llama3.2": 3,
+    "phi3:mini": 4,
+}
+
+
+def _max_model_size_for_ram(ram_gb: int) -> float:
+    """Heuristic ceiling on Q4-quantized model size that fits comfortably
+    alongside macOS + Electron + the user's other apps. Errs conservative —
+    a model that "fits" but causes swap is worse than picking a smaller one."""
+    if ram_gb >= 48: return 72
+    if ram_gb >= 28: return 32
+    if ram_gb >= 14: return 14
+    if ram_gb >= 8:  return 7
+    if ram_gb >= 4:  return 3
+    return 1.5
+
+
+def pick_model(available: list[str], ram_gb: Optional[int] = None) -> Optional[str]:
+    """Choose the best model that fits this Mac's RAM.
+
+    PREFERRED_MODELS is ordered by quality (largest first); we walk it and
+    return the first model that is BOTH installed AND fits the RAM ceiling.
+    Falls back to the smallest installed model if nothing fits — better to
+    get a slow response than no response.
+    """
     available_set = set(available)
+    if ram_gb is None:
+        ram_gb = _detect_ram_gb()
+    ceiling = _max_model_size_for_ram(ram_gb) if ram_gb else float("inf")
     for p in PREFERRED_MODELS:
-        if p in available_set:
+        if p in available_set and _MODEL_PARAM_B.get(p, 999) <= ceiling:
             return p
-    return available[0] if available else None
+    # Nothing within ceiling — last resort: smallest installed model.
+    sized = [(p, _MODEL_PARAM_B.get(p, 999)) for p in available]
+    sized.sort(key=lambda t: t[1])
+    return sized[0][0] if sized else None
 
 
 def _augment_query_with_history(query: str, history: Optional[list[dict]]) -> str:

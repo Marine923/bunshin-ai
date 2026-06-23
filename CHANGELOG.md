@@ -4,6 +4,26 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-06-23
+
+「触ってみて感じる速度」と「Mac スペックに合うモデル」の両方を改善した patch。
+
+### Performance — Search
+- 検索の cross-encoder rerank に渡す候補数を 4×limit から 2×limit に削減。
+  典型的な検索（limit=20）で rerank 入力 80 件 → 40 件、Apple Silicon
+  では rerank 時間が ~5 秒 → ~2 秒に。並び順への影響は最小（top の入れ替え
+  は元から上位 10 件内で起きる）。
+
+### Changed — Default chat model is now RAM-aware
+- `pick_model()` が Mac の物理メモリ（`sysctl hw.memsize`）を見て、
+  fit する最大の Q4 量子化モデルを自動選択するように。
+  - 8 GB Mac → `llama3.2:3b`（〜3 GB）
+  - 16 GB Mac → `qwen2.5:14b`（〜12 GB）
+  - 32 GB Mac → `qwen2.5:32b`（〜22 GB）
+  - 48 GB+ Mac → `qwen2.5:72b`（〜48 GB）
+- これまでは「PREFERRED_MODELS の先頭が available なら」で 32b/72b を
+  選んでしまい、16 GB 以下の Mac でスワップが頻発していた。
+
 ## [0.7.2] - 2026-06-23
 
 QA リスト 4 件をまとめた patch。
