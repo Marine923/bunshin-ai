@@ -656,10 +656,15 @@ INDEX_HTML = """<!DOCTYPE html>
   .filter-chip:hover svg, .filter-chip.active svg { color: var(--accent-2); }
   .filter-chip:hover { background: var(--bg-2); color: var(--text-1); }
   .filter-chip.active {
-    background: var(--accent-soft);
+    background: var(--accent-1);
     border-color: var(--accent-1);
-    color: var(--text-1);
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(106,109,255,0.35);
   }
+  .filter-chip.active svg { color: #fff; }
+  :root.theme-light .filter-chip.active { color: #fff; }
+  :root.theme-light .filter-chip.active svg { color: #fff; }
   /* Dim source chips that have zero records in the current DB. */
   .filter-chip.chip-empty { opacity: 0.4; }
   .filter-chip.chip-empty:hover { opacity: 0.7; }
@@ -5322,8 +5327,10 @@ async function loadFlashback() {
     const populated = windows.filter(w => w.items && w.items.length);
     if (!populated.length) {
       section.style.display = 'none';
+      section.dataset.populated = '0';
       return;
     }
+    section.dataset.populated = '1';
     grid.innerHTML = windows.map(w => {
       const it = (w.items && w.items[0]) || null;
       if (!it) {
@@ -5909,7 +5916,16 @@ let _searchPrefs = { search_rerank: true, search_expand: false };
 })();
 
 async function doSearch(query) {
-  if (!query.trim()) { results.innerHTML = '<div class="empty">検索クエリを入力してください</div>'; return; }
+  const flashbackSec = document.getElementById('flashback-section');
+  if (!query.trim()) {
+    results.innerHTML = '<div class="empty">検索クエリを入力してください</div>';
+    // Empty query → restore flashback (if it had content originally).
+    if (flashbackSec && flashbackSec.dataset.populated === '1') flashbackSec.style.display = '';
+    return;
+  }
+  // Active search → fold the flashback out of the way so results aren't
+  // buried below it.
+  if (flashbackSec) flashbackSec.style.display = 'none';
   _currentQuery = query;
   results.innerHTML = '<div class="loading">検索中…</div>';
   try {
@@ -7318,12 +7334,13 @@ chatForm.addEventListener('submit', async (e) => {
       chatSend.disabled = false;
       return;
     }
-    chatStatus.textContent = '応答生成中…';
+    chatStatus.textContent = '過去記憶を検索中…';
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let contextList = null;
     let fullText = '';
+    let firstDelta = true;
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -7338,7 +7355,11 @@ chatForm.addEventListener('submit', async (e) => {
             currentSessionId = j.session_id;
           } else if (j.context) {
             contextList = j.context;
+            const n = contextList.length;
+            const mdl = _selectedModel || 'AI';
+            chatStatus.textContent = `${n} 件の過去記憶を参考に ${mdl} が考え中…（10〜30 秒）`;
           } else if (j.delta) {
+            if (firstDelta) { chatStatus.textContent = ''; firstDelta = false; }
             fullText += j.delta;
             // Live Markdown rendering as chunks arrive. A blinking cursor
             // pinned to the end makes the wait feel like generation.

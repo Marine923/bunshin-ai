@@ -4,6 +4,22 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-06-23
+
+QA パスで見つかった UX のひっかかりを潰した patch リリース。
+
+### Changed — Search UI
+- 検索クエリ入力中はフラッシュバックを自動で折り畳み、結果が画面上部
+  にすぐ出るように。空クエリに戻すと再表示。
+- ソースチップの active 状態を「うっすら背景色」から「accent 色の濃い背景 +
+  白文字 + box-shadow」に強化。どのソースで絞ってるかが一目でわかります。
+
+### Changed — Chat status text
+- 「応答生成中…」だけだった表示を、ステージごとに更新するように:
+  「過去記憶を検索中…」 → 「N 件の過去記憶を参考に {model} が考え中…
+  （10〜30 秒）」 → 応答ストリーム開始でクリア。
+- ローカル LLM の体感速度に対する不安を減らす。
+
 ## [0.7.0] - 2026-06-23
 
 The "壱岐の友人に渡せる" release. Quality pass before sharing with
