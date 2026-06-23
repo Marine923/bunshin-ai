@@ -11,7 +11,7 @@
  *   7. Persist window geometry between sessions.
  */
 
-const { app, BrowserWindow, Menu, shell, dialog, ipcMain, globalShortcut, nativeTheme, Notification } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, shell, dialog, ipcMain, globalShortcut, nativeTheme, Notification } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -43,6 +43,7 @@ const store = new Store({
 });
 
 let mainWindow = null;
+let tray = null;
 let splashWindow = null;
 let serverProcess = null;
 let serverStartedByUs = false;
@@ -435,6 +436,24 @@ async function fetchInsights() {
   }
 }
 
+async function fetchFlashback() {
+  try {
+    return await new Promise((resolve, reject) => {
+      const req = require('node:http').get(`${SERVER_URL}/api/flashback`, (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+        });
+      });
+      req.on('error', reject);
+      req.setTimeout(5_000, () => req.destroy(new Error('timeout')));
+    });
+  } catch {
+    return null;
+  }
+}
+
 function notifyKey(category, item) {
   // Stable per-insight identifier so we don't repeat notifications.
   return `${category}:${item.name || item.summary || JSON.stringify(item).slice(0, 80)}`;
@@ -488,6 +507,69 @@ function startInsightNotificationLoop() {
   }, 60_000);
 }
 
+// ─── Morning flashback push ──────────────────────────────────────────────
+// Once per day, between 07:00 and 11:00 local time, send a single
+// notification with one of the user's flashback windows ("1 year ago
+// today" etc.). Idempotent via a date-stamped storage key.
+const MORNING_FLASHBACK_KEY = 'lastMorningFlashbackDate';
+const FLASHBACK_INTERVAL_MS = 15 * 60 * 1000;  // re-check every 15 minutes
+
+async function pushMorningFlashback() {
+  if (!store.get('notifications', true)) return;
+  if (!Notification.isSupported()) return;
+
+  const now = new Date();
+  const hour = now.getHours();
+  // Only fire in the morning window — never wake people up at 2am.
+  if (hour < 7 || hour >= 11) return;
+  const today = now.toISOString().slice(0, 10);
+  if (store.get(MORNING_FLASHBACK_KEY) === today) return;
+
+  const j = await fetchFlashback();
+  if (!j || !j.windows) return;
+  const populated = j.windows.filter(w => w.items && w.items.length);
+  if (!populated.length) {
+    // Don't notify when there's nothing to remember — mark the date so
+    // we don't keep retrying every 15 minutes for nothing.
+    store.set(MORNING_FLASHBACK_KEY, today);
+    return;
+  }
+  // Prefer the most distant window (more nostalgic). Falls back to first.
+  const pick = populated[populated.length - 1];
+  const it = pick.items[0];
+  const isJa = menuLanguage === 'ja';
+
+  const title = isJa
+    ? `${pick.label_ja} の記憶`
+    : `Flashback: ${pick.label || pick.date}`;
+  const body = (it.content || '').replace(/\s+/g, ' ').slice(0, 140);
+
+  const n = new Notification({ title, body, silent: false });
+  n.on('click', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow();
+      return;
+    }
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.executeJavaScript(`
+      document.querySelector('.sidebar-tab[data-pane="search"]')?.click();
+    `).catch(() => {});
+  });
+  n.show();
+  store.set(MORNING_FLASHBACK_KEY, today);
+}
+
+function startMorningFlashbackLoop() {
+  if (!store.get('notifications', true)) return;
+  // First check after 90s (let server settle + cover the case where
+  // user launched Bunshin in the morning), then periodic.
+  setTimeout(() => {
+    pushMorningFlashback().catch(() => {});
+    setInterval(() => pushMorningFlashback().catch(() => {}), FLASHBACK_INTERVAL_MS);
+  }, 90_000);
+}
+
 function setupAutoUpdater() {
   if (!autoUpdater) return;
   if (!app.isPackaged) return;  // dev mode: skip
@@ -521,6 +603,82 @@ function setupAutoUpdater() {
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1000);
 }
 
+function createTray() {
+  if (tray) return;
+  try {
+    // Template image (black ∞ on transparent) so macOS auto-tints it
+    // to match the menu bar (white on dark, black on light) — same
+    // treatment as system icons.
+    const iconPath = path.join(__dirname, '..', 'build', 'iconTemplate.png');
+    const image = nativeImage.createFromPath(iconPath);
+    if (image.isEmpty()) return;
+    if (process.platform === 'darwin') image.setTemplateImage(true);
+    tray = new Tray(image);
+    tray.setToolTip('Bunshin — 分身（個人記憶 AI）');
+
+    const showMain = () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+        return;
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    };
+    const focusTab = (pane, focusSelector) => {
+      showMain();
+      setTimeout(() => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        mainWindow.webContents.executeJavaScript(`
+          document.querySelector('.sidebar-tab[data-pane="${pane}"]')?.click();
+          ${focusSelector ? `setTimeout(() => document.querySelector('${focusSelector}')?.focus(), 120);` : ''}
+        `).catch(() => {});
+      }, 60);
+    };
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Bunshin を開く',
+        click: showMain,
+      },
+      { type: 'separator' },
+      {
+        label: '検索…',
+        accelerator: 'CmdOrCtrl+K',
+        click: () => focusTab('search', '#q'),
+      },
+      {
+        label: 'チャットを開く',
+        click: () => focusTab('chat', '#chat-input'),
+      },
+      {
+        label: '今日のフラッシュバック',
+        click: () => focusTab('search'),
+      },
+      { type: 'separator' },
+      {
+        label: 'Bunshin を終了',
+        click: () => app.quit(),
+      },
+    ]);
+    tray.setContextMenu(contextMenu);
+
+    // Left-click toggles the main window visibility.
+    tray.on('click', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+        return;
+      }
+      if (mainWindow.isVisible() && mainWindow.isFocused()) {
+        mainWindow.hide();
+      } else {
+        showMain();
+      }
+    });
+  } catch (e) {
+    console.error('[bunshin] tray init failed:', e);
+  }
+}
+
 app.whenReady().then(async () => {
   // Refresh locale now that app.getLocale() returns the real OS language.
   t = loadLocale();
@@ -540,7 +698,9 @@ app.whenReady().then(async () => {
   }
   setSplashStatus(menuLanguage === 'ja' ? '記憶を読み込み中…' : 'Loading memories…');
   createWindow();
+  createTray();
   startInsightNotificationLoop();
+  startMorningFlashbackLoop();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

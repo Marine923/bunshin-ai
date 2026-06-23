@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussion / 雑談
+    url: https://github.com/Marine923/bunshin-ai/discussions
+    about: 「これって他の人どう使ってる？」みたいなオープンな話はこちら。
+  - name: 📖 ドキュメント
+    url: https://github.com/Marine923/bunshin-ai#readme
+    about: まずは README / SETUP / ARCHITECTURE を覗いてみてください。

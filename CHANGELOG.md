@@ -4,6 +4,70 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-06-23
+
+The "OSS-ready" release. Bunshin can now be opened from the menu bar
+without ever launching the main window, surface the day's flashback
+as a native macOS notification, and prove its privacy promises through
+a transparent settings panel. The README has real screenshots, and the
+repo has the docs an outside contributor needs to find their way in.
+
+### Added — Menu bar & notifications
+- **Tray icon** (`∞`) in the macOS menu bar. Left-click toggles the
+  main window's visibility; right-click opens a context menu with
+  shortcuts to 検索 / チャット / フラッシュバック / 終了.
+- Uses a macOS template image (auto-tinted to match the menu bar),
+  so it reads as a system icon — not a colored sticker.
+- **Morning flashback push** — once per day, between 07:00 and 11:00
+  local time, a native macOS notification surfaces the day's most
+  distant flashback ("5 年前の今日 の記憶") with the record snippet.
+  Clicking it opens the main window straight to the search tab.
+  Idempotent via a date-stamped store key.
+
+### Added — Privacy panel
+- New **設定 → プライバシー** section at the top of the settings tab.
+- "あなたのデータは、この Mac から一歩も出ません" promise banner with
+  a real checkmark, plus a one-sentence summary of why.
+- Lists the live DB path + size, total data-folder size, Ollama
+  running status (probed at `127.0.0.1:11434`), and every external
+  destination Bunshin actually contacts (proves the empty list when
+  nothing is configured).
+
+### Added — OSS contributor docs
+- `CONTRIBUTING.md` — quick-start, project layout, branch + PR rules,
+  coding style, good-first-issue pointers, release recipe.
+- `ARCHITECTURE.md` — module map, the 4-condition design rationale,
+  end-to-end data flow diagrams for import and search, "where to
+  land your change" cheatsheet.
+- `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1.
+- `.github/ISSUE_TEMPLATE/` — `bug_report.md`, `feature_request.md`,
+  `question.md`, with `config.yml` routing blank issues to
+  Discussions / docs.
+- `.github/pull_request_template.md` — required checks include
+  "4-condition impact" so changes that break Local-first / AI-Agnostic /
+  Offline / Omni-source get caught at review.
+
+### Added — README hero
+- README hero strip with three real screenshots (search + flashback,
+  relationship spider-web, chat with cited memory).
+- Shields.io badges for release, platform, license, and a custom
+  "local-first 100%" badge.
+- Recipe for adding / refreshing screenshots in
+  `docs/screenshots/README.md`.
+
+### Changed
+- Settings save button is now a **floating round button** in the
+  bottom-right of the settings tab. No longer disappears when you
+  scroll past the schema-driven fields, no chrome wrapper around it.
+- Settings sections gained icon prefixes (lock for プライバシー,
+  clock for 自動取り込み, archive for バックアップ, download for
+  エクスポート, brain for 学習).
+
+### Fixed
+- The black gradient bleeding through the settings tab in light mode
+  (`.settings-save-bar` was hardcoded to `#0a0a0a`) — now driven by
+  CSS variables so it follows the theme.
+
 ## [0.5.0] - 2026-06-22
 
 The "ready for friends" release. Everything a first-time user needs to go

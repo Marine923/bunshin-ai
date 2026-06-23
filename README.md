@@ -1,13 +1,37 @@
+<div align="center">
+
 # Bunshin (分身)
 
-> **A personal memory engine where YOU are the protagonist, and AI is an interchangeable tool.**
+### **Your past is yours. AI is just the lens.**
 
-[![Latest release](https://img.shields.io/github/v/release/Marine923/bunshin-ai)](https://github.com/Marine923/bunshin-ai/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)]()
+A personal memory engine that ingests your emails, files, chats,
+notes, photos, and browser history — then lets any LLM you choose
+read it, *locally*.
 
-ChatGPT and Claude are like personal assistants — replaceable.
-Bunshin is like your brain's extension — not replaceable.
+[![Latest release](https://img.shields.io/github/v/release/Marine923/bunshin-ai?style=for-the-badge&color=818cf8)](https://github.com/Marine923/bunshin-ai/releases/latest)
+[![Platform](https://img.shields.io/badge/macOS-11%2B-lightgrey?style=for-the-badge)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-fbbf24?style=for-the-badge)](LICENSE)
+[![Local-first](https://img.shields.io/badge/local--first-100%25-5fbf6f?style=for-the-badge)]()
+
+[Download for macOS ↓](https://github.com/Marine923/bunshin-ai/releases/latest) &nbsp;·&nbsp;
+[Architecture](./ARCHITECTURE.md) &nbsp;·&nbsp;
+[Contributing](./CONTRIBUTING.md)
+
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     HERO SCREENSHOTS — add three 1600×1000 PNGs (or HEIC→PNG) to
+     docs/screenshots/ to bring this section to life. See
+     docs/screenshots/README.md for the exact recipe.
+     ────────────────────────────────────────────────────────────-->
+<p align="center">
+  <img src="docs/screenshots/01-search-flashback.png" width="32%" alt="Today's flashback on the search tab" />
+  <img src="docs/screenshots/02-relationships.png" width="32%" alt="Spider-web relationship graph" />
+  <img src="docs/screenshots/03-chat.png" width="32%" alt="Local chat grounded in past memory" />
+</p>
+
+> ChatGPT and Claude are *personal assistants* — replaceable.
+> Bunshin is your *brain's extension* — yours.
 
 ---
 

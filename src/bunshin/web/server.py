@@ -599,6 +599,132 @@ INDEX_HTML = """<!DOCTYPE html>
     margin-top: 1px;
   }
   :root.theme-light .onboarding-content .step-warn .warn-icon { color: #b45309; }
+  /* ── Privacy panel (settings → プライバシー) ── */
+  .privacy-hero {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-1);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+  }
+  .privacy-promise {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14.5px;
+    color: var(--text-1);
+    margin-bottom: 4px;
+  }
+  .privacy-promise svg { color: #5fbf6f; flex-shrink: 0; }
+  .privacy-note {
+    font-size: 12.5px;
+    color: var(--text-3);
+    line-height: 1.6;
+    margin: 0;
+  }
+  .privacy-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .privacy-row {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 14px;
+    align-items: start;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-1);
+  }
+  .privacy-row:last-child { border-bottom: 0; }
+  .privacy-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--text-3);
+    font-weight: 500;
+  }
+  .privacy-label svg { color: var(--text-4); flex-shrink: 0; }
+  .privacy-value {
+    font-size: 12.5px;
+    color: var(--text-1);
+    word-break: break-all;
+  }
+  .privacy-value code {
+    background: var(--bg-2);
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+  }
+  .privacy-muted {
+    color: var(--text-4);
+    font-size: 11.5px;
+    margin-left: 8px;
+  }
+  .privacy-ok { color: #5fbf6f; }
+  .privacy-warn { color: #efaf4a; }
+  .privacy-section-title {
+    margin: 18px 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+  .privacy-zero {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    background: var(--bg-2);
+    border-radius: 8px;
+    font-size: 12.5px;
+    color: var(--text-1);
+  }
+  .privacy-zero svg { color: #5fbf6f; flex-shrink: 0; }
+  .privacy-outbound {
+    background: var(--bg-2);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .privacy-conn {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 12.5px;
+    color: var(--text-1);
+  }
+  .privacy-conn svg { color: var(--text-3); flex-shrink: 0; margin-top: 3px; }
+  .privacy-conn code {
+    background: var(--bg-0);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11.5px;
+  }
+  .privacy-footnote {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-1);
+  }
+  .privacy-footnote p {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 4px 0;
+    font-size: 11.5px;
+    color: var(--text-3);
+    line-height: 1.6;
+  }
+  .privacy-footnote svg { color: #c98000; margin-top: 3px; flex-shrink: 0; }
+  :root.theme-light .privacy-footnote svg { color: #b45309; }
+  .privacy-footnote code {
+    background: var(--bg-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+  }
+
   /* Model recommendation banner (settings → chat → preferred model) */
   .model-rec-loading {
     margin-top: 8px;
@@ -2855,17 +2981,20 @@ INDEX_HTML = """<!DOCTYPE html>
   .settings-toggle.on { background: var(--accent-soft); border-color: var(--accent-1); }
   .settings-toggle.on .knob { transform: translateX(28px); background: #4a8fef; }
 
+  /* Floating save button — pinned to the bottom-right of the settings
+     tab, no wrapper chrome (the button itself stands alone). */
   .settings-save-bar {
-    position: sticky;
-    bottom: 0;
-    background: var(--bg-0);
-    border-top: 1px solid var(--border-1);
-    padding: 14px 0 14px;
-    margin-top: 16px;
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
+    position: fixed;
+    bottom: 22px;
+    right: 32px;
+    z-index: 100;
+    display: none;  /* shown only when the settings tab is active */
     align-items: center;
+    gap: 12px;
+  }
+  body.settings-mode .settings-save-bar { display: flex; }
+  body.settings-mode .settings-save-btn {
+    box-shadow: 0 6px 20px rgba(74, 143, 239, 0.45);
   }
   .settings-save-btn {
     background: #4a8fef;
@@ -3293,6 +3422,7 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
     const pane = tab.dataset.pane;
     $('pane-' + pane).classList.add('active');
     document.body.classList.toggle('chat-mode', pane === 'chat');
+    document.body.classList.toggle('settings-mode', pane === 'settings');
     const titleEl = $('pane-title');
     if (titleEl && PANE_TITLES[pane]) titleEl.textContent = PANE_TITLES[pane];
     if (pane === 'chat') $('chat-input').focus();
@@ -3348,6 +3478,99 @@ function renderExportPanel() {
         </div>
       </div>
     </div>`;
+}
+
+function renderPrivacyPanel() {
+  return `
+    <div class="settings-section">
+      <h2><span class="h2-icon">${icon('lock', 18)}</span> プライバシー</h2>
+      <div class="privacy-hero">
+        <div class="privacy-promise">
+          ${icon('check-circle', 16)}
+          <span><b>あなたのデータは、この Mac から一歩も出ません。</b></span>
+        </div>
+        <p class="privacy-note">
+          AI モデルはローカル（Ollama）で動作。Gmail / Calendar は読み取り専用、外部 AI 企業（Anthropic / OpenAI / Google）へのデータ送信は<b>ゼロ</b>です。
+        </p>
+      </div>
+      <div id="privacy-status">
+        <div style="font-size:12px;color:var(--text-4);padding:6px 0;">読み込み中…</div>
+      </div>
+    </div>`;
+}
+
+function _formatBytes(n) {
+  if (!n) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return n.toFixed(n < 10 ? 1 : 0) + ' ' + units[i];
+}
+
+async function loadPrivacyStatus() {
+  const root = $('privacy-status');
+  if (!root) return;
+  try {
+    const j = await (await fetch('/api/privacy/status')).json();
+    const dbSize = _formatBytes(j.db_bytes || 0);
+    const dataSize = _formatBytes(j.data_dir_bytes || 0);
+    const outbound = j.outbound_destinations || [];
+
+    root.innerHTML = `
+      <div class="privacy-grid">
+        <div class="privacy-row">
+          <div class="privacy-label">${icon('database', 14)} データの保存場所</div>
+          <div class="privacy-value">
+            <code>${esc(j.db_path)}</code>
+            <span class="privacy-muted">${esc(dbSize)}</span>
+          </div>
+        </div>
+        <div class="privacy-row">
+          <div class="privacy-label">${icon('folder', 14)} データフォルダ全体</div>
+          <div class="privacy-value">
+            <code>${esc(j.data_dir)}</code>
+            <span class="privacy-muted">${esc(dataSize)}（バックアップ等含む）</span>
+          </div>
+        </div>
+        <div class="privacy-row">
+          <div class="privacy-label">${icon('check-circle', 14)} ローカル AI モデル</div>
+          <div class="privacy-value">
+            <span class="${j.ollama_running ? 'privacy-ok' : 'privacy-warn'}">
+              ${j.ollama_running ? 'Ollama 稼働中（127.0.0.1:11434）' : 'Ollama 未起動 — AI チャットを使うには起動が必要'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="privacy-section-title">外部への接続</div>
+      ${outbound.length === 0 ? `
+        <div class="privacy-zero">
+          ${icon('check-circle', 14)}
+          <span>外部サービスへの接続は<b>ありません</b>。すべての処理がローカルで完結しています。</span>
+        </div>
+      ` : `
+        <div class="privacy-outbound">
+          <p class="privacy-note" style="margin:0 0 8px;">あなたが許可した、読み取り専用の接続のみ：</p>
+          ${outbound.map(d => `
+            <div class="privacy-conn">
+              ${icon('globe', 13)}
+              <div>
+                <code>${esc(d.host)}</code>
+                <div class="privacy-muted">${esc(d.purpose)}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `}
+
+      <div class="privacy-footnote">
+        <p>${icon('lightbulb', 12)}<span>データを別の場所に移したい時は「エクスポート」セクションから JSON / SQLite で持ち出せます。</span></p>
+        <p>${icon('lightbulb', 12)}<span>すべて忘れたい時は <code>${esc(j.data_dir)}</code> フォルダごと削除すれば完全消去できます。</span></p>
+      </div>
+    `;
+  } catch (e) {
+    root.innerHTML = `<div style="color:#f87171;font-size:12px;">読み込みエラー: ${esc(String(e))}</div>`;
+  }
 }
 
 function renderSchedulerPanel() {
@@ -3717,6 +3940,7 @@ async function loadSettings() {
       <button class="settings-save-btn" id="settings-save-btn">保存</button>
     </div>`;
     // Extra panels that don't fit the schema-driven flow.
+    html += renderPrivacyPanel();
     html += renderSchedulerPanel();
     html += renderBackupPanel();
     html += renderExportPanel();
@@ -3728,6 +3952,7 @@ async function loadSettings() {
     wireSchedulerPanel();
     loadModelRecommendation();
     loadSchedulerStatus();
+    loadPrivacyStatus();
 
     // Attach toggle behaviour
     root.querySelectorAll('.settings-toggle').forEach(el => {
@@ -6893,6 +7118,68 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             return reset_learning(conn)
         finally:
             conn.close()
+
+    # ───── Privacy status (transparency for the user) ──────────────────────
+    @app.get("/api/privacy/status")
+    def api_privacy_status():
+        """A snapshot of where the user's data lives and what's connected.
+
+        Bunshin's whole promise is "this data stays on your Mac". This
+        endpoint surfaces the evidence: paths, file sizes, what local
+        services are talking to us, what (if anything) leaves the box.
+        """
+        import os as _os
+        out = {
+            "db_path": str(db_path),
+            "db_bytes": 0,
+            "data_dir": str(Path.home() / ".bunshin"),
+            "data_dir_bytes": 0,
+            "ollama_running": False,
+            "gmail_configured": False,
+            "calendar_configured": False,
+            "outbound_destinations": [],
+        }
+        try:
+            out["db_bytes"] = db_path.stat().st_size if db_path.exists() else 0
+        except OSError:
+            pass
+        try:
+            data_dir = Path.home() / ".bunshin"
+            total = 0
+            for dirpath, _, filenames in _os.walk(data_dir):
+                for f in filenames:
+                    try:
+                        total += (Path(dirpath) / f).stat().st_size
+                    except OSError:
+                        pass
+            out["data_dir_bytes"] = total
+        except OSError:
+            pass
+        # Ollama presence check — quick local probe.
+        try:
+            import urllib.request as _req
+            _req.urlopen("http://127.0.0.1:11434/api/version", timeout=0.5).read()
+            out["ollama_running"] = True
+        except Exception:
+            pass
+        out["gmail_configured"] = (Path.home() / ".bunshin" / "gmail.json").exists()
+        out["calendar_configured"] = (Path.home() / ".bunshin" / "calendar.json").exists()
+        # The only external destinations Bunshin contacts are user-configured.
+        # IMAP for Gmail (when set up), and Google Calendar's iCal URL (if set up).
+        # Nothing is sent — all reads. List them explicitly so the user can audit.
+        if out["gmail_configured"]:
+            out["outbound_destinations"].append({
+                "host": "imap.gmail.com",
+                "purpose": "Gmail メール読み取り（あなたの App Password、読み取り専用）",
+                "direction": "read-only",
+            })
+        if out["calendar_configured"]:
+            out["outbound_destinations"].append({
+                "host": "calendar.google.com",
+                "purpose": "Google Calendar 予定読み取り（あなたの iCal URL、読み取り専用）",
+                "direction": "read-only",
+            })
+        return out
 
     # ───── Auto-import scheduler (launchd / systemd / cron) ────────────────
     @app.get("/api/scheduler/status")
