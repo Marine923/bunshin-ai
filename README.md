@@ -14,6 +14,7 @@ read it, *locally*.
 [![Local-first](https://img.shields.io/badge/local--first-100%25-5fbf6f?style=for-the-badge)]()
 
 [Download for macOS ↓](https://github.com/Marine923/bunshin-ai/releases/latest) &nbsp;·&nbsp;
+[日本語版 README](./README.ja.md) &nbsp;·&nbsp;
 [Architecture](./ARCHITECTURE.md) &nbsp;·&nbsp;
 [Contributing](./CONTRIBUTING.md)
 
