@@ -3262,7 +3262,7 @@ INDEX_HTML = """<!DOCTYPE html>
 <header>
   <h1 id="pane-title">検索</h1>
   <div class="header-right">
-    <button class="add-memory-btn" id="add-memory-btn" type="button" title="メモを記憶に追加 (⌘N)" aria-label="メモ追加">
+    <button class="add-memory-btn" id="add-memory-btn" type="button" title="メモを Bunshin に追加（後で検索や AI チャットから参照できます）⌘N" aria-label="メモ追加">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       <span class="add-memory-label">記憶</span>
     </button>
@@ -3305,11 +3305,11 @@ INDEX_HTML = """<!DOCTYPE html>
         <span class="filter-chip" data-source="claude" data-label="Claude">Claude</span>
         <span class="filter-chip" data-source="gmail" data-label="Gmail">Gmail</span>
         <span class="filter-chip" data-source="file" data-label="ファイル">ファイル</span>
-        <span class="filter-chip" data-source="manual" data-label="メモ">メモ</span>
+        <span class="filter-chip" data-source="manual" data-label="クイックメモ" title="+記憶 / 覚えといて: で追加したメモ">クイックメモ</span>
         <span class="filter-chip" data-source="calendar" data-label="予定">予定</span>
         <span class="filter-chip" data-source="line" data-label="LINE">LINE</span>
         <span class="filter-chip" data-source="browser" data-label="ブラウザ">ブラウザ</span>
-        <span class="filter-chip" data-source="notes" data-label="メモ帳">メモ帳</span>
+        <span class="filter-chip" data-source="notes" data-label="Apple メモ" title="macOS のメモ.app から取り込んだもの">Apple メモ</span>
         <span class="filter-chip" data-source="imessage" data-label="iMessage">iMessage</span>
         <span class="filter-chip" data-source="photos_app" data-label="写真ライブラリ">写真ライブラリ</span>
         <span class="filter-chip" data-source="photo" data-label="写真OCR">写真OCR</span>
@@ -3702,6 +3702,22 @@ const SOURCE_ICON_NAME = {
   imessage:   'message-square',
   photos_app: 'image',
   photo:      'camera',
+};
+
+// Source-type → human-friendly Japanese label. Used by timeline tooltips,
+// flashback cards, search-result badges. Single source of truth.
+const SOURCE_LABEL_JA = {
+  claude:     'Claude',
+  gmail:      'Gmail',
+  file:       'ファイル',
+  manual:     'クイックメモ',
+  calendar:   '予定',
+  line:       'LINE',
+  browser:    'ブラウザ',
+  notes:      'Apple メモ',
+  imessage:   'iMessage',
+  photo:      '写真OCR',
+  photos_app: '写真ライブラリ',
 };
 
 // ===== Sidebar tabs =====
@@ -4916,7 +4932,8 @@ function renderTimelineDay(d) {
     .sort((a,b) => b[1] - a[1])
     .map(([src, cnt]) => {
       const iconHtml = icon(SOURCE_ICON_NAME[src] || 'file-text', 13);
-      return `<span class="src-pill" data-src="${src}" data-date="${d.date}">${iconHtml} ${cnt}</span>`;
+      const lbl = SOURCE_LABEL_JA[src] || src;
+      return `<span class="src-pill" data-src="${src}" data-date="${d.date}" title="${lbl}: ${cnt} 件">${iconHtml} ${cnt}</span>`;
     }).join('');
   return `
     <div class="timeline-day" data-date="${d.date}">
@@ -5308,11 +5325,7 @@ function renderEmptyState(stats) {
 loadStats();
 
 // ===== Flashback (records the user wrote on this same date in the past) =====
-const FLASHBACK_SOURCE_LABEL = {
-  claude: 'Claude', gmail: 'Gmail', file: 'ファイル', manual: 'メモ',
-  calendar: '予定', line: 'LINE', browser: 'ブラウザ',
-  notes: 'メモ帳', imessage: 'iMessage', photo: '写真OCR', photos_app: '写真ライブラリ',
-};
+// SOURCE_LABEL_JA is declared near SOURCE_ICON_NAME above — same dict reused.
 
 async function loadFlashback() {
   const section = $('flashback-section');
@@ -5342,7 +5355,7 @@ async function loadFlashback() {
           </div>`;
       }
       const iconHtml = icon(SOURCE_ICON_NAME[it.source] || 'file-text', 13);
-      const label = FLASHBACK_SOURCE_LABEL[it.source] || it.source;
+      const label = SOURCE_LABEL_JA[it.source] || it.source;
       const more = (w.total_count || 1) - 1;
       const sender = it.sender || '';
       const domain = it.domain || '';
@@ -5404,7 +5417,7 @@ function runDateSearch(fromTs, toTs, dateStr) {
         </div>
         ` + j.results.map(r => {
           const iconHtml = icon(SOURCE_ICON_NAME[r.source] || 'file-text', 13);
-          const label = FLASHBACK_SOURCE_LABEL[r.source] || r.source;
+          const label = SOURCE_LABEL_JA[r.source] || r.source;
           const time = new Date((r.timestamp||0) * 1000).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
           const content = (r.content || '').slice(0, 500);
           const sender = r.sender || '';
@@ -6974,13 +6987,8 @@ loadSessionList();
       setTimeout(() => $('q')?.focus(), 30);
       return;
     }
-    // ⌘+N → new chat (only in chat pane)
-    if (e.key.toLowerCase() === 'n') {
-      e.preventDefault();
-      switchTab('chat');
-      setTimeout(() => $('chat-new-btn')?.click(), 30);
-      return;
-    }
+    // ⌘+N is owned by the "+ 記憶" modal (setupAddMemory). Don't intercept
+    // it here — the add-memory handler will pick it up.
     // ⌘+/ → help modal
     if (e.key === '/' || e.key === '?') {
       e.preventDefault();
@@ -7023,7 +7031,7 @@ function showHelpModal() {
         <div class="help-section">
           <div class="help-section-title">アクション</div>
           <div class="help-row"><kbd>${K}</kbd><kbd>K</kbd><span>検索バーにフォーカス</span></div>
-          <div class="help-row"><kbd>${K}</kbd><kbd>N</kbd><span>新規チャットを開始</span></div>
+          <div class="help-row"><kbd>${K}</kbd><kbd>N</kbd><span>メモを記憶に追加</span></div>
           <div class="help-row"><kbd>${K}</kbd><kbd>/</kbd><span>このヘルプを表示 / 閉じる</span></div>
           <div class="help-row"><kbd>Esc</kbd><span>ライトボックス / モーダルを閉じる</span></div>
         </div>

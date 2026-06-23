@@ -4,6 +4,30 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-06-23
+
+QA リスト 4 件をまとめた patch。
+
+### Changed — Source naming
+- ソース名を「分かりやすさ優先」に変更:
+  - `メモ` → **クイックメモ** (+記憶ボタンや「覚えといて:」で追加したもの)
+  - `メモ帳` → **Apple メモ** (macOS のメモ.app から取り込んだもの)
+- 一元的な `SOURCE_LABEL_JA` 辞書に統合（過去の `FLASHBACK_SOURCE_LABEL` 別途定義を削除）。
+
+### Added — Timeline source icon tooltips
+- タイムラインの日次サマリで、ソースアイコン（🌐💬📄📧 …）に hover
+  すると「ブラウザ: 64 件」「Claude: 587 件」のように具体名と件数が
+  tooltip で出るように。
+
+### Added — Header "+記憶" tooltip 強化
+- `+ 記憶` ボタンの title を「メモを記憶に追加 (⌘N)」から
+  「メモを Bunshin に追加（後で検索や AI チャットから参照できます）⌘N」に。
+
+### Fixed — ⌘N shortcut conflict
+- `⌘N` が「新規チャット」と「+記憶 modal」の両方で取り合いになって
+  いた。**+記憶 modal** を常に開くように統一。help モーダルの
+  説明文も合わせて更新。
+
 ## [0.7.1] - 2026-06-23
 
 QA パスで見つかった UX のひっかかりを潰した patch リリース。
