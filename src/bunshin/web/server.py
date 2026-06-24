@@ -3909,15 +3909,33 @@ function renderExportPanel() {
       <div class="settings-field" style="grid-template-columns: 1fr 220px;">
         <div>
           <div class="settings-label">記憶を持ち出す</div>
-          <div class="settings-help">あなたのデータをいつでも持ち出せます。Local-first の証。</div>
+          <div class="settings-help">あなたのデータをいつでも持ち出せます。Local-first の証。<br><span style="color:var(--text-3);font-size:11px;">※ ブラウザ履歴（YouTube/SNS など）は既定で除外されます。誰かに共有する時の意図しない漏れを防ぐためです。</span></div>
         </div>
-        <div style="display:flex;gap:8px;">
-          <a href="/api/export/json" class="settings-save-btn" style="background:var(--bg-2);color:var(--text-1);text-decoration:none;text-align:center;">JSON</a>
-          <a href="/api/export/sqlite" class="settings-save-btn" style="background:var(--bg-2);color:var(--text-1);text-decoration:none;text-align:center;">SQLite</a>
+        <div style="display:flex;gap:8px;flex-direction:column;">
+          <div style="display:flex;gap:8px;">
+            <a href="/api/export/json" class="settings-save-btn" style="background:var(--bg-2);color:var(--text-1);text-decoration:none;text-align:center;">JSON</a>
+            <a href="/api/export/sqlite" class="settings-save-btn" style="background:var(--bg-2);color:var(--text-1);text-decoration:none;text-align:center;">SQLite</a>
+          </div>
+          <label style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="export-include-browser" style="margin:0;">
+            ブラウザ履歴も含める（自分用バックアップ）
+          </label>
         </div>
       </div>
     </div>`;
 }
+
+(function setupExportToggle() {
+  document.addEventListener('change', (e) => {
+    if (e.target?.id === 'export-include-browser') {
+      const include = e.target.checked ? '?include_browser=true' : '';
+      const jsonLink = document.querySelector('a[href^="/api/export/json"]');
+      const sqliteLink = document.querySelector('a[href^="/api/export/sqlite"]');
+      if (jsonLink) jsonLink.href = '/api/export/json' + include;
+      if (sqliteLink) sqliteLink.href = '/api/export/sqlite' + include;
+    }
+  });
+})();
 
 function renderCalendarPanel() {
   return `
@@ -8173,15 +8191,27 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             conn.close()
 
     @app.get("/api/export/json")
-    def api_export_json():
+    def api_export_json(
+        include_browser: bool = Query(
+            False,
+            description="Include browser history records. Default False since "
+                        "passive browsing (YouTube/SNS URLs) is rarely useful "
+                        "in an export and can leak embarrassing private content.",
+        ),
+    ):
         """Stream every record as newline-delimited JSON so users can
-        keep a copy of their memory in a portable, human-readable form."""
+        keep a copy of their memory in a portable, human-readable form.
+
+        Defaults to excluding the 'browser' source — power user reviewer
+        flagged it as a privacy risk when sharing exports.
+        """
         def emit():
             conn = init_db(db_path)
             try:
+                where = "" if include_browser else "WHERE source != 'browser'"
                 cur = conn.execute(
-                    "SELECT id, source, source_id, timestamp, content, metadata "
-                    "FROM records ORDER BY timestamp ASC"
+                    f"SELECT id, source, source_id, timestamp, content, metadata "
+                    f"FROM records {where} ORDER BY timestamp ASC"
                 )
                 for row in cur:
                     rec = {
@@ -8196,7 +8226,8 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             finally:
                 conn.close()
         from datetime import datetime as _dt
-        fname = f"bunshin-export-{_dt.now().strftime('%Y%m%d-%H%M%S')}.jsonl"
+        suffix = "-with-browser" if include_browser else ""
+        fname = f"bunshin-export{suffix}-{_dt.now().strftime('%Y%m%d-%H%M%S')}.jsonl"
         return StreamingResponse(
             emit(),
             media_type="application/x-ndjson",

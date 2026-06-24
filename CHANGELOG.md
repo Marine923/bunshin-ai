@@ -4,6 +4,17 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.10] - 2026-06-24
+
+### Changed — エクスポートからブラウザ履歴を既定除外（プライバシー対応）
+- `/api/export/json` のデフォルトを **ブラウザソース除外** に変更
+  （玄人レビューの「OSS 公開時にユーザーがエクスポートして共有する
+  シナリオでうっかり漏れる」懸念への対応）。
+- UI に **「ブラウザ履歴も含める（自分用バックアップ）」チェックボックス**
+  を追加。明示的に ON にした時だけ含めて出力。
+- ファイル名にも `-with-browser` サフィックスがつくので、共有時の
+  視認性も担保。
+
 ## [0.7.9] - 2026-06-24
 
 ### Added — 気づきタブの「今日これだけ見ればOK」ヒーローカード
