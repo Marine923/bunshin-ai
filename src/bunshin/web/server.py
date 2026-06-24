@@ -1976,6 +1976,40 @@ INDEX_HTML = """<!DOCTYPE html>
     transform: translateX(-50%) translateY(0);
   }
   .growth-toast .gt-icon svg { width: 14px; height: 14px; }
+  /* Insights hero card — "今日これだけ見ればOK" */
+  .insights-hero {
+    margin: 0 0 22px;
+    padding: 22px 26px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--border-1);
+    border-left: 4px solid var(--accent-1, #6a6dff);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.18);
+  }
+  .insights-hero-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-3);
+    margin-bottom: 10px;
+  }
+  .insights-hero-label svg { width: 14px; height: 14px; }
+  .insights-hero-headline {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-0);
+    line-height: 1.4;
+    margin-bottom: 6px;
+  }
+  .insights-hero-sub {
+    font-size: 13px;
+    color: var(--text-2);
+    line-height: 1.5;
+  }
+  .insights-hero-event   { border-left-color: #58cc6e; }
+  .insights-hero-stale   { border-left-color: #ef9b6b; }
+  .insights-hero-recent  { border-left-color: #6a6dff; }
   /* Welcome / onboarding state shown when the DB is nearly empty. */
   .welcome {
     background: var(--bg-1);
@@ -5379,7 +5413,54 @@ async function loadInsights() {
     genEl.textContent = `生成: ${j.generated_at}`;
     let html = '';
 
-    // LLM digest section first — shown only as a button, fetched on click.
+    // "今日これだけ見ればOK" hero card — picks the single most actionable
+    // insight from the bundle so non-power users don't drown in 5 sections.
+    // Priority: imminent event > stale project > recent file.
+    const top = (() => {
+      if (j.upcoming_events?.length) {
+        const e = j.upcoming_events[0];
+        const loc = e.location ? ` @ ${esc(e.location)}` : '';
+        return {
+          icon: 'calendar',
+          label: '今日これだけ見ればOK',
+          headline: `次の予定: ${esc(e.summary)}`,
+          sub: `${esc(e.start)}${loc}`,
+          tone: 'event',
+        };
+      }
+      if (j.inactive_projects?.length) {
+        const p = j.inactive_projects[0];
+        return {
+          icon: 'flame',
+          label: '今日これだけ見ればOK',
+          headline: `「${esc(p.name)}」が ${p.days_ago} 日動いてません`,
+          sub: `最終 ${esc(p.last_seen)} ｜ ${esc((p.description || '').slice(0, 80))}`,
+          tone: 'stale',
+        };
+      }
+      if (j.recent_files?.length) {
+        const f = j.recent_files[0];
+        return {
+          icon: 'folder',
+          label: '最近触ったファイル',
+          headline: esc(f.name),
+          sub: esc(f.modified),
+          tone: 'recent',
+        };
+      }
+      return null;
+    })();
+    if (top) {
+      html += `
+        <div class="insights-hero insights-hero-${top.tone}">
+          <div class="insights-hero-label">${icon(top.icon, 14)} ${top.label}</div>
+          <div class="insights-hero-headline">${top.headline}</div>
+          <div class="insights-hero-sub">${top.sub}</div>
+        </div>
+      `;
+    }
+
+    // LLM digest section — shown only as a button, fetched on click.
     html += `
       <div class="insights-section">
         <h2><span class="h2-icon">${icon('newspaper', 18)}</span> 過去7日間のサマリ（AI 生成）</h2>
@@ -5691,11 +5772,20 @@ async function loadFlashback() {
     grid.innerHTML = windows.map(w => {
       const it = (w.items && w.items[0]) || null;
       if (!it) {
+        // Empty windows used to read as a flat "この日は静かでした" — a
+        // bit of a downer when 3 of 3 cards say it. Replace with a soft
+        // prompt that invites the user to seed memory.
+        const PROMPTS = [
+          'この頃、何してたっけ？',
+          '記憶がない日。後で思い出したら ⌘N でメモ',
+          '静かな日。あなたが Bunshin に来る前かも',
+        ];
+        const prompt = PROMPTS[Math.floor(w.date.charCodeAt(w.date.length - 1) % PROMPTS.length)];
         return `
           <div class="flashback-card" data-empty="1">
             <div class="fb-when">${esc(w.label_ja)}</div>
             <div class="fb-date">${esc(w.date)} (${esc(w.weekday)})</div>
-            <div class="fb-empty">この日は静かでした</div>
+            <div class="fb-empty">${esc(prompt)}</div>
           </div>`;
       }
       const iconHtml = icon(SOURCE_ICON_NAME[it.source] || 'file-text', 13);

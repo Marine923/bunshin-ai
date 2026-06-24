@@ -4,6 +4,24 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.9] - 2026-06-24
+
+### Added — 気づきタブの「今日これだけ見ればOK」ヒーローカード
+- 気づきタブの最上部に **1 枚だけ** の大きなカードを追加。`/api/insights`
+  の結果から **最も今日アクションすべき 1 件** を自動選出:
+  - 14 日以内の予定があれば → 「次の予定: XXX」（緑）
+  - 長期未活動プロジェクトがあれば → 「『〇〇』が N 日動いてません」（オレンジ）
+  - 最近触ったファイル → 「最近触ったファイル」（青）
+- 素人レビュー「気づきタブの項目が多すぎて、何を見ればいいの？」への
+  直接の回答。
+
+### Changed — フラッシュバック空時の文言
+- 「この日は静かでした」→ 日付ハッシュで以下から選択:
+  - 「この頃、何してたっけ？」
+  - 「記憶がない日。後で思い出したら ⌘N でメモ」
+  - 「静かな日。あなたが Bunshin に来る前かも」
+- 同じカードが 3 枚並んだ時の「全部空」感を緩和。
+
 ## [0.7.8] - 2026-06-24
 
 「触ってみて気持ちいい」UX 3 点。素人レビューで指摘された細部。
