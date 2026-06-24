@@ -4,6 +4,38 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-06-24
+
+「ほぼ全て」じゃなく **全て** をやり切る patch。残っていた 4 件 + 玄人指摘の
+未完了 embedding を全部消化。
+
+### Added — 起動時の自動 embedding backfill
+- 玄人レビューで「埋め込み未完了 508 件」と指摘されたが、調査の結果
+  この dev DB だけで **5,403 件** が未 embed のまま放置されていた。
+- 起動 15 秒後にバックグラウンドで未 embed 全件を埋める処理を追加。
+  進捗はターミナルログにのみ出力（UI を邪魔しない）。
+
+### Added — ノイズメール一括非表示（SNS プリセット学習）
+- 設定タブに **「よくあるノイズを一括非表示」ボタン** 追加。
+- 16 のドメイン (mailchimp / sendgrid / mercari / paypal / amazon /
+  rakuten / list-manage / smartnews / newspicks 等) と 7 の送信者
+  パターン (noreply / no-reply / marketing@ 等) を **learning_rules**
+  に一括投入 + 既存記録に即時適用。
+- 玄人レビュー C 案の実装。
+
+### Added — `bunshin export` / `bunshin import` CLI
+- マシン移行用の export/import コマンド。
+  - \`bunshin export --since 2026-01-01 --source claude --out backup.jsonl\`
+  - \`bunshin import backup.jsonl --skip-existing\`
+- export は既定で browser 履歴を除外（プライバシー）。
+
+### Added — 「分身の成長記録」（memory diff）
+- 設定タブ最上部に「この 30 日間で +N 件、新登場エンティティ X 個」
+  を可視化するパネル追加。
+- `/api/memory_diff?days=30` endpoint で取得。
+- 玄人レビュー: 「自分が変わった軌跡が見える、これは差別化要素として
+  刺さる」。
+
 ## [0.8.0] - 2026-06-24
 
 **Minor 番号を 0.8 に上げる節目**。v0.7.0 から始まった「壱岐の友人配布

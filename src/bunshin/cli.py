@@ -1,4 +1,6 @@
 """Bunshin CLI."""
+import json
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -1382,6 +1384,131 @@ def clean_cmd(min_length: int, dry_run: bool, db: Path):
     console.print(f"[green]OK[/green] Deleted {deleted} records.")
     console.print(f"Remaining: [bold]{remaining}[/bold] records, [bold]{remaining_vec}[/bold] embeddings.")
     conn.close()
+
+
+@main.command("export")
+@click.option(
+    "--out", type=click.Path(path_type=Path),
+    default=Path("bunshin-export.jsonl"),
+    help="Output JSONL path",
+)
+@click.option("--since", type=str, default=None,
+              help="Only export records timestamped >= this ISO date (YYYY-MM-DD)")
+@click.option("--source", type=str, default=None,
+              help="Limit to a single source (gmail / claude / file / ...)")
+@click.option("--include-browser", is_flag=True, default=False,
+              help="Include browser history (excluded by default for privacy)")
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+def export_cmd(out: Path, since: Optional[str], source: Optional[str],
+               include_browser: bool, db: Path):
+    """Export records as newline-delimited JSON, ready for `bunshin import`
+    on another machine."""
+    from datetime import datetime as _dt
+    conn = init_db(db)
+    where = []
+    params: list = []
+    if since:
+        try:
+            ts = int(_dt.fromisoformat(since).timestamp())
+            where.append("timestamp >= ?")
+            params.append(ts)
+        except ValueError:
+            console.print(f"[red]invalid date: {since}[/red]")
+            return
+    if source:
+        where.append("source = ?")
+        params.append(source)
+    elif not include_browser:
+        where.append("source != 'browser'")
+    sql = "SELECT id, source, source_id, timestamp, content, metadata FROM records"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY timestamp ASC"
+
+    n = 0
+    with out.open("w", encoding="utf-8") as f:
+        for row in conn.execute(sql, params):
+            rec = {
+                "id": row[0],
+                "source": row[1],
+                "source_id": row[2],
+                "timestamp": row[3],
+                "content": row[4],
+                "metadata": json.loads(row[5]) if row[5] else None,
+            }
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            n += 1
+    conn.close()
+    console.print(f"[green]✓[/green] Exported [bold]{n}[/bold] records → {out}")
+
+
+@main.command("import")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--db",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+)
+@click.option("--skip-existing", is_flag=True, default=True,
+              help="Skip records whose id is already in the DB (default)")
+@click.option("--embed/--no-embed", default=True,
+              help="Re-embed imported records after insert (default: yes)")
+def import_cmd(path: Path, db: Path, skip_existing: bool, embed: bool):
+    """Import records from a JSONL file produced by `bunshin export`.
+
+    Designed for moving a memory between Macs, or restoring after a wipe.
+    """
+    from bunshin.storage import insert_record_raw
+    conn = init_db(db)
+    inserted = 0
+    skipped = 0
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if skip_existing:
+                row = conn.execute(
+                    "SELECT 1 FROM records WHERE id = ?", (rec["id"],)
+                ).fetchone()
+                if row:
+                    skipped += 1
+                    continue
+            try:
+                conn.execute(
+                    "INSERT INTO records(id, source, source_id, timestamp, content, metadata) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        rec["id"],
+                        rec.get("source", "manual"),
+                        rec.get("source_id"),
+                        rec.get("timestamp"),
+                        rec.get("content", ""),
+                        json.dumps(rec["metadata"], ensure_ascii=False)
+                        if rec.get("metadata") else None,
+                    ),
+                )
+                inserted += 1
+            except sqlite3.IntegrityError:
+                skipped += 1
+    conn.commit()
+    conn.close()
+    console.print(
+        f"[green]✓[/green] Imported [bold]{inserted}[/bold] records, "
+        f"skipped {skipped} existing."
+    )
+    if embed and inserted:
+        console.print("Tip: run [cyan]bunshin migrate-embeddings[/cyan] "
+                      "(or restart Bunshin) to backfill embeddings for "
+                      "the new records.")
 
 
 @main.command("web")

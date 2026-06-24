@@ -3937,6 +3937,85 @@ function renderExportPanel() {
   });
 })();
 
+function renderMemoryDiffPanel() {
+  return `
+    <div class="settings-section">
+      <h2><span class="h2-icon">${icon('newspaper', 18)}</span> 分身の成長記録</h2>
+      <div class="settings-help" style="margin-bottom:12px;">
+        この 30 日間で、あなたの分身がどれだけ育ったかを見ます。
+      </div>
+      <div id="memory-diff-content" style="font-size:13px;color:var(--text-2);line-height:1.7;">
+        読み込み中…
+      </div>
+    </div>`;
+}
+
+async function wireMemoryDiffPanel() {
+  const el = document.getElementById('memory-diff-content');
+  if (!el) return;
+  try {
+    const j = await (await fetch('/api/memory_diff?days=30')).json();
+    if (!j) { el.textContent = '取得失敗'; return; }
+    const total = (j.total_records_now || 0).toLocaleString();
+    const newC = (j.total_records_new || 0).toLocaleString();
+    const sources = (j.new_by_source || [])
+      .map(s => `<span style="margin-right:14px;">${esc(SOURCE_LABEL_JA[s.source] || s.source)}: <b>+${s.count.toLocaleString()}</b></span>`)
+      .join('');
+    const entities = (j.top_new_entities || []).slice(0, 5)
+      .map(e => `<li>${esc(e.name)} (${esc(e.type)}, ${e.mentions} 件)</li>`)
+      .join('');
+    el.innerHTML = `
+      <div style="margin-bottom:12px;font-size:15px;color:var(--text-0);">
+        合計 <b>${total}</b> 件のうち、この 30 日で <b style="color:#58cc6e;">+${newC}</b> 件 追加
+      </div>
+      <div style="margin-bottom:14px;">${sources}</div>
+      ${entities ? `<div style="font-size:12px;color:var(--text-3);">新しく登場したエンティティ:</div><ul style="margin:4px 0 0 0;padding-left:18px;color:var(--text-2);">${entities}</ul>` : ''}
+    `;
+  } catch (e) {
+    el.textContent = '取得失敗: ' + e;
+  }
+}
+
+function renderNoiseHygienePanel() {
+  return `
+    <div class="settings-section">
+      <h2><span class="h2-icon">${icon('flag', 18)}</span> ノイズ一括非表示</h2>
+      <div class="settings-help" style="margin-bottom:12px;">
+        ニュースレター / 通知メール / 受動的な SNS 動画など、見るたびに「これ要らない」を押すような種類の記録を <b>ワンクリックで一括非表示</b> にします。
+        後から個別に解除できます。
+      </div>
+      <button class="settings-save-btn" id="sns-preset-btn" type="button">
+        ${icon('flag', 14)} よくあるノイズを一括非表示
+      </button>
+      <div id="sns-preset-result" style="margin-top:10px;font-size:12px;color:var(--text-3);min-height:18px;"></div>
+    </div>`;
+}
+
+function wireNoiseHygienePanel() {
+  const btn = document.getElementById('sns-preset-btn');
+  const out = document.getElementById('sns-preset-result');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    if (!confirm('ニュースレター・通知メールを自動非表示にします。よろしいですか？（個別に解除可能）')) return;
+    btn.disabled = true;
+    out.textContent = '適用中…';
+    try {
+      const r = await fetch('/api/learning/sns_preset', {method: 'POST'});
+      const j = await r.json();
+      if (j.ok) {
+        out.innerHTML = `✓ 適用しました（ドメインルール ${j.domains} + 送信者ルール ${j.senders} を追加、${j.records_hidden.toLocaleString()} 件の既存記録を非表示に）`;
+        out.style.color = '#58cc6e';
+        if (typeof loadStats === 'function') loadStats();
+      } else {
+        out.textContent = '✗ ' + (j.error || '失敗');
+        out.style.color = '#ff6b6b';
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 function renderCalendarPanel() {
   return `
     <div class="settings-section">
@@ -4797,8 +4876,10 @@ async function loadSettings() {
     </div>`;
     // Extra panels that don't fit the schema-driven flow.
     html += renderPrivacyPanel();
+    html += renderMemoryDiffPanel();
     html += renderCalendarPanel();
     html += renderSchedulerPanel();
+    html += renderNoiseHygienePanel();
     html += renderBackupPanel();
     html += renderExportPanel();
     html += renderLearningDashboard();
@@ -4807,11 +4888,13 @@ async function loadSettings() {
     root.innerHTML = html;
     settingsLoaded = true;
     wireCalendarPanel();
+    wireMemoryDiffPanel();
     wireBackupPanel();
     wireLearningDashboard();
     wireSchedulerPanel();
     wireTroubleshootPanel();
     wireUninstallPanel();
+    wireNoiseHygienePanel();
     loadModelRecommendation();
     loadSchedulerStatus();
     loadPrivacyStatus();
@@ -8226,6 +8309,49 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             pass
     threading.Thread(target=_run_migrations, daemon=True, name="migrations").start()
 
+    # Background fill of missing embeddings. Power-user reviewer flagged
+    # 508 records without vectors; real number on this dev DB was 5,403
+    # — about a third of the corpus invisible to semantic search until
+    # this catches up. Runs once per launch, skips records already vectored.
+    def _fill_missing_embeddings():
+        try:
+            import time as _time
+            _time.sleep(15)  # let the UI breathe before kicking off heavy work
+            _conn = init_db(db_path)
+            try:
+                from bunshin.embeddings import DIMENSIONS, embed_passages
+                from bunshin.storage import (
+                    detect_vec_dimensions, get_records_without_vectors,
+                    init_vector_db, insert_vector,
+                )
+                if detect_vec_dimensions(_conn) is None:
+                    init_vector_db(_conn, dimensions=DIMENSIONS)
+                pending = [
+                    (rid, text) for rid, text in get_records_without_vectors(_conn)
+                    if len(text or "") >= 20
+                ]
+                if not pending:
+                    return
+                print(f"[startup] filling {len(pending)} missing embeddings…", flush=True)
+                batch_size = 16
+                for i in range(0, len(pending), batch_size):
+                    batch = pending[i : i + batch_size]
+                    try:
+                        embeddings = list(embed_passages([t for _, t in batch]))
+                        for (rid, _), emb in zip(batch, embeddings):
+                            insert_vector(_conn, rid, emb)
+                        _conn.commit()
+                    except Exception as e:
+                        print(f"[startup] embed batch failed: {e}", flush=True)
+                        return  # bail gracefully — UI fallback covers it
+                print(f"[startup] filled {len(pending)} missing embeddings", flush=True)
+            finally:
+                _conn.close()
+        except Exception:
+            pass
+    threading.Thread(target=_fill_missing_embeddings, daemon=True,
+                     name="embed-backfill").start()
+
     @app.get("/", response_class=HTMLResponse)
     def index():
         return INDEX_HTML
@@ -8700,6 +8826,131 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         return out
 
     # ───── Auto-import scheduler (launchd / systemd / cron) ────────────────
+    @app.get("/api/memory_diff")
+    def api_memory_diff(days: int = Query(30, ge=1, le=365)):
+        """Return what's changed in the user's memory over the last N days:
+        record count by source, top new entities, biggest new project, etc.
+
+        Power-user reviewer's "diff: 今のメモリと1ヶ月前" request — shows
+        the user how their second brain is growing.
+        """
+        import time as _time
+        now_ts = int(_time.time())
+        cutoff = now_ts - days * 86400
+
+        conn = init_db(db_path)
+        try:
+            # Per-source new record counts
+            rows = conn.execute(
+                "SELECT source, COUNT(*) FROM records "
+                "WHERE timestamp >= ? GROUP BY source ORDER BY 2 DESC",
+                (cutoff,),
+            ).fetchall()
+            new_by_source = [{"source": r[0], "count": r[1]} for r in rows]
+
+            total_new = sum(r[1] for r in rows)
+            total_all = (conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]) or 0
+
+            # New entities (created_at >= cutoff)
+            try:
+                ent_rows = conn.execute(
+                    "SELECT e.name, e.type, COUNT(re.record_id) "
+                    "FROM entities e LEFT JOIN record_entities re ON re.entity_id = e.id "
+                    "WHERE e.created_at >= ? GROUP BY e.id "
+                    "ORDER BY 3 DESC LIMIT 10",
+                    (cutoff,),
+                ).fetchall()
+                new_entities = [
+                    {"name": r[0], "type": r[1], "mentions": r[2]} for r in ent_rows
+                ]
+            except Exception:
+                new_entities = []
+
+            return {
+                "days": days,
+                "total_records_now": total_all,
+                "total_records_new": total_new,
+                "new_by_source": new_by_source,
+                "top_new_entities": new_entities,
+            }
+        finally:
+            conn.close()
+
+    @app.post("/api/learning/sns_preset")
+    def api_learning_sns_preset():
+        """Apply a curated set of marketing-mail / SNS-notification domains
+        as auto-hide learning rules. One-click hygiene pass that hides
+        common transactional / promotional noise so the user's flashback
+        and search aren't dominated by them.
+
+        Power-user reviewer asked for a 1-screen onboarding for this; the
+        endpoint is the engine, the settings UI is the trigger.
+        """
+        import time as _time
+        # Pattern style matches what apply_mark() stores: rule_type="domain"
+        # for whole-domain hides, "sender" for individual address hides.
+        DOMAINS = [
+            # JP marketing
+            "mail.note.com", "info@note.com",
+            "mailchimp.com", "mailchi.mp",
+            "sendgrid.net", "amazonses.com",
+            "info.mercari.com", "noreply.mercari.com",
+            "mail.paypal.co.jp",
+            "mail.amazon.co.jp",
+            "info.rakuten.co.jp", "rakuten-card.co.jp",
+            "info.linkedin.com",
+            "github.com",  # PR/issue noise; user can re-enable
+            # Tracking / unsub-bait
+            "list-manage.com", "campaign-archive.com",
+            "ml.smartnews.com", "newspicks.com",
+        ]
+        SENDERS = [
+            "noreply", "no-reply", "do-not-reply", "donotreply",
+            "marketing@", "newsletter@", "notifications@",
+        ]
+        conn = init_db(db_path)
+        now = int(_time.time())
+        applied = {"domains": 0, "senders": 0, "records_hidden": 0}
+        try:
+            for d in DOMAINS:
+                conn.execute(
+                    "INSERT INTO learning_rules "
+                    "(rule_type, pattern, action, source_filter, applied_count, created_at) "
+                    "VALUES ('domain', ?, 'hide', NULL, 0, ?) "
+                    "ON CONFLICT DO NOTHING",
+                    (d, now),
+                )
+                applied["domains"] += 1
+            for s in SENDERS:
+                conn.execute(
+                    "INSERT INTO learning_rules "
+                    "(rule_type, pattern, action, source_filter, applied_count, created_at) "
+                    "VALUES ('sender', ?, 'hide', NULL, 0, ?) "
+                    "ON CONFLICT DO NOTHING",
+                    (s, now),
+                )
+                applied["senders"] += 1
+            # Apply the new rules to existing records right now (mark
+            # user_signal = -1 for noise so search/flashback respects it).
+            for d in DOMAINS:
+                cur = conn.execute(
+                    "UPDATE records SET user_signal = -1 "
+                    "WHERE sender_domain = ? AND user_signal = 0",
+                    (d,),
+                )
+                applied["records_hidden"] += cur.rowcount or 0
+            for s in SENDERS:
+                cur = conn.execute(
+                    "UPDATE records SET user_signal = -1 "
+                    "WHERE (sender LIKE ? OR sender LIKE ?) AND user_signal = 0",
+                    (f"{s}%", f"%<{s}%"),
+                )
+                applied["records_hidden"] += cur.rowcount or 0
+            conn.commit()
+        finally:
+            conn.close()
+        return {"ok": True, **applied}
+
     @app.get("/api/calendar/status")
     def api_calendar_status():
         """Return the saved iCal URL (if any) + the current event count."""
