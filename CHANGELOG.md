@@ -4,6 +4,29 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-24
+
+**Minor 番号を 0.8 に上げる節目**。v0.7.0 から始まった「壱岐の友人配布
+向け」改修サイクルが終わり、AI ヘビーユーザー / Claude Desktop 連携の
+土台が揃ったため。
+
+### Added — MCP ツールを 6 本に拡張（玄人レビュー優先度 C→A）
+Claude Desktop など MCP 対応 AI から、Bunshin を **能動的に問い合わ
+せる** ためのツールが 4 本増えました（既存 2 本＋新規 4 本）:
+
+| ツール名 | できること |
+|---|---|
+| `search_memory` (既存) | 過去記憶を semantic + BM25 + rerank で検索 |
+| `recall_session` (既存) | 指定セッションの全メッセージ展開 |
+| **`get_flashback(date?)`** | この日付の過去窓 (1週/3ヶ月/1年/5年) を一括取得 |
+| **`get_today_hero()`** | 「今日これだけ見ればOK」を JSON で返す |
+| **`list_top_entities(type?)`** | 言及多い順のエンティティ一覧 |
+| **`get_recent_chat(n)`** | 直近 N 件のチャットセッション要約 |
+
+これで Claude Desktop が **自分から** 「先週の今日のあなたは何を
+話してたか」「今日の優先事項は何か」を引き出せるようになります。
+ナレッジ管理を超えて、**主体的な記憶エージェント** に。
+
 ## [0.7.12] - 2026-06-24
 
 エラー時のサポート導線 + フラッシュバック感情調整 + エンティティ品質。

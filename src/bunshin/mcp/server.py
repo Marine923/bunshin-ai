@@ -133,6 +133,155 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         finally:
             conn.close()
 
+    @mcp.tool()
+    def get_flashback(date: str | None = None) -> str:
+        """Get "this date in the past" recall windows for a given date.
+
+        Returns up to 5 records each from last week, 3 months ago, 1 year ago,
+        and 5 years ago. Use this when the user asks "what was I doing last
+        year on this day?" or for daily morning reflection prompts.
+
+        Args:
+            date: ISO date string (YYYY-MM-DD). Defaults to today.
+        """
+        from datetime import date as _date, datetime as _dt, timedelta
+        conn = init_db(db_path)
+        try:
+            target = _date.fromisoformat(date) if date else _date.today()
+            windows = []
+            for label, days_back in [
+                ("先週の同じ日", 7),
+                ("3 ヶ月前の今日", 90),
+                ("1 年前の今日", 365),
+                ("5 年前の今日", 365 * 5),
+            ]:
+                anchor = target - timedelta(days=days_back)
+                day_start = int(_dt.combine(anchor, _dt.min.time()).timestamp())
+                day_end = day_start + 86400
+                rows = conn.execute(
+                    "SELECT id, source, content, timestamp FROM records "
+                    "WHERE timestamp BETWEEN ? AND ? AND length(content) >= 50 "
+                    "ORDER BY COALESCE(signal_score, 50) DESC LIMIT 5",
+                    (day_start, day_end),
+                ).fetchall()
+                items = [
+                    {"id": r[0], "source": r[1],
+                     "content": r[2][:300], "timestamp": r[3]}
+                    for r in rows
+                ]
+                windows.append({
+                    "label_ja": label,
+                    "date": anchor.isoformat(),
+                    "items": items,
+                })
+            return json.dumps(
+                {"target_date": target.isoformat(), "windows": windows},
+                ensure_ascii=False, indent=2,
+            )
+        finally:
+            conn.close()
+
+    @mcp.tool()
+    def list_top_entities(
+        type_: str | None = None,
+        limit: int = 20,
+    ) -> str:
+        """List the most-mentioned entities in the user's memory.
+
+        Use this to surface what's currently active in the user's life:
+        the people, projects, and places that come up most often across
+        all sources. Filter by `type_` ("person", "project", "place",
+        "organization", "topic") if you want a specific category.
+
+        Args:
+            type_: Optional entity type filter.
+            limit: Max number of entities to return (default 20).
+        """
+        from bunshin.knowledge_graph import entity_with_counts, init_kg_schema
+        conn = init_db(db_path)
+        try:
+            init_kg_schema(conn)
+            entities = entity_with_counts(conn)
+            if type_:
+                entities = [e for e in entities if e.get("type") == type_]
+            return json.dumps(
+                {"count": len(entities[:limit]), "entities": entities[:limit]},
+                ensure_ascii=False, indent=2,
+            )
+        finally:
+            conn.close()
+
+    @mcp.tool()
+    def get_today_hero() -> str:
+        """Return the single most actionable insight for today.
+
+        Auto-picks from upcoming events (next 14 days), stale projects,
+        and recent files — same logic as the web app's "今日これだけ"
+        hero card. Use this for daily morning briefings or when the
+        user asks "what should I focus on today?".
+        """
+        from bunshin.insights import generate_insights
+        conn = init_db(db_path)
+        try:
+            j = generate_insights(conn)
+            hero = None
+            if j.get("upcoming_events"):
+                e = j["upcoming_events"][0]
+                hero = {
+                    "kind": "event",
+                    "headline": f"次の予定: {e.get('summary', '?')}",
+                    "detail": f"{e.get('start', '?')}"
+                              + (f" @ {e['location']}" if e.get('location') else ""),
+                }
+            elif j.get("inactive_projects"):
+                p = j["inactive_projects"][0]
+                hero = {
+                    "kind": "stale_project",
+                    "headline": f"「{p.get('name')}」が {p.get('days_ago')} 日動いてません",
+                    "detail": p.get("description", ""),
+                }
+            elif j.get("recent_files"):
+                f = j["recent_files"][0]
+                hero = {
+                    "kind": "recent_file",
+                    "headline": f.get("name", "?"),
+                    "detail": f.get("modified", ""),
+                }
+            return json.dumps({"hero": hero, "generated_at": j.get("generated_at")},
+                              ensure_ascii=False, indent=2)
+        finally:
+            conn.close()
+
+    @mcp.tool()
+    def get_recent_chat(n: int = 5) -> str:
+        """Return the user's N most recent chat sessions with the local AI.
+
+        Use to give continuity context — "what has the user been
+        discussing with their assistant lately?" — without dredging up
+        old conversations from RAG search.
+        """
+        from bunshin.chat_history import list_sessions, get_messages, init_chat_schema
+        conn = init_db(db_path)
+        try:
+            init_chat_schema(conn)
+            sessions = list_sessions(conn, limit=max(1, n))
+            out = []
+            for s in sessions:
+                msgs = get_messages(conn, s["id"])
+                out.append({
+                    "id": s["id"],
+                    "title": s.get("title") or "",
+                    "created_at": _format_timestamp(s.get("created_at")),
+                    "message_count": len(msgs),
+                    "first_user_message": next(
+                        (m["content"][:200] for m in msgs if m["role"] == "user"), None
+                    ),
+                })
+            return json.dumps({"count": len(out), "sessions": out},
+                              ensure_ascii=False, indent=2)
+        finally:
+            conn.close()
+
     return mcp
 
 
