@@ -4066,7 +4066,7 @@ function showSnsPresetModal(preview, onApply, onCancel) {
     </div>
     ${preview.domains?.length ? `<div style="font-size:12px;color:var(--text-3);margin:8px 0 4px;">ドメイン (${preview.domains.length})</div>${domainsHtml}` : ''}
     ${preview.senders?.length ? `<div style="font-size:12px;color:var(--text-3);margin:16px 0 4px;">送信者パターン (${preview.senders.length})</div>${sendersHtml}` : ''}
-    ${total === 0 ? '<div style="color:var(--text-3);padding:18px 0;">対象となる記録はありません。</div>' : ''}
+    ${total === 0 ? '<div style="color:#58cc6e;padding:18px 0;font-size:14px;">🎉 既に綺麗です。一括非表示の対象となる新しいノイズはありません。</div>' : ''}
     <div style="margin-top:20px;display:flex;justify-content:space-between;align-items:center;">
       <div style="font-size:13px;color:var(--text-2);">合計 <b id="sns-modal-count">${total.toLocaleString()}</b> 件が非表示になります</div>
       <div>
@@ -8410,8 +8410,15 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 from bunshin.embeddings import DIMENSIONS, embed_passages
                 from bunshin.storage import (
                     detect_vec_dimensions, get_records_without_vectors,
-                    init_vector_db, insert_vector,
+                    init_vector_db, insert_vector, load_vec_extension,
                 )
+                # CRITICAL: init_db() does NOT load sqlite-vec. Without
+                # this, get_records_without_vectors() throws "no such
+                # module: vec0" on the records_vec virtual table and the
+                # entire backfill silently dies. v0.8.1 shipped this bug;
+                # v0.8.4 reviewer (玄人) found 5,769 records had been
+                # stuck unembedded for the entire 0.8.x line because of it.
+                load_vec_extension(_conn)
                 if detect_vec_dimensions(_conn) is None:
                     init_vector_db(_conn, dimensions=DIMENSIONS)
                 pending = [
@@ -8419,6 +8426,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     if len(text or "") >= 20
                 ]
                 if not pending:
+                    print("[startup] all records already embedded", flush=True)
                     return
                 print(f"[startup] filling {len(pending)} missing embeddings…", flush=True)
                 batch_size = 16
@@ -8430,13 +8438,15 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                             insert_vector(_conn, rid, emb)
                         _conn.commit()
                     except Exception as e:
-                        print(f"[startup] embed batch failed: {e}", flush=True)
+                        print(f"[startup] embed batch failed at offset {i}: {e}", flush=True)
                         return  # bail gracefully — UI fallback covers it
                 print(f"[startup] filled {len(pending)} missing embeddings", flush=True)
             finally:
                 _conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            # Never silently swallow — reviewer caught us hiding the
+            # vec-not-loaded crash for two minor versions.
+            print(f"[startup] embed backfill failed: {e}", flush=True)
     threading.Thread(target=_fill_missing_embeddings, daemon=True,
                      name="embed-backfill").start()
 
@@ -9898,12 +9908,26 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             conn.close()
 
     @app.get("/api/entities")
-    def api_entities():
-        from bunshin.knowledge_graph import entity_with_counts, init_kg_schema
+    def api_entities(
+        limit: int = Query(500, ge=1, le=5000),
+        type_: str | None = None,
+        exclude_noisy: bool = False,
+        with_sources: bool = False,
+    ):
+        # Backed by the same get_top_entities() helper as MCP
+        # list_top_entities so external AI agents and the web UI never
+        # disagree on what "top entities" means. Default behavior (no
+        # filters) preserves the v0.8.3 response shape for callers that
+        # don't pass new params — the relationships tab pages through
+        # the full list, so we keep noise inclusion on by default here.
+        from bunshin.knowledge_graph import get_top_entities, init_kg_schema
         conn = init_db(db_path)
         try:
             init_kg_schema(conn)
-            entities = entity_with_counts(conn)
+            entities = get_top_entities(
+                conn, limit=limit, type_=type_,
+                with_sources=with_sources, exclude_noisy=exclude_noisy,
+            )
             return {"count": len(entities), "entities": entities}
         finally:
             conn.close()

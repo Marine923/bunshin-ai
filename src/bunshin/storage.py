@@ -450,13 +450,27 @@ def count_vectors(conn: sqlite3.Connection) -> int:
 
 
 def get_records_without_vectors(conn: sqlite3.Connection) -> list[tuple[str, str]]:
-    """Return (id, content) for records that don't have an embedding yet."""
-    cursor = conn.execute(
-        """SELECT id, content FROM records
-           WHERE content IS NOT NULL AND content != ''
-             AND id NOT IN (SELECT record_id FROM records_vec)"""
-    )
-    return list(cursor.fetchall())
+    """Return (id, content) for records that don't have an embedding yet.
+
+    Raises RuntimeError if sqlite-vec hasn't been loaded on this
+    connection — callers must `load_vec_extension(conn)` first. The
+    previous silent OperationalError was the root cause of v0.8.1's
+    startup embed-backfill dying on every launch without a log line.
+    """
+    try:
+        cursor = conn.execute(
+            """SELECT id, content FROM records
+               WHERE content IS NOT NULL AND content != ''
+                 AND id NOT IN (SELECT record_id FROM records_vec)"""
+        )
+        return list(cursor.fetchall())
+    except sqlite3.OperationalError as e:
+        if "no such module" in str(e) or "no such table" in str(e):
+            raise RuntimeError(
+                "get_records_without_vectors: sqlite-vec not loaded on this "
+                "connection — call load_vec_extension(conn) first"
+            ) from e
+        raise
 
 
 def count_short_records(conn: sqlite3.Connection, min_length: int = 20) -> int:

@@ -201,6 +201,7 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
     def list_top_entities(
         type_: str | None = None,
         limit: int = 20,
+        exclude_noisy: bool = True,
     ) -> str:
         """List the most-mentioned entities in the user's memory.
 
@@ -209,38 +210,29 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         all sources. Filter by `type_` ("person", "project", "place",
         "organization", "topic") if you want a specific category.
 
-        Each entity now includes `top_sources` — the breakdown of which
-        sources mention it most. Useful for spotting noise: an entity
-        with 1000 mentions but {gmail: 980} is probably a newsletter,
-        not a real interest.
+        Each entity includes `top_sources` (per-source mention
+        breakdown). When `exclude_noisy=True` (default), entities whose
+        mentions come >80% from gmail/browser — usually newsletter
+        signals like "note", "ポーランド" surfacing from note.com
+        weekly digests — are dropped so what's returned is what's *new
+        in the user's life*, not what's new in their inbox.
+
+        Backed by the shared `get_top_entities()` helper, so this list
+        always matches what the web UI shows.
 
         Args:
             type_: Optional entity type filter.
             limit: Max number of entities to return (default 20).
+            exclude_noisy: drop newsletter-driven noise (default True).
         """
-        from bunshin.knowledge_graph import entity_with_counts, init_kg_schema
+        from bunshin.knowledge_graph import get_top_entities, init_kg_schema
         conn = init_db(db_path)
         try:
             init_kg_schema(conn)
-            entities = entity_with_counts(conn)
-            if type_:
-                entities = [e for e in entities if e.get("type") == type_]
-            entities = entities[:limit]
-            # Attach per-entity source breakdown so the calling agent
-            # can spot newsletter-driven noise.
-            for e in entities:
-                eid = e.get("id")
-                if eid is None:
-                    e["top_sources"] = {}
-                    continue
-                src_rows = conn.execute(
-                    "SELECT r.source, COUNT(*) FROM record_entities re "
-                    "JOIN records r ON r.id = re.record_id "
-                    "WHERE re.entity_id = ? GROUP BY r.source "
-                    "ORDER BY 2 DESC",
-                    (eid,),
-                ).fetchall()
-                e["top_sources"] = {row[0]: row[1] for row in src_rows}
+            entities = get_top_entities(
+                conn, limit=limit, type_=type_,
+                with_sources=True, exclude_noisy=exclude_noisy,
+            )
             return json.dumps(
                 {"count": len(entities), "entities": entities},
                 ensure_ascii=False, indent=2,

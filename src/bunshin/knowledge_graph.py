@@ -385,6 +385,60 @@ def entity_with_counts(conn: sqlite3.Connection) -> list[dict]:
     ]
 
 
+def get_top_entities(
+    conn: sqlite3.Connection,
+    *,
+    limit: int = 20,
+    type_: str | None = None,
+    with_sources: bool = False,
+    exclude_noisy: bool = False,
+) -> list[dict]:
+    """Single source of truth for "most-mentioned entities" lookups —
+    used by both the HTTP /api/entities endpoint and the MCP
+    list_top_entities tool, so external AI agents always see the same
+    list the web UI shows.
+
+    Args:
+        limit: cap on number of entities returned (post-filter).
+        type_: optional type filter ("person" / "project" / etc).
+        with_sources: attach `top_sources` (per-source mention breakdown).
+        exclude_noisy: drop entities whose mentions are >80% gmail/browser
+            (newsletter-driven noise like "note", "ポーランド").
+    """
+    all_entities = entity_with_counts(conn)
+    if type_:
+        all_entities = [e for e in all_entities if e.get("type") == type_]
+    # Overfetch when we'll filter by source share so we still hit `limit`
+    # after dropping noise.
+    pool = all_entities[: limit * 3 if exclude_noisy else limit]
+    out: list[dict] = []
+    for e in pool:
+        if len(out) >= limit:
+            break
+        eid = e.get("id")
+        src_breakdown: dict[str, int] = {}
+        if eid is not None and (with_sources or exclude_noisy):
+            src_rows = conn.execute(
+                "SELECT r.source, COUNT(*) FROM record_entities re "
+                "JOIN records r ON r.id = re.record_id "
+                "WHERE re.entity_id = ? GROUP BY r.source "
+                "ORDER BY 2 DESC",
+                (eid,),
+            ).fetchall()
+            src_breakdown = {row[0]: row[1] for row in src_rows}
+        if exclude_noisy and src_breakdown:
+            total = sum(src_breakdown.values()) or 1
+            noise = (src_breakdown.get("gmail", 0) +
+                     src_breakdown.get("browser", 0)) / total
+            if noise > 0.8:
+                continue
+        entry = dict(e)
+        if with_sources:
+            entry["top_sources"] = src_breakdown
+        out.append(entry)
+    return out
+
+
 def entity_relations(
     conn: sqlite3.Connection,
     entity_id: int,

@@ -4,6 +4,42 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-06-24
+
+第 5 回レビュー — **0.8 系を通じて潜伏していた致命バグ 1 件** を発見+修正。
+
+### Fixed — 🚨🚨🚨 起動時 embedding backfill が v0.8.1 以降ずっと sailently dead
+- **root cause**: `init_db()` は sqlite-vec を load しない設計。
+  v0.8.1 で追加した `_fill_missing_embeddings()` が
+  `load_vec_extension()` を呼んでおらず、`get_records_without_vectors()`
+  が `no such module: vec0` で例外発生 → `except Exception: pass` で
+  完全に握りつぶされていた。
+- **発見**: 玄人レビュアーが実機で再現、5,781 件 (うち file 563 +
+  claude 430) が「意味検索の射程外」になっていた。
+- **修正**: 1 行で `load_vec_extension(_conn)` 追加 +
+  `except Exception: pass` を `except Exception as e: print(...)` に
+  変えて二度とサイレント失敗しないように。
+- 起動時にターミナルログへ「`[startup] filling 5781 missing
+  embeddings…`」と出るようになる。
+- これだけで「壱岐黄金で検索しても最新の関連記録が出てこない」
+  「先週話した内容が見つからない」が一気に治る。
+
+### Fixed — `get_records_without_vectors()` に防御的 raise
+- 関数に「`vec` ext 未 load 時は `RuntimeError` を投げる」防御を追加。
+- 二度と同種のサイレント失敗を作らないための構造的対策。
+
+### Refactored — HTTP `/api/entities` と MCP `list_top_entities` を共通関数化
+- 新しい `knowledge_graph.get_top_entities(*, limit, type_, with_sources, exclude_noisy)` を
+  追加し、HTTP / MCP 両方がこれを呼ぶように統合。
+- 玄人レビュー: 「外部 AI が見るリストと UI が見るリストが別実装で
+  ズレる ⇒ Phase 4 思想が破綻」を構造的に解決。
+- `MCP list_top_entities` も `exclude_noisy=True` デフォルトに。
+
+### Changed — SNS preset 2 回目以降の「既に綺麗です」
+- 適用前プレビューで対象 0 件のとき、disabled 適用ボタンの上に
+  「🎉 既に綺麗です。一括非表示の対象となる新しいノイズはありません」
+  と前向きメッセージを表示。
+
 ## [0.8.3] - 2026-06-24
 
 第 4 回レビューの 6 件 (致命 1 + UX 1 + 整合性 2 + 透明性 1 + 残課題 1) 全消化。
