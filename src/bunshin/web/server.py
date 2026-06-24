@@ -8432,6 +8432,41 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 # _strip_harness_noise() only runs on fresh ingestion, so
                 # 296 polluted records from earlier versions still carry
                 # harness XML that leaks into chat context.
+                # v0.8.10: re-scrub harness noise — v0.8.9 regex missed
+                # the "[user] <task-notification>" / "[assistant] <…>"
+                # variants because the tag wrapping was role-prefixed
+                # ([user] / [assistant]) but the regex only knew about
+                # [queue-operation]. Reviewer 11 found 141 records still
+                # carrying wrapper XML after the v0.8.9 migration.
+                if "harness_noise_v0_8_10" not in _applied:
+                    try:
+                        from bunshin.ingestion.claude_history import _strip_harness_noise
+                        rows = _conn.execute(
+                            "SELECT id, content FROM records "
+                            "WHERE source='claude' AND ("
+                            "  content LIKE '%task-notification%' "
+                            "  OR content LIKE '%tool-use-id%' "
+                            "  OR content LIKE '%user-prompt-submit-hook%' "
+                            "  OR content LIKE '%output-file>%')"
+                        ).fetchall()
+                        n_cleaned = 0
+                        for rid, content in rows:
+                            cleaned = _strip_harness_noise(content)
+                            if cleaned and cleaned != content:
+                                _conn.execute(
+                                    "UPDATE records SET content=? WHERE id=?",
+                                    (cleaned, rid),
+                                )
+                                n_cleaned += 1
+                        print(f"[migration] v0.8.10 re-stripped harness noise from {n_cleaned} records", flush=True)
+                    except Exception as e:
+                        print(f"[migration] harness_noise_v0_8_10 skipped: {e}", flush=True)
+                    _conn.execute(
+                        "INSERT INTO migrations(key, applied_at) VALUES (?, ?)",
+                        ("harness_noise_v0_8_10", int(__import__("time").time())),
+                    )
+                    _conn.commit()
+
                 if "harness_noise_v0_8_9" not in _applied:
                     try:
                         from bunshin.ingestion.claude_history import _strip_harness_noise

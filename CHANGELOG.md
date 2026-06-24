@@ -4,6 +4,42 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.10] - 2026-06-24
+
+第 11 回レビュー: 致命 typo 1 + 中度 3 + ドキュメント 1。
+
+### Fixed — 🐛 `max → min` typo で rerank cap が limit≥8 で無効化
+- v0.8.9 で `results[: max(limit, RERANK_INPUT_CAP)]` と書いたが、
+  これは **「少なくとも limit 件 rerank する」** という逆の意味に
+  なっており、`limit=20` のとき 20 件全て cross-encode で 10 秒
+  に逆戻りしていた。
+- `min()` に変更。`limit=20` の検索が ~10s → ~2.5s に。
+- 玄人レビュー: 「設計者の意図は明らかに min。タイポと思われる」
+  ← その通りでした。
+
+### Fixed — 🐛 `get_today_hero` が user_role.md を誤検知
+- MEMORY.md には `user_role.md` (プロフィール) や
+  `feedback_*.md` (作業指針) も含まれるが、これらは「動かない
+  もの」なので `stale_project` 判定すべきではない。
+- `_NON_PROJECT_FILE_PREFIXES = ("user_", "feedback_", "entity_")` と
+  `_NON_PROJECT_NAME_HINTS = ("プロフィール", "ユーザー", …)` で
+  除外。「『ユーザーのプロフィール』が 13 日動いてません」が
+  消える。
+
+### Fixed — harness_noise regex が `[user]` 接頭辞を見逃し
+- v0.8.9 の `_SKIP_LINE_RES` は `[queue-operation] <task-notification>`
+  だけ match していたが、Claude history の chunk は実際には
+  `[user] <task-notification>` / `[assistant] <…>` のロール接頭辞
+  付きで保存されている → 141 件取りこぼし。
+- パターンを `\[?(user|assistant|tool|queue-operation)\]?` に拡張、
+  `<output-file>` も追加。
+- 起動時 migration `harness_noise_v0_8_10` で既存 records を
+  もう一度 scrub。
+
+### Docs
+- `README.ja.md`: 初回 backfill 中に RSS ~15 GB まで一時膨張する
+  ことを追記。
+
 ## [0.8.9] - 2026-06-24
 
 第 10 回レビュー: メモリ 11.9 GB 問題 + rerank 7.5 秒 + 残課題 4 件

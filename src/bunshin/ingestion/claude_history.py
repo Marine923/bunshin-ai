@@ -20,11 +20,16 @@ CHUNK_SIZE = 1500  # chars per chunk
 # transcripts (task notifications, prompt-submit hooks, etc.); they
 # look like noise to the user and leak through chat context.
 _SKIP_LINE_RES = [
-    re.compile(r"^\s*\[?queue-operation\]?\s*<task-notification>", re.IGNORECASE),
+    # `[user]`, `[assistant]`, `[queue-operation]` (role tag inserted by
+    # chunk_messages) all wrap the same harness XML. Match any optional
+    # role tag in front of the wrapper start.
+    re.compile(r"^\s*\[?(?:queue-operation|user|assistant|tool)\]?\s*<task-notification\b", re.IGNORECASE),
+    re.compile(r"^\s*\[?(?:queue-operation|user|assistant|tool)\]?\s*<user-prompt-submit-hook\b", re.IGNORECASE),
     re.compile(r"^\s*<task-notification\b", re.IGNORECASE),
     re.compile(r"^\s*<user-prompt-submit-hook\b", re.IGNORECASE),
     re.compile(r"^\s*<task-id>", re.IGNORECASE),
     re.compile(r"^\s*<tool-use-id>", re.IGNORECASE),
+    re.compile(r"^\s*<output-file>", re.IGNORECASE),
 ]
 
 

@@ -61,15 +61,32 @@ def parse_projects_from_memory() -> list[dict]:
     except OSError:
         return []
 
+    # User-profile / feedback / preference memory files aren't projects —
+    # they don't "go stale" in any meaningful sense. Reviewer 11 saw
+    # get_today_hero surface "「ユーザーのプロフィール」が 13 日動いて
+    # ません" as the hero card, which is incoherent.
+    _NON_PROJECT_FILE_PREFIXES = ("user_", "feedback_", "entity_")
+    _NON_PROJECT_NAME_HINTS = (
+        "プロフィール", "コミュニケーションスタイル",
+        "作業進行スタイル", "ユーザー",
+    )
+
     projects = []
     for line in text.splitlines():
         line = line.strip()
         # Pattern: - [Name](file.md) — description
-        m = re.match(r"^-\s+\[([^\]]+)\]\([^)]+\)\s*[—–\-]+\s*(.+)$", line)
+        m = re.match(r"^-\s+\[([^\]]+)\]\(([^)]+)\)\s*[—–\-]+\s*(.+)$", line)
         if m:
+            name = m.group(1).strip()
+            href = m.group(2).strip()
+            file_basename = href.rsplit("/", 1)[-1]
+            if any(file_basename.startswith(p) for p in _NON_PROJECT_FILE_PREFIXES):
+                continue
+            if any(hint in name for hint in _NON_PROJECT_NAME_HINTS):
+                continue
             projects.append({
-                "name": m.group(1).strip(),
-                "description": m.group(2).strip(),
+                "name": name,
+                "description": m.group(3).strip(),
             })
     return projects
 

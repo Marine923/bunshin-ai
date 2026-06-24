@@ -487,7 +487,11 @@ def search(
         # the top-8-by-vector+BM25 pool, and search now returns in <2s
         # in the steady state.
         RERANK_INPUT_CAP = 8
-        rerank_input = results[: max(limit, RERANK_INPUT_CAP)]
+        # min() not max() — the whole point of the cap is to LIMIT how
+        # many candidates get cross-encoded. With max() the cap was a
+        # no-op for any limit ≥ 8, so limit=20 still cross-encoded 20
+        # records (~10 s). Reviewer 11 caught the typo.
+        rerank_input = results[: min(limit if limit > 0 else RERANK_INPUT_CAP, RERANK_INPUT_CAP)]
         # Surface the rest unranked at the bottom so we don't quietly
         # drop them when the caller asks for more than the cap.
         tail = results[len(rerank_input):]
