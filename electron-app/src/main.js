@@ -674,6 +674,61 @@ function createTray() {
         showMain();
       }
     });
+
+    // Health polling — reviewer flagged that when the Python web server
+    // dies, the menu-bar icon still looks healthy and the user has no
+    // signal until they click the icon and get a blank window. Poll
+    // /api/health every 30 s and reflect status in the tooltip + first
+    // menu item.
+    let lastHealthy = true;
+    const updateTrayStatus = (healthy) => {
+      if (!tray) return;
+      if (healthy) {
+        tray.setToolTip('Bunshin — 分身（個人記憶 AI） · 稼働中');
+      } else {
+        tray.setToolTip('Bunshin — ⚠ Web UI 応答なし（クリックで再起動）');
+      }
+      const statusItem = {
+        label: healthy ? '● 稼働中' : '⚠ Web UI 停止中 — クリックで再起動',
+        enabled: !healthy,
+        click: healthy ? undefined : async () => {
+          try { await startServer(); } catch (e) { console.error(e); }
+        },
+      };
+      const menu = Menu.buildFromTemplate([
+        statusItem,
+        { type: 'separator' },
+        { label: 'Bunshin を開く', click: showMain },
+        { type: 'separator' },
+        { label: '検索…', accelerator: 'CmdOrCtrl+K',
+          click: () => focusTab('search', '#q') },
+        { label: 'チャットを開く', click: () => focusTab('chat', '#chat-input') },
+        { label: '今日のフラッシュバック', click: () => focusTab('search') },
+        { type: 'separator' },
+        { label: 'Bunshin を終了', click: () => app.quit() },
+      ]);
+      tray.setContextMenu(menu);
+    };
+    const pingHealth = async () => {
+      try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 3000);
+        const r = await fetch(`http://127.0.0.1:${serverPort || 8000}/api/health`, {signal: ctl.signal});
+        clearTimeout(timer);
+        const healthy = r.ok;
+        if (healthy !== lastHealthy) {
+          lastHealthy = healthy;
+          updateTrayStatus(healthy);
+        }
+      } catch (e) {
+        if (lastHealthy) {
+          lastHealthy = false;
+          updateTrayStatus(false);
+        }
+      }
+    };
+    pingHealth();
+    setInterval(pingHealth, 30 * 1000);
   } catch (e) {
     console.error('[bunshin] tray init failed:', e);
   }

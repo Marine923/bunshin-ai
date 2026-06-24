@@ -148,6 +148,12 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         conn = init_db(db_path)
         try:
             target = _date.fromisoformat(date) if date else _date.today()
+            # Honest about the corpus's left edge — anything older than
+            # the earliest record we have should say so, not show empty.
+            oldest_row = conn.execute(
+                "SELECT MIN(timestamp) FROM records WHERE timestamp > 0"
+            ).fetchone()
+            oldest_ts = (oldest_row[0] if oldest_row else None) or 0
             windows = []
             for label, days_back in [
                 ("先週の同じ日", 7),
@@ -169,11 +175,21 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                      "content": r[2][:300], "timestamp": r[3]}
                     for r in rows
                 ]
-                windows.append({
+                window = {
                     "label_ja": label,
                     "date": anchor.isoformat(),
                     "items": items,
-                })
+                }
+                if not items:
+                    if day_end < oldest_ts:
+                        window["empty_message"] = (
+                            f"{label}。Bunshin はまだあなたを知りませんでした。"
+                        )
+                    else:
+                        window["empty_message"] = (
+                            f"{label}は静かな日でした（記録なし）。"
+                        )
+                windows.append(window)
             return json.dumps(
                 {"target_date": target.isoformat(), "windows": windows},
                 ensure_ascii=False, indent=2,
@@ -193,6 +209,11 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         all sources. Filter by `type_` ("person", "project", "place",
         "organization", "topic") if you want a specific category.
 
+        Each entity now includes `top_sources` — the breakdown of which
+        sources mention it most. Useful for spotting noise: an entity
+        with 1000 mentions but {gmail: 980} is probably a newsletter,
+        not a real interest.
+
         Args:
             type_: Optional entity type filter.
             limit: Max number of entities to return (default 20).
@@ -204,8 +225,24 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             entities = entity_with_counts(conn)
             if type_:
                 entities = [e for e in entities if e.get("type") == type_]
+            entities = entities[:limit]
+            # Attach per-entity source breakdown so the calling agent
+            # can spot newsletter-driven noise.
+            for e in entities:
+                eid = e.get("id")
+                if eid is None:
+                    e["top_sources"] = {}
+                    continue
+                src_rows = conn.execute(
+                    "SELECT r.source, COUNT(*) FROM record_entities re "
+                    "JOIN records r ON r.id = re.record_id "
+                    "WHERE re.entity_id = ? GROUP BY r.source "
+                    "ORDER BY 2 DESC",
+                    (eid,),
+                ).fetchall()
+                e["top_sources"] = {row[0]: row[1] for row in src_rows}
             return json.dumps(
-                {"count": len(entities[:limit]), "entities": entities[:limit]},
+                {"count": len(entities), "entities": entities},
                 ensure_ascii=False, indent=2,
             )
         finally:
@@ -219,6 +256,18 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         and recent files — same logic as the web app's "今日これだけ"
         hero card. Use this for daily morning briefings or when the
         user asks "what should I focus on today?".
+
+        Returns:
+            JSON object: {"hero": {...}, "generated_at": "..."} where
+            `hero` is one of three shapes selected by priority:
+
+            - kind="event":         {headline, detail}   — calendar event in next 14 days (BLUE/info)
+            - kind="stale_project": {headline, detail}   — project no signal for >7 days (YELLOW/warn)
+            - kind="recent_file":   {headline, detail}   — most recent file (GRAY/neutral)
+            - or `null` if nothing surfaces.
+
+            The kind names are stable — callers can branch on them to
+            choose an appropriate UI tone.
         """
         from bunshin.insights import generate_insights
         conn = init_db(db_path)
@@ -253,8 +302,12 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             conn.close()
 
     @mcp.tool()
-    def get_recent_chat(n: int = 5) -> str:
-        """Return the user's N most recent chat sessions with the local AI.
+    def get_recent_chat(n: int = 5, min_user_chars: int = 8) -> str:
+        """Return the user's N most recent substantive chat sessions.
+
+        Sessions whose first user message is shorter than `min_user_chars`
+        (default 8) are skipped — "hello" / "hi" / "test" don't carry
+        useful context. To include them, pass min_user_chars=0.
 
         Use to give continuity context — "what has the user been
         discussing with their assistant lately?" — without dredging up
@@ -264,18 +317,28 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         conn = init_db(db_path)
         try:
             init_chat_schema(conn)
-            sessions = list_sessions(conn, limit=max(1, n))
+            # Overfetch and post-filter so the n we return is "substantive"
+            # sessions, not raw most-recent.
+            raw_sessions = list_sessions(conn, limit=max(1, n) * 4)
             out = []
-            for s in sessions:
+            for s in raw_sessions:
+                if len(out) >= max(1, n):
+                    break
                 msgs = get_messages(conn, s["id"])
+                first_user = next(
+                    (m["content"] for m in msgs if m["role"] == "user"), None
+                )
+                if first_user is None:
+                    continue
+                stripped = first_user.strip()
+                if len(stripped) < max(0, min_user_chars):
+                    continue
                 out.append({
                     "id": s["id"],
                     "title": s.get("title") or "",
                     "created_at": _format_timestamp(s.get("created_at")),
                     "message_count": len(msgs),
-                    "first_user_message": next(
-                        (m["content"][:200] for m in msgs if m["role"] == "user"), None
-                    ),
+                    "first_user_message": first_user[:200],
                 })
             return json.dumps({"count": len(out), "sessions": out},
                               ensure_ascii=False, indent=2)

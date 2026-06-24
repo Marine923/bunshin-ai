@@ -8851,18 +8851,42 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             total_new = sum(r[1] for r in rows)
             total_all = (conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]) or 0
 
-            # New entities (created_at >= cutoff)
+            # New entities (created_at >= cutoff). Entities whose mentions
+            # come >80% from gmail/browser are usually newsletter noise
+            # (e.g. "note", "ポーランド" surfacing from note.com weekly
+            # digests rather than the user's actual interests). Drop them
+            # so this card surfaces what's *new in the user's life*, not
+            # what's new in their inbox.
             try:
                 ent_rows = conn.execute(
-                    "SELECT e.name, e.type, COUNT(re.record_id) "
+                    "SELECT e.id, e.name, e.type, COUNT(re.record_id) "
                     "FROM entities e LEFT JOIN record_entities re ON re.entity_id = e.id "
                     "WHERE e.created_at >= ? GROUP BY e.id "
-                    "ORDER BY 3 DESC LIMIT 10",
+                    "ORDER BY 4 DESC LIMIT 30",
                     (cutoff,),
                 ).fetchall()
-                new_entities = [
-                    {"name": r[0], "type": r[1], "mentions": r[2]} for r in ent_rows
-                ]
+                new_entities = []
+                for eid, name, type_, mentions in ent_rows:
+                    if len(new_entities) >= 10:
+                        break
+                    src_rows = conn.execute(
+                        "SELECT r.source, COUNT(*) FROM record_entities re "
+                        "JOIN records r ON r.id = re.record_id "
+                        "WHERE re.entity_id = ? GROUP BY r.source",
+                        (eid,),
+                    ).fetchall()
+                    src_breakdown = {r[0]: r[1] for r in src_rows}
+                    total = sum(src_breakdown.values()) or 1
+                    noise_share = (
+                        src_breakdown.get("gmail", 0)
+                        + src_breakdown.get("browser", 0)
+                    ) / total
+                    if noise_share > 0.8:
+                        continue
+                    new_entities.append({
+                        "name": name, "type": type_, "mentions": mentions,
+                        "top_sources": src_breakdown,
+                    })
             except Exception:
                 new_entities = []
 
