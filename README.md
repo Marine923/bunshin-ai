@@ -20,11 +20,11 @@ read it, *locally*.
 
 </div>
 
-<!-- ─────────────────────────────────────────────────────────────
-     HERO SCREENSHOTS — add three 1600×1000 PNGs (or HEIC→PNG) to
-     docs/screenshots/ to bring this section to life. See
-     docs/screenshots/README.md for the exact recipe.
-     ────────────────────────────────────────────────────────────-->
+<p align="center">
+  <img src="docs/demo.gif" width="800" alt="Bunshin in 9 seconds — search, relationships, chat" />
+</p>
+
+<!-- Three static stills below the animated demo, for context + alt text. -->
 <p align="center">
   <img src="docs/screenshots/01-search-flashback.png" width="32%" alt="Today's flashback on the search tab" />
   <img src="docs/screenshots/02-relationships.png" width="32%" alt="Spider-web relationship graph" />

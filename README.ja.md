@@ -17,6 +17,10 @@
 </div>
 
 <p align="center">
+  <img src="docs/demo.gif" width="800" alt="9 秒で見る Bunshin — 検索・関係性・チャット" />
+</p>
+
+<p align="center">
   <img src="docs/screenshots/01-search-flashback.png" width="32%" alt="検索タブと今日のフラッシュバック" />
   <img src="docs/screenshots/02-relationships.png" width="32%" alt="関係性タブの蜘蛛の巣ビュー" />
   <img src="docs/screenshots/03-chat.png" width="32%" alt="ローカル AI チャット" />
