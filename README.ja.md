@@ -91,7 +91,10 @@
 ## 必要な環境
 
 - **macOS 11 以降**
-- **メモリ 16 GB 以上**（推奨 32 GB — fastembed + rerank 同時起動で実 RSS ~11 GB）
+- **メモリ 16 GB 以上必須**（推奨 32 GB）
+  - 検索中に fastembed (~2 GB) + jina reranker (~1 GB) を常駐 → 実 RSS ~11 GB
+  - v0.8.9 以降はアイドル時に自動アンロード（10 分以上未使用でメモリ解放、検索 200 MB → 3 GB → 11 GB と段階遷移）
+  - 8 GB Mac は swap 多発のため非推奨
 - **空き容量 5 GB 以上**（記憶が育つと増えます）
 - **[Ollama](https://ollama.com/)** をインストールしておくと AI チャット機能が使えます
 

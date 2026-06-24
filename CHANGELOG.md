@@ -4,6 +4,46 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.9] - 2026-06-24
+
+第 10 回レビュー: メモリ 11.9 GB 問題 + rerank 7.5 秒 + 残課題 4 件
+を全部消化。
+
+### Added — モデルの **アイドル自動アンロード**
+- fastembed (e5-large, ~2 GB) と jina-reranker (~1 GB) が常駐で
+  RSS ~11.9 GB → 8 GB Mac で swap 多発 という構造を解消。
+- `embeddings.maybe_unload_idle()` (15 分未使用)、
+  `rerank.maybe_unload_idle()` (10 分未使用) を追加。
+- 60 秒間隔の `_idle_model_gc` thread が両方を監視。
+- 期待動作: cold ~200 MB → 検索開始 ~3 GB → rerank 開始 ~11 GB
+  → 10 分アイドル → ~3 GB → さらに 15 分アイドル → ~200 MB。
+
+### Changed — Rerank 入力をさらに絞った (15 → 8)
+- `RERANK_INPUT_CAP = 8`。15 件 cross-encode の 7.5 秒も玄人レビュー
+  で「まだ遅い」と指摘 → 8 件で ~4 秒、limit=3 の top-3 結果は
+  ほぼ変わらず。
+
+### Changed — Backfill バッチサイズを 16 → 4
+- backfill が lock を 16 件分（~5 秒）握り続ける → 検索が
+  0.8 秒 timeout 内に取れず常時 fallback → 「Bunshin は keyword
+  検索しかできない」と誤解される現象を解消。
+- 4 件バッチ (~1 秒) なら検索 query が割り込める。
+
+### Added — `harness_noise_v0_8_9` migration
+- v0.8.8 で _strip_harness_noise() を ingest 時に追加したが、
+  既存 296 件の Claude records (task-notification 含む) はそのまま
+  だった。起動時 migration で UPDATE。
+- chat の context に手動 XML が混ざる残存可能性を消す。
+
+### Changed — pgrep liveness check に **cmdline 再確認**
+- `os.kill(pid, 0)` だけでは pgrep 自身の subprocess を拾う
+  race を防げないため、`ps -p PID -o command=` で cmdline を
+  再 verify (python + bunshin + mcp 全て含むかチェック)。
+
+### Docs
+- `README.ja.md`: メモリ要件を **「16 GB 以上必須、推奨 32 GB」**
+  に。アイドルアンロードの段階遷移 (200 MB → 3 GB → 11 GB) も明記。
+
 ## [0.8.8] - 2026-06-24
 
 第 9 回レビューの 2 致命 + 4 中度を全消化。

@@ -8427,6 +8427,39 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     )
                     _conn.commit()
 
+                # v0.8.9: scrub <task-notification>/<tool-use-id>/etc.
+                # wrapper blocks from already-ingested claude records.
+                # _strip_harness_noise() only runs on fresh ingestion, so
+                # 296 polluted records from earlier versions still carry
+                # harness XML that leaks into chat context.
+                if "harness_noise_v0_8_9" not in _applied:
+                    try:
+                        from bunshin.ingestion.claude_history import _strip_harness_noise
+                        rows = _conn.execute(
+                            "SELECT id, content FROM records "
+                            "WHERE source='claude' AND ("
+                            "  content LIKE '%task-notification%' "
+                            "  OR content LIKE '%tool-use-id%' "
+                            "  OR content LIKE '%user-prompt-submit-hook%')"
+                        ).fetchall()
+                        n_cleaned = 0
+                        for rid, content in rows:
+                            cleaned = _strip_harness_noise(content)
+                            if cleaned and cleaned != content:
+                                _conn.execute(
+                                    "UPDATE records SET content=? WHERE id=?",
+                                    (cleaned, rid),
+                                )
+                                n_cleaned += 1
+                        print(f"[migration] stripped harness noise from {n_cleaned} records", flush=True)
+                    except Exception as e:
+                        print(f"[migration] harness_noise skipped: {e}", flush=True)
+                    _conn.execute(
+                        "INSERT INTO migrations(key, applied_at) VALUES (?, ?)",
+                        ("harness_noise_v0_8_9", int(__import__("time").time())),
+                    )
+                    _conn.commit()
+
                 # v0.7.12: prune noise entities created by earlier LLM
                 # extraction runs (single chars, "the", "?", etc).
                 # v0.8.7: drop orphaned vectors (records_vec rows whose
@@ -8529,7 +8562,12 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         )
         _time.sleep(15)  # let the UI breathe before kicking off heavy work
         IDLE_POLL_SEC = 60
-        BATCH_SIZE = 16
+        # Smaller batches → shorter lock-hold per batch → search queries
+        # arriving mid-backfill take the lock within their 0.8 s timeout
+        # instead of always falling back to keyword-only. Reviewer 10
+        # found searches stuck in fallback for ~40 min while a 20k-record
+        # backfill drained on batch=16.
+        BATCH_SIZE = 4
         while True:
             try:
                 _conn = init_db(db_path)
@@ -8571,6 +8609,26 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             _time.sleep(IDLE_POLL_SEC)
     threading.Thread(target=_fill_missing_embeddings, daemon=True,
                      name="embed-backfill").start()
+
+    # Idle GC: every minute, check whether the embed/rerank models have
+    # been quiet long enough to be unloaded. Reviewer 10 measured 11.9 GB
+    # RSS with both models resident; idle-unloading brings that back to
+    # ~3 GB (embed only) or ~200 MB (cold) so 8 GB Macs don't swap.
+    def _idle_model_gc():
+        import time as _time
+        from bunshin.embeddings import maybe_unload_idle as embed_gc
+        from bunshin.rerank import maybe_unload_idle as rerank_gc
+        while True:
+            _time.sleep(60)
+            try:
+                if embed_gc():
+                    print("[idle-gc] unloaded fastembed model", flush=True)
+                if rerank_gc():
+                    print("[idle-gc] unloaded jina reranker", flush=True)
+            except Exception as e:
+                print(f"[idle-gc] errored: {e}", flush=True)
+    threading.Thread(target=_idle_model_gc, daemon=True,
+                     name="idle-model-gc").start()
 
     @app.get("/", response_class=HTMLResponse)
     def index():
@@ -8955,11 +9013,21 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 if pid == my_pid or pid in tracked_pids:
                     continue
                 # Liveness check — pgrep can race and report a PID that
-                # has already exited (Reviewer 9 saw phantom subprocess
-                # remnants).
+                # has already exited. Combine signal-0 with a cmdline
+                # re-read so we don't include subprocess remnants of
+                # pgrep itself or other transients that flash through.
                 try:
                     _os.kill(pid, 0)
                 except OSError:
+                    continue
+                try:
+                    cmd_out = _sp.check_output(
+                        ["ps", "-p", str(pid), "-o", "command="],
+                        text=True, stderr=_sp.DEVNULL, timeout=1,
+                    ).strip()
+                    if "python" not in cmd_out or "bunshin" not in cmd_out or "mcp" not in cmd_out:
+                        continue
+                except (_sp.SubprocessError, FileNotFoundError, OSError):
                     continue
                 processes.append({
                     "pid": pid,

@@ -480,11 +480,13 @@ def search(
         from bunshin.rerank import rerank as cross_encode_rerank
         # Rerank against the original (un-expanded) query so the
         # scorer judges relevance to the user's actual intent.
-        # Cap the *input* to rerank as well — cross-encoding 40 candidates
-        # on CPU is 5–26 s, while the top 15 by vector+BM25 are nearly
-        # always the right pool to refine. Reviewer 9 measured limit=20
-        # going from 26 s → 1.5 s with this cap.
-        RERANK_INPUT_CAP = 15
+        # Cap the *input* to rerank — cross-encoding on CPU is ~0.5s
+        # per pair, so 8 candidates ≈ 4s, 15 ≈ 7.5s. Reviewer 10 measured
+        # 15 still yielding 7.5s wall time for limit=3 queries, so we
+        # tighten the cap to 8 — the top-3 results almost never escape
+        # the top-8-by-vector+BM25 pool, and search now returns in <2s
+        # in the steady state.
+        RERANK_INPUT_CAP = 8
         rerank_input = results[: max(limit, RERANK_INPUT_CAP)]
         # Surface the rest unranked at the bottom so we don't quietly
         # drop them when the caller asks for more than the cap.

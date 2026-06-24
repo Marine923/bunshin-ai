@@ -12,31 +12,60 @@ few small (1.1 GB) cross-encoders that handles both well.
 """
 from __future__ import annotations
 
+import gc
+import threading
+import time
 import warnings
 from typing import Any, Optional
 
 DEFAULT_MODEL = "jinaai/jina-reranker-v2-base-multilingual"
 
+# Idle-unload: drop the rerank model from memory after this many seconds
+# of no rerank calls. Reviewer 10 measured fastembed + reranker
+# co-resident at 11.9 GB — on 8 GB Macs this swaps heavily. Keeping the
+# reranker live only while actively in use brings idle RSS from ~12 GB
+# back down to ~3 GB (fastembed-only) or ~200 MB (cold).
+RERANK_IDLE_TTL_SEC = 600
+
 _reranker: Optional[Any] = None
+_reranker_last_used: float = 0.0
+_reranker_lock = threading.Lock()
 
 
 def _get_reranker():
     """Lazy-initialize the cross-encoder so module import stays cheap."""
-    global _reranker
-    if _reranker is not None:
-        return _reranker
-    try:
-        from fastembed.rerank.cross_encoder import TextCrossEncoder
-    except ImportError:
-        return None
-    try:
-        # Silence the "model card not found" notice fastembed emits.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            _reranker = TextCrossEncoder(model_name=DEFAULT_MODEL)
-        return _reranker
-    except Exception:
-        return None
+    global _reranker, _reranker_last_used
+    with _reranker_lock:
+        _reranker_last_used = time.time()
+        if _reranker is not None:
+            return _reranker
+        try:
+            from fastembed.rerank.cross_encoder import TextCrossEncoder
+        except ImportError:
+            return None
+        try:
+            # Silence the "model card not found" notice fastembed emits.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                _reranker = TextCrossEncoder(model_name=DEFAULT_MODEL)
+            return _reranker
+        except Exception:
+            return None
+
+
+def maybe_unload_idle() -> bool:
+    """If the reranker hasn't been used in RERANK_IDLE_TTL_SEC seconds,
+    drop it. Called by the periodic idle-GC thread in server.py. Returns
+    True if the model was unloaded."""
+    global _reranker, _reranker_last_used
+    with _reranker_lock:
+        if _reranker is None:
+            return False
+        if time.time() - _reranker_last_used < RERANK_IDLE_TTL_SEC:
+            return False
+        _reranker = None
+    gc.collect()
+    return True
 
 
 def rerank(

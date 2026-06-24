@@ -41,6 +41,7 @@ MAX_CHARS = 2000  # truncate very long content to avoid wasted compute
 
 
 _model: Optional[TextEmbedding] = None
+_model_last_used: float = 0.0
 
 # Serialize access to FastEmbed's in-process model. The previous version
 # had no lock at all, so a backfill batch in progress would block every
@@ -52,12 +53,43 @@ _model: Optional[TextEmbedding] = None
 _model_lock = threading.Lock()
 QUERY_LOCK_TIMEOUT_SEC = 0.8
 
+# Idle-unload: drop the model from memory after this many seconds of
+# inactivity. Together with rerank.RERANK_IDLE_TTL_SEC, brings idle RSS
+# from ~12 GB back to ~200 MB — critical for 8 GB Macs where the v0.8.x
+# baseline of co-resident embed + rerank was swapping heavily.
+EMBED_IDLE_TTL_SEC = 900
+
 
 def get_model() -> TextEmbedding:
-    global _model
+    global _model, _model_last_used
+    _model_last_used = __import__("time").time()
     if _model is None:
         _model = TextEmbedding(MODEL_NAME)
     return _model
+
+
+def maybe_unload_idle() -> bool:
+    """If the embed model hasn't been used in EMBED_IDLE_TTL_SEC seconds,
+    drop it. The startup backfill thread keeps it warm during the active
+    catch-up phase; this only kicks in once the user is idle. Returns
+    True if the model was unloaded."""
+    global _model, _model_last_used
+    import time as _t
+    import gc as _gc
+    if _model is None:
+        return False
+    if _t.time() - _model_last_used < EMBED_IDLE_TTL_SEC:
+        return False
+    # Don't unload mid-batch; if a long-running op holds the lock,
+    # leave it alone and try again next tick.
+    if not _model_lock.acquire(blocking=False):
+        return False
+    try:
+        _model = None
+    finally:
+        _model_lock.release()
+    _gc.collect()
+    return True
 
 
 def _truncate(text: str) -> str:
