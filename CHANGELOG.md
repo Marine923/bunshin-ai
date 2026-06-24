@@ -4,6 +4,36 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-06-24
+
+第 3 回 (素人 + 玄人) レビューの **全 6 件** を消化。
+
+### Changed — MCP ツール 4 本に磨きをかけた
+- **`list_top_entities`**: 各エンティティに **`top_sources`** を追加
+  （`{gmail: 460, claude: 15}` のような分解）。外部 AI が
+  「これは note 通知由来のノイズ」と判定できるようになった。
+- **`get_recent_chat`**: 新パラメータ `min_user_chars` (デフォルト 8)
+  追加。`hello` / `hi` / `test` のような短すぎる会話は履歴に出ない。
+- **`get_flashback`**: 空窓に `empty_message` フィールド追加。
+  - 5 年前枠が DB の最古より古い → 「Bunshin はまだあなたを知り
+    ませんでした」
+  - それ以外で空 → 「静かな日でした」
+- **`get_today_hero`**: docstring に **`kind` の取り得る値を列挙**
+  (`event` / `stale_project` / `recent_file`) + 推奨 UI トーン。
+  外部 AI が `switch (hero.kind)` で安全に分岐できる。
+
+### Changed — 分身の成長記録からノイズ除外
+- `top_new_entities` で gmail/browser シェアが 80% 超のエンティティ
+  (note.com ニュースレター由来の「note」「ポーランド」等) を除外。
+- 残ったエンティティには `top_sources` を付加。
+
+### Added — メニューバーアイコンに **状態表示**
+- 30 秒ごとに `/api/health` に ping し、結果を反映:
+  - 稼働中 → tooltip 「Bunshin · 稼働中」 + 最上段「● 稼働中」
+  - 応答なし → tooltip 「⚠ Web UI 応答なし」 + 最上段「⚠ Web UI
+    停止中 — クリックで再起動」
+- 素人レビュー「UI 落ちてるのか動いてるのか分からない」を解消。
+
 ## [0.8.1] - 2026-06-24
 
 「ほぼ全て」じゃなく **全て** をやり切る patch。残っていた 4 件 + 玄人指摘の
