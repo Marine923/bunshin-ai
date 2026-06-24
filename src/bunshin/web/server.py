@@ -1937,13 +1937,45 @@ INDEX_HTML = """<!DOCTYPE html>
      the underlying text so search still indexes them. */
   .marker { display: none; }
   /* Search-query match highlight, applied across result / session /
-     siblings panels by the highlight() JS helper. */
+     siblings panels by the highlight() JS helper.
+     Strong contrast for both dark + light themes so the match is the
+     thing the eye lands on, not just a tinted nuance. */
   mark {
-    background: #5b3a00;
-    color: #ffd987;
-    border-radius: 2px;
-    padding: 0 2px;
+    background: #ffd400;
+    color: #1a1100;
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-weight: 600;
+    box-shadow: 0 0 0 1px rgba(255,212,0,0.35);
   }
+  :root.theme-light mark {
+    background: #ffeb3b;
+    color: #1a1100;
+    box-shadow: 0 0 0 1px rgba(255,193,7,0.5);
+  }
+  /* Growth toast — "+N 件 記憶しました" on first stats load each day */
+  .growth-toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    padding: 10px 18px;
+    border-radius: 22px;
+    background: linear-gradient(135deg, #4c4d8a, #3b3f7a);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .growth-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .growth-toast .gt-icon svg { width: 14px; height: 14px; }
   /* Welcome / onboarding state shown when the DB is nearly empty. */
   .welcome {
     background: var(--bg-1);
@@ -5471,9 +5503,36 @@ async function loadInsights() {
 
 // ===== Stats =====
 let _latestStats = null;
+// Show "あなたの分身が今日 +N 件 育ちました" toast at most once per day
+// per app launch. This is the most-recommended addition from the novice
+// review: makes opening Bunshin feel like checking a Tamagotchi.
+function showGrowthToast(total) {
+  if (!total || _growthToastShown) return;
+  _growthToastShown = true;
+  let prev = null;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const stored = JSON.parse(localStorage.getItem('bunshin.growth') || '{}');
+    if (stored.date === today) return;  // already shown today
+    prev = stored.last_total;
+    localStorage.setItem('bunshin.growth', JSON.stringify({date: today, last_total: total}));
+  } catch {}
+  const delta = (prev != null) ? (total - prev) : null;
+  const txt = (delta != null && delta > 0)
+    ? `+${delta.toLocaleString()} 件 記憶しました（合計 ${total.toLocaleString()} 件）`
+    : `あなたの分身は ${total.toLocaleString()} 件 の記憶を持っています`;
+  const el = document.createElement('div');
+  el.className = 'growth-toast';
+  el.innerHTML = `<span class="gt-icon">${icon('sparkles', 14)}</span> ${esc(txt)}`;
+  document.body.appendChild(el);
+  setTimeout(() => el.classList.add('show'), 30);
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 400); }, 4500);
+}
+
 async function loadStats() {
   try {
     const j = await (await fetch('/api/status')).json();
+    showGrowthToast(j.total_records);
     _latestStats = j;
     const sourceCount = j.sources ? Object.keys(j.sources).length : 0;
     const parts = [
@@ -6173,6 +6232,7 @@ function periodToSec(p) {
 // highlight matched terms in the displayed content.
 let _currentQuery = '';
 let _lastResults = [];
+let _growthToastShown = false;
 
 function copyResultsBundle() {
   // Build a self-contained Markdown bundle the user can paste into

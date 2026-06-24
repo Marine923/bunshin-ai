@@ -133,6 +133,23 @@ def extract_sender(metadata_raw) -> Tuple[Optional[str], Optional[str]]:
     return addr, domain
 
 
+# Browser-history entries from passive consumption (video / SNS) flood
+# the timeline & flashback with "金のため23匹のヘビが入った寝袋で寝る男達 - YouTube"
+# type entries. They're not useless — sometimes you want them — but they
+# shouldn't dominate. Lower their default signal so they drop below the
+# auto-filter threshold (30) without being deleted.
+_PASSIVE_BROWSING_HOSTS = (
+    "youtube.com", "youtu.be",
+    "x.com", "twitter.com", "t.co",
+    "instagram.com",
+    "tiktok.com",
+    "reddit.com",
+    "facebook.com",
+    "nicovideo.jp",
+)
+_PASSIVE_BROWSING_MARKERS = (" - YouTube", " | TikTok", " on X:", " on Twitter:", " | Instagram")
+
+
 def compute_signal_score(
     content: str,
     source: Optional[str] = None,
@@ -148,6 +165,15 @@ def compute_signal_score(
     sample = content[:600]
     n = len(sample) or 1
     score = 50.0
+
+    # Browser entries that are passive media consumption (videos, SNS
+    # scrolls) get a heavy penalty so the auto-filter (30) hides them by
+    # default. The user can flip the filter off in settings.
+    if source == "browser":
+        lowered = sample.lower()
+        if any(h in lowered for h in _PASSIVE_BROWSING_HOSTS) or \
+           any(m in sample for m in _PASSIVE_BROWSING_MARKERS):
+            score -= 35
 
     # Japanese / CJK content is almost always human-written for this user.
     cjk = sum(

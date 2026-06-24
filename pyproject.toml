@@ -1,6 +1,6 @@
 [project]
 name = "bunshin"
-version = "0.7.7"
+version = "0.7.8"
 description = "Personal memory engine: local-first, AI-agnostic, offline-capable, omni-source"
 requires-python = ">=3.10"
 authors = [

@@ -4,6 +4,31 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.8] - 2026-06-24
+
+「触ってみて気持ちいい」UX 3 点。素人レビューで指摘された細部。
+
+### Changed — 検索ハイライトを「目に飛び込む黄色」に
+- `<mark>` の色をダークモード時は **#ffd400 背景 / 黒文字 / 微シャドウ**
+  に強化（前: 茶背景に薄い黄文字 — 控えめすぎ）。
+- ライトモードは **#ffeb3b** で同等のコントラスト。
+- どちらでも「ここがマッチした」が一瞬で見える。
+
+### Added — 「+N 件 記憶しました」毎日トースト
+- 起動時 1 回（その日初回のみ）、画面下部にスライドイン:
+  - **「+47 件 記憶しました（合計 15,381 件）」**
+  - 4.5 秒で消える、`localStorage` で「今日は表示済み」を記録
+- 育成ゲーム感 → 毎日アプリを開く理由になる（素人レビュー提案）。
+
+### Changed — YouTube / SNS の閲覧履歴を信号スコアで自動下げ
+- ブラウザ履歴の中で **YouTube / X (Twitter) / Instagram / TikTok /
+  Reddit / Facebook / niconico / X の SNS** に該当する記録は、
+  signal_score を **-35 点**。
+- 自動フィルター閾値（30）以下に落ちるので、検索やフラッシュバックで
+  「金のため23匹のヘビが入った寝袋で寝る男達 - YouTube」のような
+  受動視聴履歴がデフォルトで出てこなくなる。
+- 完全削除ではないので、設定で自動フィルターを下げれば再表示可能。
+
 ## [0.7.7] - 2026-06-24
 
 AI ヘビーユーザー向け 2 機能。検索結果の説明性 + 「Claude/ChatGPT に
