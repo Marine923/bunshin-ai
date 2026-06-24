@@ -4,6 +4,29 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.6] - 2026-06-24
+
+第 7 回レビュー: v0.8.5 の MCP 鮮度バナーに **「pre-v0.8.5 プロセス
+透明人間」問題** があり、初回アップデート時に banner が黙ったまま
+ハマる可能性 → 構造的に解決。
+
+### Fixed — 🚨 pre-v0.8.5 MCP プロセスの未追跡
+- v0.8.5 の `/api/mcp/status` は `~/.bunshin/mcp_status/*.json` のみ
+  走査していたため、status ファイルを書かない古い MCP プロセスは
+  完全に透明だった。
+- 素人レビュー実機: 8 個動いてるうち 2 個だけ追跡、`stale_count: 0`
+  と誤情報を返す → banner が出ない → 初回アップデートで詰まる。
+- **修正**: `pgrep -f "bunshin mcp"` フォールバックを追加。
+  未追跡 PID は `{version: null, matches: false,
+  note: "Pre-v0.8.5 MCP process — restart Claude to get fresh tracking"}`
+  として混ぜる。Web server 自身の PID は除外。
+- 私の手元で `pgrep` を叩いたら **8 時間前から動いていた古い MCP
+  プロセス** 5 個が検出された (= 素人レビュアーの状況を完全再現)。
+
+### Changed — banner の表現を 2 種類に対応
+- 「v0.8.3 が 1 個 + 未追跡 v0.8.5 以前 6 個 = 合計 7 個」のように
+  混在表示できるよう改修。
+
 ## [0.8.5] - 2026-06-24
 
 第 6 回レビューの **MCP プロセス鮮度問題** を構造的に解決。

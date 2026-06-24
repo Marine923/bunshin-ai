@@ -3952,14 +3952,19 @@ async function wireSystemHealthPanel() {
     const m = await (await fetch('/api/mcp/status')).json();
     if (m && m.stale_count > 0) {
       const stale = m.mcp_processes.filter(p => !p.matches);
-      const versions = [...new Set(stale.map(p => p.version || '?'))].join(', ');
+      const knownVersions = [...new Set(stale.map(p => p.version).filter(Boolean))];
+      const unknownCount = stale.filter(p => !p.version).length;
+      const parts = [];
+      if (knownVersions.length) parts.push(`<b>v${knownVersions.join(', v')}</b>`);
+      if (unknownCount) parts.push(`<b>未追跡 v0.8.5 以前</b> ${unknownCount} 個`);
+      const versionStr = parts.join(' + ');
       banners.push(`
         <div style="background:rgba(255,176,0,0.12);border:1px solid #ffb000;
                     border-radius:8px;padding:12px 14px;color:var(--text-1);
                     font-size:13px;line-height:1.6;">
           <b style="color:#ffb000;">⟳ Claude を再起動してください</b><br>
           Bunshin は <b>v${m.bundled_version}</b> ですが、Claude が掴んでいる MCP プロセスは
-          <b>v${versions}</b> のままです (${m.stale_count} 個)。
+          ${versionStr} のままです (合計 ${m.stale_count} 個)。
           Claude を <b>⌘Q</b> で終了→再起動すると、外部 AI からの問い合わせも v${m.bundled_version} のロジックで返るようになります。
         </div>`);
     }
@@ -8850,17 +8855,28 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         is spawned once per Claude session and never picks up DMG
         updates on its own, so users see "fix didn't apply" until they
         ⌘Q Claude. This endpoint backs the settings-tab banner that
-        flags the mismatch."""
+        flags the mismatch.
+
+        Combines two sources so pre-v0.8.5 processes (which don't write
+        a status file) are not invisible:
+          1. ~/.bunshin/mcp_status/*.json  → fresh self-reported state
+          2. pgrep -f "bunshin mcp"        → fallback for legacy MCPs
+
+        Without (2), the v0.8.5 reviewer found ~6 stale MCPs on disk
+        and the banner stayed silent ('stale_count: 0') the entire
+        first-update window — the exact scenario this whole feature
+        was meant to catch.
+        """
         from bunshin import __version__
         import os as _os
+        import subprocess as _sp
         status_dir = Path.home() / ".bunshin" / "mcp_status"
-        processes = []
+        processes: list[dict] = []
         if status_dir.exists():
             for f in sorted(status_dir.glob("*.json")):
                 try:
                     info = json.loads(f.read_text())
                     pid = info.get("pid")
-                    # Drop stale entries whose PID no longer exists.
                     try:
                         if pid:
                             _os.kill(pid, 0)
@@ -8871,6 +8887,34 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     processes.append(info)
                 except Exception:
                     continue
+        # Fallback: catch pre-v0.8.5 MCP processes that don't write a
+        # status file. Exclude the web server's own PID and any pgrep
+        # that happens to match unrelated text.
+        tracked_pids = {p.get("pid") for p in processes}
+        my_pid = _os.getpid()
+        try:
+            out = _sp.check_output(
+                ["pgrep", "-f", "bunshin mcp"],
+                text=True, stderr=_sp.DEVNULL, timeout=2,
+            )
+            for line in out.split():
+                if not line.isdigit():
+                    continue
+                pid = int(line)
+                if pid == my_pid or pid in tracked_pids:
+                    continue
+                processes.append({
+                    "pid": pid,
+                    "version": None,
+                    "started_at": None,
+                    "matches": False,
+                    "note": (
+                        "Pre-v0.8.5 MCP process — restart Claude to get "
+                        "fresh tracking"
+                    ),
+                })
+        except (_sp.SubprocessError, FileNotFoundError, OSError):
+            pass
         return {
             "bundled_version": __version__,
             "mcp_processes": processes,
