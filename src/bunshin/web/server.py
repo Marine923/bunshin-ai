@@ -1705,6 +1705,45 @@ INDEX_HTML = """<!DOCTYPE html>
     color: #fcd34d;
     border-color: rgba(245,158,11,0.30);
   }
+  /* Why-this-record-matched chips (vector / keyword / rerank / signal) */
+  .why-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+  .why-chip {
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    background: var(--bg-2);
+    color: var(--text-3);
+    border: 1px solid var(--border-2);
+    cursor: help;
+    line-height: 16px;
+  }
+  .why-chip.why-rerank { color: #a8aaff; border-color: rgba(168,170,255,0.35); background: rgba(168,170,255,0.10); }
+  .why-chip.why-vector { color: #6dd47c; border-color: rgba(88,204,110,0.35); background: rgba(88,204,110,0.08); }
+  .why-chip.why-keyword { color: #f6b73c; border-color: rgba(246,183,60,0.35); background: rgba(246,183,60,0.08); }
+  .why-chip.why-signal { color: #efaf4a; border-color: rgba(239,175,74,0.35); background: rgba(239,175,74,0.08); }
+  .why-chip.why-kwfb { color: #ff9b6b; border-color: rgba(255,155,107,0.35); background: rgba(255,155,107,0.10); }
+  /* Results toolbar: "copy all to Claude/ChatGPT" */
+  .results-toolbar {
+    display: flex; justify-content: flex-end; align-items: center;
+    gap: 8px;
+    margin: 8px 0 14px;
+    padding: 0;
+  }
+  .results-toolbar .copy-bundle-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-1);
+    background: var(--bg-1);
+    color: var(--text-1);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .results-toolbar .copy-bundle-btn:hover { background: var(--bg-2); }
+  .results-toolbar .copy-bundle-btn svg { width: 13px; height: 13px; }
+  .results-toolbar .copy-bundle-btn.copied { color: #58cc6e; border-color: rgba(88,204,110,0.4); }
   .result-meta .more-chunks {
     color: #efaf4a;
     background: rgba(239, 175, 74, 0.1);
@@ -6133,6 +6172,49 @@ function periodToSec(p) {
 // Current query, shared with renderResult / renderSessionMsg so they can
 // highlight matched terms in the displayed content.
 let _currentQuery = '';
+let _lastResults = [];
+
+function copyResultsBundle() {
+  // Build a self-contained Markdown bundle the user can paste into
+  // Claude / ChatGPT. Includes the query, every result's source+date+
+  // snippet, and a footer for context. Power users do this 10x/day.
+  if (!_lastResults || !_lastResults.length) return;
+  const lines = [];
+  lines.push(`# 過去記憶の検索結果`);
+  lines.push(``);
+  lines.push(`**クエリ**: ${_currentQuery}`);
+  lines.push(`**取得件数**: ${_lastResults.length} 件`);
+  lines.push(`**取得日時**: ${new Date().toLocaleString('ja-JP')}`);
+  lines.push(``);
+  lines.push(`---`);
+  lines.push(``);
+  for (let i = 0; i < _lastResults.length; i++) {
+    const r = _lastResults[i];
+    const ts = r.timestamp ? new Date(r.timestamp * 1000).toLocaleString('ja-JP') : '?';
+    const sourceLabel = (SOURCE_LABEL_JA[r.source] || r.source);
+    const fileTail = (r.source === 'file' || r.source === 'photo' || r.source === 'photos_app')
+      ? ` · ${(r.source_id || '').split('/').pop()}`
+      : '';
+    lines.push(`## ${i + 1}. [${sourceLabel}${fileTail}] ${ts}`);
+    lines.push(``);
+    lines.push(r.content || '');
+    lines.push(``);
+  }
+  lines.push(`---`);
+  lines.push(`*このコピーは Bunshin (https://github.com/Marine923/bunshin-ai) の検索結果です。*`);
+  const text = lines.join('\\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-bundle-btn');
+    if (btn) {
+      btn.classList.add('copied');
+      const orig = btn.innerHTML;
+      btn.innerHTML = '✓ コピー済み — Claude/ChatGPT に貼れます';
+      setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 2500);
+    }
+  }).catch(err => {
+    alert('コピーに失敗しました: ' + err);
+  });
+}
 function highlight(text, query) {
   // No regex — Python's triple-quoted string mangles the backslash
   // escapes needed for character classes, so we walk the text manually.
@@ -6196,7 +6278,16 @@ async function doSearch(query) {
     if (_searchPrefs.search_expand === true) params.set('expand', 'true');
     const j = await (await fetch(`/api/search?${params}`)).json();
     if (!j.results?.length) { results.innerHTML = '<div class="empty">該当なし</div>'; return; }
-    results.innerHTML = j.results.map((r, i) => renderResult(r, i)).join('');
+    _lastResults = j.results;
+    const toolbar = `
+      <div class="results-toolbar">
+        <button class="copy-bundle-btn" id="copy-bundle-btn" type="button" title="検索結果を Markdown でクリップボードへ。Claude/ChatGPT にそのまま貼れます">
+          ${icon('copy', 13)} まとめて Markdown でコピー
+        </button>
+      </div>`;
+    results.innerHTML = toolbar + j.results.map((r, i) => renderResult(r, i)).join('');
+    const cb = document.getElementById('copy-bundle-btn');
+    if (cb) cb.addEventListener('click', copyResultsBundle);
     document.querySelectorAll('.result').forEach((el, i) => {
       el.addEventListener('click', (ev) => {
         // Don't open session expand when clicking the "📚 N more" badge.
@@ -6348,6 +6439,31 @@ function relevanceLabel(r) {
   return { pct, kind: 'vector', icon: pct >= 80 ? icon('star', 12) : pct >= 60 ? icon('sparkles', 12) : '' };
 }
 
+function whyHitChips(r) {
+  // Render score-component badges so the user understands WHY this
+  // record matched: vector similarity, keyword match, or signal-score
+  // boost. Power users find this trustworthy + debuggable.
+  const sc = r.score_components || {};
+  const chips = [];
+  if (sc.rerank != null) {
+    chips.push(`<span class="why-chip why-rerank" title="AI 再ソートで上位">AI ${Math.round(sc.rerank * 100)}</span>`);
+  } else if (sc.vector != null || r.distance != null) {
+    const dist = r.distance ?? 1;
+    const sim = Math.max(0, Math.round((1 - dist) * 100));
+    chips.push(`<span class="why-chip why-vector" title="意味の近さ (embedding)">意味 ${sim}</span>`);
+  }
+  if (sc.bm25 != null && sc.bm25 > 0) {
+    chips.push(`<span class="why-chip why-keyword" title="キーワード一致 (BM25)">キーワード ✓</span>`);
+  }
+  if (sc.keyword_fallback) {
+    chips.push(`<span class="why-chip why-kwfb" title="検索エンジンが応答しないため、キーワード fallback で取得">⚠ 簡易検索</span>`);
+  }
+  if (r.signal_score != null && r.signal_score >= 60) {
+    chips.push(`<span class="why-chip why-signal" title="重要度の高い記録">重要</span>`);
+  }
+  return chips.length ? `<span class="why-chips">${chips.join('')}</span>` : '';
+}
+
 function renderResult(r, idx) {
   const ts = r.timestamp ? new Date(r.timestamp * 1000).toLocaleString('ja-JP') : 'n/a';
   const role = (r.metadata && r.metadata.role) ? r.metadata.role : '';
@@ -6365,12 +6481,14 @@ function renderResult(r, idx) {
   const relHtml = rel.pct === null
     ? '<span class="distance">距離 ?</span>'
     : `<span class="relevance ${rel.kind}" title="${rel.kind === 'rerank' ? 'リランカー判定' : 'ベクトル類似'}">${rel.icon} 関連度 ${rel.pct}%</span>`;
+  const whyChips = whyHitChips(r);
   return `
     <div class="result" data-idx="${idx}" data-record-id="${esc(r.id)}">
       <div class="result-meta">
         <span>${ts}</span>
         <span class="source-badge ${badge.cls}">${esc(srcLabel)}</span>
         ${relHtml}
+        ${whyChips}
         ${more}
         <span class="expand-hint">クリックで会話全体 ▾</span>
         <button class="record-delete-btn" title="この記録を削除" aria-label="削除">

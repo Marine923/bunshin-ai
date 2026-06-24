@@ -4,6 +4,29 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.7] - 2026-06-24
+
+AI ヘビーユーザー向け 2 機能。検索結果の説明性 + 「Claude/ChatGPT に
+丸ごと渡す」ワークフロー。
+
+### Added — 検索結果「なぜヒットしたか」chip
+- 各検索結果カードのメタ行に **マッチ理由の小チップ** を表示:
+  - 「AI N」 — クロスエンコーダで上位
+  - 「意味 N」 — embedding 類似度
+  - 「キーワード ✓」 — BM25 でクエリ語が当たった
+  - 「重要」 — signal_score 60+
+  - 「⚠ 簡易検索」 — embedding 失敗時の keyword fallback
+- score_components はもとから DB に持っていたが、UI に出ていなかった
+  ので AI ヘビーユーザー（玄人レビュー指摘）の信頼を得られなかった。
+
+### Added — 「まとめて Markdown でコピー」ボタン
+- 検索結果が表示されたら、結果一覧の上に **「📋 まとめて Markdown
+  でコピー」** ボタンを表示。
+- クリックでクエリ + 取得件数 + 各記録（時刻・ソース・本文）を Markdown
+  として **クリップボードへ一発コピー** → Claude / ChatGPT にそのまま
+  貼れる。
+- 玄人レビュー: 「AI ヘビーユーザーは毎日 10 回これをやる」
+
 ## [0.7.6] - 2026-06-24
 
 AI 玄人レビューで指摘された **「見えない構造的問題」 3 件** を修正。
