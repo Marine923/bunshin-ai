@@ -4461,8 +4461,21 @@ async function refreshSearchHealth() {
     const indexed = emb.vec_count || 0;
     const pct = total > 0 ? Math.round((indexed / total) * 100) : 0;
     const ok = emb.ok && !emb.needs_rebuild;
+    // Resident memory line — reviewer 9 flagged that fastembed +
+    // rerank co-resident at ~11 GB will swap heavily on 8 GB Macs.
+    let memLine = '';
+    try {
+      const h = await (await fetch('/api/health')).json();
+      if (h.rss_mb) {
+        const rssGb = (h.rss_mb / 1024).toFixed(1);
+        const warn = h.rss_mb >= 9000;
+        memLine = `<div style="margin-top:6px;color:${warn ? '#ff9b6b' : 'var(--text-3)'};font-size:12px;">
+          現在のメモリ使用量: <b>${rssGb} GB</b>${warn ? ' / 推奨 16 GB+ — 8 GB 機では swap が発生します' : ''}
+        </div>`;
+      }
+    } catch {}
     if (ok) {
-      el.innerHTML = `${icon('check-circle', 14)} <b>検索エンジン正常</b>: ${total.toLocaleString()} 件の記憶のうち ${indexed.toLocaleString()} 件（${pct}%）がインデックス済み`;
+      el.innerHTML = `${icon('check-circle', 14)} <b>検索エンジン正常</b>: ${total.toLocaleString()} 件の記憶のうち ${indexed.toLocaleString()} 件（${pct}%）がインデックス済み${memLine}`;
       el.style.borderColor = 'rgba(88,204,110,0.4)';
       el.style.background = 'rgba(88,204,110,0.06)';
     } else {
@@ -4471,7 +4484,7 @@ async function refreshSearchHealth() {
         ? `<br><b style="color:#ff9b6b;">⚠ 検索インデックスが壊れている可能性があります</b> (${total.toLocaleString()} 件中 ${indexed.toLocaleString()} 件しかインデックスされていません)`
         : '';
       el.innerHTML = `
-        ${icon('alert-triangle', 14)} <b>検索エンジンに問題があります</b>${errMsg}${need}
+        ${icon('alert-triangle', 14)} <b>検索エンジンに問題があります</b>${errMsg}${need}${memLine}
         <div style="margin-top:10px;">
           <button class="settings-save-btn" id="rebuild-embeddings-btn" type="button">${icon('database', 14)} 検索インデックスを再構築</button>
           <span id="rebuild-progress" style="margin-left:10px;color:var(--text-3);font-size:12px;"></span>
@@ -6717,7 +6730,8 @@ async function doSearch(query) {
     const fallbackBanner = (allKeyword && reason === 'backfill') ? `
       <div style="background:rgba(106,109,255,0.10);border:1px solid var(--accent-1,#6a6dff);
                   border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--text-2);">
-        ⚙ 現在「簡易検索」で表示中（分身が育成中）。育成完了後、もう一度検索すると意味検索＋リランクのフル品質に戻ります。
+        ⚙ 現在「簡易検索」で表示中（分身がインデックス育成中）。<br>
+        <span style="color:var(--text-3);">数十秒〜数分で自動回復し、再検索で意味検索＋リランクのフル品質に戻ります。</span>
       </div>` : '';
     const toolbar = `
       <div class="results-toolbar">
@@ -8500,59 +8514,61 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
     # — about a third of the corpus invisible to semantic search until
     # this catches up. Runs once per launch, skips records already vectored.
     def _fill_missing_embeddings():
-        try:
-            import time as _time
-            _time.sleep(15)  # let the UI breathe before kicking off heavy work
-            _conn = init_db(db_path)
+        # Runs forever as a periodic poll, not a one-shot. Reviewer 9
+        # found ~19,000 embeddings disappearing between v0.8.6 and v0.8.7
+        # because every ingestor (claude_history, files, notes, …)
+        # DELETEs records_vec for re-ingested sources but doesn't
+        # re-embed them — leaving vectors gapped until the next launch.
+        # A periodic background refill closes that gap without
+        # changing every ingestor.
+        import time as _time
+        from bunshin.embeddings import DIMENSIONS, embed_passages
+        from bunshin.storage import (
+            detect_vec_dimensions, get_records_without_vectors,
+            init_vector_db, insert_vector, load_vec_extension,
+        )
+        _time.sleep(15)  # let the UI breathe before kicking off heavy work
+        IDLE_POLL_SEC = 60
+        BATCH_SIZE = 16
+        while True:
             try:
-                from bunshin.embeddings import DIMENSIONS, embed_passages
-                from bunshin.storage import (
-                    detect_vec_dimensions, get_records_without_vectors,
-                    init_vector_db, insert_vector, load_vec_extension,
-                )
-                # CRITICAL: init_db() does NOT load sqlite-vec. Without
-                # this, get_records_without_vectors() throws "no such
-                # module: vec0" on the records_vec virtual table and the
-                # entire backfill silently dies. v0.8.1 shipped this bug;
-                # v0.8.4 reviewer (玄人) found 5,769 records had been
-                # stuck unembedded for the entire 0.8.x line because of it.
-                load_vec_extension(_conn)
-                if detect_vec_dimensions(_conn) is None:
-                    init_vector_db(_conn, dimensions=DIMENSIONS)
-                pending = [
-                    (rid, text) for rid, text in get_records_without_vectors(_conn)
-                    if len(text or "") >= 20
-                ]
-                _embed_progress["pending"] = len(pending)
-                _embed_progress["filled"] = 0
-                _embed_progress["active"] = bool(pending)
-                _embed_progress["error"] = None
-                if not pending:
-                    print("[startup] all records already embedded", flush=True)
-                    return
-                print(f"[startup] filling {len(pending)} missing embeddings…", flush=True)
-                batch_size = 16
-                for i in range(0, len(pending), batch_size):
-                    batch = pending[i : i + batch_size]
-                    try:
-                        embeddings = list(embed_passages([t for _, t in batch]))
-                        for (rid, _), emb in zip(batch, embeddings):
-                            insert_vector(_conn, rid, emb)
-                        _conn.commit()
-                        _embed_progress["filled"] = i + len(batch)
-                    except Exception as e:
-                        print(f"[startup] embed batch failed at offset {i}: {e}", flush=True)
-                        _embed_progress["error"] = str(e)
+                _conn = init_db(db_path)
+                try:
+                    # CRITICAL: init_db() does NOT load sqlite-vec — without
+                    # this load, get_records_without_vectors() raises
+                    # "no such module: vec0" and the entire backfill dies.
+                    load_vec_extension(_conn)
+                    if detect_vec_dimensions(_conn) is None:
+                        init_vector_db(_conn, dimensions=DIMENSIONS)
+                    pending = [
+                        (rid, text) for rid, text in get_records_without_vectors(_conn)
+                        if len(text or "") >= 20
+                    ]
+                    _embed_progress["pending"] = len(pending)
+                    _embed_progress["filled"] = 0
+                    _embed_progress["active"] = bool(pending)
+                    _embed_progress["error"] = None
+                    if pending:
+                        print(f"[backfill] filling {len(pending)} missing embeddings…", flush=True)
+                        for i in range(0, len(pending), BATCH_SIZE):
+                            batch = pending[i : i + BATCH_SIZE]
+                            try:
+                                embeddings = list(embed_passages([t for _, t in batch]))
+                                for (rid, _), emb in zip(batch, embeddings):
+                                    insert_vector(_conn, rid, emb)
+                                _conn.commit()
+                                _embed_progress["filled"] = i + len(batch)
+                            except Exception as be:
+                                print(f"[backfill] batch failed at offset {i}: {be}", flush=True)
+                                _embed_progress["error"] = str(be)
+                                break
                         _embed_progress["active"] = False
-                        return  # bail gracefully — UI fallback covers it
-                _embed_progress["active"] = False
-                print(f"[startup] filled {len(pending)} missing embeddings", flush=True)
-            finally:
-                _conn.close()
-        except Exception as e:
-            # Never silently swallow — reviewer caught us hiding the
-            # vec-not-loaded crash for two minor versions.
-            print(f"[startup] embed backfill failed: {e}", flush=True)
+                        print(f"[backfill] cycle done", flush=True)
+                finally:
+                    _conn.close()
+            except Exception as e:
+                print(f"[backfill] cycle errored: {e}", flush=True)
+            _time.sleep(IDLE_POLL_SEC)
     threading.Thread(target=_fill_missing_embeddings, daemon=True,
                      name="embed-backfill").start()
 
@@ -8938,6 +8954,13 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 pid = int(line)
                 if pid == my_pid or pid in tracked_pids:
                     continue
+                # Liveness check — pgrep can race and report a PID that
+                # has already exited (Reviewer 9 saw phantom subprocess
+                # remnants).
+                try:
+                    _os.kill(pid, 0)
+                except OSError:
+                    continue
                 processes.append({
                     "pid": pid,
                     "version": None,
@@ -8975,9 +8998,21 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         the running version so the tray can detect "DMG updated but
         Python web server still running the old code" and prompt for
         restart.
+
+        Also surfaces current process RSS so the troubleshoot panel can
+        warn 8 GB users that fastembed + rerank co-resident at ~11 GB
+        will swap heavily on their machine.
         """
         from bunshin import __version__
-        return {"ok": True, "version": __version__}
+        rss_mb = None
+        try:
+            import resource
+            rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            # macOS reports ru_maxrss in bytes; Linux in KB. Detect by magnitude.
+            rss_mb = int(rss_kb / (1024 * 1024) if rss_kb > 1024 * 1024 * 100 else rss_kb / 1024)
+        except Exception:
+            pass
+        return {"ok": True, "version": __version__, "rss_mb": rss_mb}
 
     @app.get("/api/status")
     def api_status():

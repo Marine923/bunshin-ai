@@ -4,6 +4,7 @@ Messages within a session are grouped into ~1500-char "turns" so each record
 contains question + answer pairs instead of single fragments.
 """
 import json
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,42 @@ from bunshin.storage import insert_record
 
 
 CHUNK_SIZE = 1500  # chars per chunk
+
+# Lines / blocks we never want to ingest into Bunshin memory.
+# These are harness-internal markers that ride along inside Claude
+# transcripts (task notifications, prompt-submit hooks, etc.); they
+# look like noise to the user and leak through chat context.
+_SKIP_LINE_RES = [
+    re.compile(r"^\s*\[?queue-operation\]?\s*<task-notification>", re.IGNORECASE),
+    re.compile(r"^\s*<task-notification\b", re.IGNORECASE),
+    re.compile(r"^\s*<user-prompt-submit-hook\b", re.IGNORECASE),
+    re.compile(r"^\s*<task-id>", re.IGNORECASE),
+    re.compile(r"^\s*<tool-use-id>", re.IGNORECASE),
+]
+
+
+def _strip_harness_noise(text: str) -> str:
+    """Remove harness-internal XML envelopes that don't belong in
+    user-facing memory. Reviewer 9 found <task-notification> blocks
+    surfacing as 'context' in chat — these are pure tool-channel
+    plumbing the user never wrote or read."""
+    if not text:
+        return text
+    if not any(p.search(text) for p in _SKIP_LINE_RES):
+        return text
+    out_lines = []
+    in_skip = False
+    for line in text.splitlines():
+        if any(p.search(line) for p in _SKIP_LINE_RES):
+            in_skip = True
+            continue
+        if in_skip:
+            # End of the wrapper block — closing tag or a blank line.
+            if line.strip() in ("</task-notification>", "</user-prompt-submit-hook>", ""):
+                in_skip = False
+            continue
+        out_lines.append(line)
+    return "\n".join(out_lines).strip()
 
 
 def find_transcript_files(claude_projects_dir: Path) -> Iterator[Path]:
@@ -35,7 +72,8 @@ def extract_text(msg: dict) -> Optional[str]:
     if content is None:
         return None
     if isinstance(content, str):
-        return content.strip() or None
+        cleaned = _strip_harness_noise(content.strip())
+        return cleaned or None
     if isinstance(content, list):
         texts = []
         for block in content:
@@ -47,7 +85,8 @@ def extract_text(msg: dict) -> Optional[str]:
                 elif block.get("type") == "tool_use":
                     name = block.get("name", "tool")
                     texts.append(f"[tool_use: {name}]")
-        return "\n".join(texts).strip() or None
+        joined = _strip_harness_noise("\n".join(texts).strip())
+        return joined or None
     return None
 
 

@@ -4,6 +4,47 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.8] - 2026-06-24
+
+第 9 回レビューの 2 致命 + 4 中度を全消化。
+
+### Fixed — 🚨🚨🚨 ~19,000 件の embedding 消失 (root cause 特定)
+- **根本原因**: 各 ingestor (`claude_history.py`, `files.py`, `notes.py`
+  等) が再取り込み時に `_delete_session_records()` で `records_vec`
+  を削除するが、**embedding の再生成は startup 1 回限りの backfill
+  thread に任せていた**。Claude を頻繁に使う = jsonl 更新 = vec
+  削除 = 起動間で gap が積み上がる。
+- **修正**: backfill thread を **60 秒間隔の永続 poll** に変更。
+  ingest で gap が生じてもすぐに埋め直される。
+- 副次効果: `total_embeddings > total_records` の不整合も自動修復。
+
+### Fixed — 🚨🚨🚨 検索 rerank が 5〜26 秒の遅延ボトルネック
+- **根本原因**: `search.py:483` で `top_k=limit` だが、入力候補数を
+  絞っていなかった。`limit=20` → 40+ 件を cross-encode → 26 秒。
+- **修正**: 入力を `RERANK_INPUT_CAP=15` 件に絞る。`limit=20` でも
+  rerank コストは 15 件分 (~1.5 秒) に固定。
+- rerank 対象外になった候補は末尾に保持し、`limit` 不足時にフォロー。
+
+### Fixed — Claude history の `<task-notification>` XML 取り込み
+- `bunshin/ingestion/claude_history.py` に `_strip_harness_noise()`
+  追加。`<task-notification>`, `<user-prompt-submit-hook>`,
+  `<task-id>`, `<tool-use-id>` などの harness 内部 XML を ingest
+  時に除去。
+- chat の context にメタ情報が混ざる現象を解消。
+
+### Fixed — pgrep の phantom PID
+- pgrep 経路にも `os.kill(pid, 0)` liveness check を追加。
+- 死亡 subprocess 残骸が「v0.8.5 以前」として表示される現象を解消。
+
+### Changed — 検索 fallback chip の文言改善
+- 「⚙ 簡易検索」chip に **「数十秒〜数分で自動回復」** 一行追加。
+- backfill の初回 warm-up 中の体験を改善。
+
+### Added — `/api/health` に `rss_mb` 同梱、設定タブで表示
+- 「困った時は」パネルに **「現在のメモリ使用量: N GB」** 表示。
+- 9 GB 超では「8 GB 機では swap が発生します」と警告色に。
+- 第 9 回素人レビューの「8 GB Mac で重い」を可視化。
+
 ## [0.8.7] - 2026-06-24
 
 第 8 回レビュー: 検索/RAG-chat が backfill 中に **15 秒タイムアウト**
