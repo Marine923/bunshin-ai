@@ -4,6 +4,21 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-06-24
+
+### Added — カレンダー登録 UI
+- 設定タブに「カレンダー」セクション追加。Google カレンダー / iCloud
+  カレンダーの **iCal 公開 URL** を貼り付けて「登録 & 取り込み」ボタンを
+  押すだけで、今後の予定 14 日分を Bunshin の記憶として取り込みます。
+- 取り込み済みの URL が見える、件数が見える、「今すぐ再取り込み」
+  「URL を解除」ボタン。
+- iCal URL の取り方（Google / iCloud それぞれ）を panel 内に展開可能な
+  ヘルプとして同梱。ターミナルを開く必要なし。
+- `webcal://` で始まる URL は自動で `https://` に変換します（iCloud
+  デフォルト形式）。
+- 新規 endpoints: `/api/calendar/status` (GET), `/api/calendar/setup`
+  (POST), `/api/calendar/import` (POST), `/api/calendar/remove` (POST).
+
 ## [0.7.3] - 2026-06-23
 
 「触ってみて感じる速度」と「Mac スペックに合うモデル」の両方を改善した patch。

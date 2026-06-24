@@ -3795,6 +3795,150 @@ function renderExportPanel() {
     </div>`;
 }
 
+function renderCalendarPanel() {
+  return `
+    <div class="settings-section">
+      <h2><span class="h2-icon">${icon('calendar', 18)}</span> カレンダー</h2>
+      <div class="settings-help" style="margin-bottom:12px;">
+        Google カレンダー / iCloud カレンダーから「予定」を取り込むと、検索・チャット・タイムラインに反映されます。
+        Google / iCloud の <b>iCal URL（公開リンク）</b> を貼り付けて「登録」ボタンを押してください。
+      </div>
+
+      <div id="cal-current" style="margin-bottom:10px;font-size:13px;color:var(--text-3);">読み込み中…</div>
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+        <input id="cal-url-input" type="url"
+          placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
+          style="flex:1;min-width:280px;padding:8px 12px;border:1px solid var(--border-1);border-radius:8px;background:var(--bg-0);color:var(--text-0);font:inherit;font-size:13px;">
+        <button class="settings-save-btn" id="cal-save-btn" type="button">登録 &amp; 取り込み</button>
+      </div>
+      <div id="cal-status" style="font-size:12px;color:var(--text-3);min-height:18px;margin-bottom:8px;"></div>
+
+      <div id="cal-actions" hidden style="display:flex;gap:8px;margin-bottom:10px;">
+        <button class="settings-save-btn" id="cal-reimport-btn" type="button" style="background:var(--bg-2);color:var(--text-1);">今すぐ再取り込み</button>
+        <button class="settings-save-btn" id="cal-remove-btn" type="button" style="background:var(--bg-2);color:var(--text-2);">URL を解除</button>
+      </div>
+
+      <details style="margin-top:10px;font-size:12px;color:var(--text-3);">
+        <summary style="cursor:pointer;color:var(--text-2);">iCal URL の取り方（クリックで展開）</summary>
+        <div style="margin-top:8px;line-height:1.7;padding:10px 14px;background:var(--bg-1);border-radius:8px;">
+          <p style="margin:0 0 8px;"><b>Google カレンダー</b></p>
+          <ol style="margin:0 0 12px;padding-left:20px;">
+            <li>ブラウザで calendar.google.com を開く</li>
+            <li>左サイドバー → 「マイカレンダー」 → カレンダー名にホバー → 「︙」 → 「設定と共有」</li>
+            <li>下にスクロール → 「カレンダーの統合」 → 「カレンダーの<b>非公開 URL</b>（iCal 形式）」をコピー</li>
+            <li>上の入力欄に貼り付け</li>
+          </ol>
+          <p style="margin:0 0 8px;"><b>iCloud カレンダー</b></p>
+          <ol style="margin:0 0 12px;padding-left:20px;">
+            <li>Mac のカレンダー.app を開く</li>
+            <li>左サイドバーのカレンダー名を <b>Ctrl+クリック</b> → 「カレンダーを公開」</li>
+            <li>表示された URL（webcal:// で始まる）をコピー</li>
+            <li>上の入力欄に貼り付け（自動で https:// に変換されます）</li>
+          </ol>
+          <p style="margin:0;color:var(--text-4);">※ 非公開 URL は人に教えないでください。Bunshin はこの URL を <code>~/.bunshin/calendar.json</code> に保存します（外部送信なし）。</p>
+        </div>
+      </details>
+    </div>`;
+}
+
+function wireCalendarPanel() {
+  const current = document.getElementById('cal-current');
+  const input = document.getElementById('cal-url-input');
+  const saveBtn = document.getElementById('cal-save-btn');
+  const status = document.getElementById('cal-status');
+  const actions = document.getElementById('cal-actions');
+  const reimportBtn = document.getElementById('cal-reimport-btn');
+  const removeBtn = document.getElementById('cal-remove-btn');
+  if (!saveBtn) return;
+
+  async function refresh() {
+    try {
+      const j = await (await fetch('/api/calendar/status')).json();
+      if (j.url) {
+        const truncated = j.url.length > 60 ? j.url.slice(0, 60) + '…' : j.url;
+        current.innerHTML = `${icon('check-circle', 14)} 登録済み: <code style="font-size:11px;">${esc(truncated)}</code> ・ ${j.event_count} 件の予定`;
+        current.style.color = 'var(--text-1)';
+        actions.hidden = false;
+      } else {
+        current.textContent = 'まだ何も登録されていません';
+        current.style.color = 'var(--text-3)';
+        actions.hidden = true;
+      }
+    } catch {
+      current.textContent = '状態取得に失敗';
+    }
+  }
+
+  async function setStatus(text, cls) {
+    status.textContent = text;
+    status.style.color = (cls === 'error') ? '#ff6b6b'
+                       : (cls === 'success') ? '#58cc6e'
+                       : 'var(--text-3)';
+  }
+
+  saveBtn.addEventListener('click', async () => {
+    const url = (input.value || '').trim();
+    if (!url) { setStatus('URL を入力してください', 'error'); return; }
+    saveBtn.disabled = true;
+    setStatus('取り込み中…（数秒〜30秒）', '');
+    try {
+      const r = await fetch('/api/calendar/setup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url}),
+      });
+      const j = await r.json();
+      if (j.ok) {
+        setStatus(`✓ ${j.imported || 0} 件の予定を取り込みました`, 'success');
+        input.value = '';
+        refresh();
+        if (typeof loadStats === 'function') { try { loadStats(); } catch {} }
+      } else {
+        setStatus('✗ ' + (j.error || '登録に失敗しました'), 'error');
+      }
+    } catch (e) {
+      setStatus('✗ ネットワークエラー', 'error');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  reimportBtn.addEventListener('click', async () => {
+    reimportBtn.disabled = true;
+    setStatus('再取り込み中…', '');
+    try {
+      const j = await (await fetch('/api/calendar/import', {method: 'POST'})).json();
+      if (j.ok) {
+        setStatus(`✓ ${j.imported || 0} 件を再取り込みしました`, 'success');
+        refresh();
+        if (typeof loadStats === 'function') { try { loadStats(); } catch {} }
+      } else {
+        setStatus('✗ ' + (j.error || '失敗'), 'error');
+      }
+    } finally {
+      reimportBtn.disabled = false;
+    }
+  });
+
+  removeBtn.addEventListener('click', async () => {
+    if (!confirm('カレンダー URL を解除して、取り込んだ予定をすべて削除します。よろしいですか？')) return;
+    removeBtn.disabled = true;
+    try {
+      const j = await (await fetch('/api/calendar/remove', {method: 'POST'})).json();
+      if (j.ok) {
+        setStatus(`✓ 解除しました（${j.removed} 件の予定を削除）`, 'success');
+        refresh();
+        if (typeof loadStats === 'function') { try { loadStats(); } catch {} }
+      }
+    } finally {
+      removeBtn.disabled = false;
+    }
+  });
+
+  refresh();
+}
+
 function renderUninstallPanel() {
   return `
     <div class="settings-section">
@@ -4412,6 +4556,7 @@ async function loadSettings() {
     </div>`;
     // Extra panels that don't fit the schema-driven flow.
     html += renderPrivacyPanel();
+    html += renderCalendarPanel();
     html += renderSchedulerPanel();
     html += renderBackupPanel();
     html += renderExportPanel();
@@ -4420,6 +4565,7 @@ async function loadSettings() {
     html += renderUninstallPanel();
     root.innerHTML = html;
     settingsLoaded = true;
+    wireCalendarPanel();
     wireBackupPanel();
     wireLearningDashboard();
     wireSchedulerPanel();
@@ -8002,6 +8148,108 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         return out
 
     # ───── Auto-import scheduler (launchd / systemd / cron) ────────────────
+    @app.get("/api/calendar/status")
+    def api_calendar_status():
+        """Return the saved iCal URL (if any) + the current event count."""
+        from bunshin.ingestion.calendar import load_url
+        url = load_url()
+        count = 0
+        try:
+            _conn = init_db(db_path)
+            try:
+                row = _conn.execute(
+                    "SELECT COUNT(*) FROM records WHERE source = 'calendar'"
+                ).fetchone()
+                count = row[0] if row else 0
+            finally:
+                _conn.close()
+        except Exception:
+            pass
+        return {"url": url, "event_count": count}
+
+    class CalendarSetupReq(BaseModel):
+        url: str
+
+    @app.post("/api/calendar/setup")
+    def api_calendar_setup(req: CalendarSetupReq):
+        """Save iCal URL then immediately import. Returns import stats."""
+        from bunshin.ingestion.calendar import save_url, import_calendar
+        url = (req.url or "").strip()
+        if not url or not url.startswith(("http://", "https://", "webcal://")):
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "iCal の URL を入力してください",
+                    "hint": "http:// / https:// / webcal:// で始まる URL",
+                },
+                status_code=400,
+            )
+        # webcal:// → https:// (most calendar feeds accept either).
+        if url.startswith("webcal://"):
+            url = "https://" + url[len("webcal://") :]
+        save_url(url)
+        conn = init_db(db_path)
+        try:
+            stats = import_calendar(conn, url=url)
+        finally:
+            conn.close()
+        if stats.get("error_msg"):
+            return JSONResponse(
+                {"ok": False, "error": stats["error_msg"]}, status_code=502
+            )
+        return {"ok": True, **stats}
+
+    @app.post("/api/calendar/import")
+    def api_calendar_reimport():
+        """Re-fetch and re-import using the saved URL."""
+        from bunshin.ingestion.calendar import load_url, import_calendar
+        url = load_url()
+        if not url:
+            return JSONResponse(
+                {"ok": False, "error": "iCal URL が登録されていません"},
+                status_code=400,
+            )
+        conn = init_db(db_path)
+        try:
+            stats = import_calendar(conn, url=url)
+        finally:
+            conn.close()
+        if stats.get("error_msg"):
+            return JSONResponse(
+                {"ok": False, "error": stats["error_msg"]}, status_code=502
+            )
+        return {"ok": True, **stats}
+
+    @app.post("/api/calendar/remove")
+    def api_calendar_remove():
+        """Forget the saved URL and wipe all calendar records."""
+        from bunshin.ingestion.calendar import CONFIG_PATH
+        try:
+            if CONFIG_PATH.exists():
+                CONFIG_PATH.unlink()
+        except OSError:
+            pass
+        conn = init_db(db_path)
+        try:
+            cur = conn.execute("SELECT id FROM records WHERE source = 'calendar'")
+            ids = [r[0] for r in cur.fetchall()]
+            if ids:
+                placeholders = ",".join(["?"] * len(ids))
+                try:
+                    conn.execute(
+                        f"DELETE FROM records_vec WHERE record_id IN ({placeholders})",
+                        ids,
+                    )
+                except sqlite3.OperationalError:
+                    pass
+                conn.execute(
+                    f"DELETE FROM records WHERE id IN ({placeholders})", ids
+                )
+                conn.commit()
+        finally:
+            conn.close()
+        return {"ok": True, "removed": len(ids)}
+
     @app.get("/api/diagnostics")
     def api_diagnostics():
         """Aggregate everything a maintainer needs to debug a stuck install:
