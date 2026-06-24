@@ -4,6 +4,46 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2026-06-24
+
+第 4 回レビューの 6 件 (致命 1 + UX 1 + 整合性 2 + 透明性 1 + 残課題 1) 全消化。
+
+### Fixed — 🚨 `/api/health` 未実装でメニューバーが永遠に「⚠ 応答なし」
+- v0.8.2 で Electron tray が 30 秒ごとに叩いていた `/api/health` の
+  エンドポイントが web server 側に存在しなかった (404 が返り続けていた)。
+- 5 行で endpoint 追加。レスは `{ok: true, version: "0.8.3"}`。
+- これで「メニューバーで稼働状態を見る」が初めて実機で動く。
+
+### Added — バージョン差検知（"DMG 更新したのに古いコードで動いてる"対策）
+- `/api/health` のレスに `version` を同梱。
+- Electron tray は app.getVersion() と比較し、不一致なら
+  **「⟳ 再起動が必要 (0.8.2 → 0.8.3)」** と表示 + クリックで再起動。
+- 玄人レビュー: 「ソース編集後の再起動忘れに気付けない」を解消。
+
+### Fixed — 分身の成長記録の **数字整合性**
+- `top_new_entities` を **本当に新規** なエンティティに修正:
+  従来は `entities.created_at >= cutoff` (= 再インデックスで全件
+  ヒット) → 真の "30 日以内のレコードにのみ登場するエンティティ"
+  を SQL で算出。
+- レスポンスに `visible_records_now` (auto-filter 抜き) と
+  `auto_filtered_now` を追加。設定パネル UI でも
+  「合計 N 件のうち、+M 件追加（うち K 件は自動フィルター中）」と
+  /api/status と同じ言語で表示。
+
+### Added — SNS preset の **適用前プレビュー** (透明性)
+- `GET /api/learning/sns_preset/preview` を追加: 各ドメイン/送信者
+  パターンの **実際の対象件数** を返す。
+- 設定タブのボタン → 確認モーダル（各パターンをチェックボックスで
+  個別解除可能） → 適用、の 2 ステップに変更。
+- POST `/api/learning/sns_preset` は `{domains: [...], senders: [...]}`
+  の選択リストを受けるよう拡張（無指定なら従来通り全適用）。
+
+### Fixed — `get_recent_chat` で **空セッションを除外**
+- `msgs == []` のセッションは外部 AI に渡しても無価値なので
+  skip 条件を追加。
+- これで Claude Desktop からの `get_recent_chat(n=10)` が
+  「最初の 3 件 + (empty) 7 件」にならない。
+
 ## [0.8.2] - 2026-06-24
 
 第 3 回 (素人 + 玄人) レビューの **全 6 件** を消化。

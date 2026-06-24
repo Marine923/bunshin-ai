@@ -3957,6 +3957,8 @@ async function wireMemoryDiffPanel() {
     const j = await (await fetch('/api/memory_diff?days=30')).json();
     if (!j) { el.textContent = '取得失敗'; return; }
     const total = (j.total_records_now || 0).toLocaleString();
+    const visible = (j.visible_records_now ?? j.total_records_now ?? 0).toLocaleString();
+    const filtered = (j.auto_filtered_now || 0).toLocaleString();
     const newC = (j.total_records_new || 0).toLocaleString();
     const sources = (j.new_by_source || [])
       .map(s => `<span style="margin-right:14px;">${esc(SOURCE_LABEL_JA[s.source] || s.source)}: <b>+${s.count.toLocaleString()}</b></span>`)
@@ -3964,12 +3966,15 @@ async function wireMemoryDiffPanel() {
     const entities = (j.top_new_entities || []).slice(0, 5)
       .map(e => `<li>${esc(e.name)} (${esc(e.type)}, ${e.mentions} 件)</li>`)
       .join('');
+    const filteredNote = (j.auto_filtered_now > 0)
+      ? ` <span style="color:var(--text-3);font-size:12px;">（うち ${filtered} 件は自動フィルター中）</span>`
+      : '';
     el.innerHTML = `
       <div style="margin-bottom:12px;font-size:15px;color:var(--text-0);">
-        合計 <b>${total}</b> 件のうち、この 30 日で <b style="color:#58cc6e;">+${newC}</b> 件 追加
+        合計 <b>${total}</b> 件のうち、この 30 日で <b style="color:#58cc6e;">+${newC}</b> 件 追加${filteredNote}
       </div>
       <div style="margin-bottom:14px;">${sources}</div>
-      ${entities ? `<div style="font-size:12px;color:var(--text-3);">新しく登場したエンティティ:</div><ul style="margin:4px 0 0 0;padding-left:18px;color:var(--text-2);">${entities}</ul>` : ''}
+      ${entities ? `<div style="font-size:12px;color:var(--text-3);">この期間に初めて登場したエンティティ:</div><ul style="margin:4px 0 0 0;padding-left:18px;color:var(--text-2);">${entities}</ul>` : ''}
     `;
   } catch (e) {
     el.textContent = '取得失敗: ' + e;
@@ -3996,24 +4001,107 @@ function wireNoiseHygienePanel() {
   const out = document.getElementById('sns-preset-result');
   if (!btn) return;
   btn.addEventListener('click', async () => {
-    if (!confirm('ニュースレター・通知メールを自動非表示にします。よろしいですか？（個別に解除可能）')) return;
     btn.disabled = true;
-    out.textContent = '適用中…';
+    out.textContent = '対象を集計中…';
+    let preview;
     try {
-      const r = await fetch('/api/learning/sns_preset', {method: 'POST'});
-      const j = await r.json();
-      if (j.ok) {
-        out.innerHTML = `✓ 適用しました（ドメインルール ${j.domains} + 送信者ルール ${j.senders} を追加、${j.records_hidden.toLocaleString()} 件の既存記録を非表示に）`;
-        out.style.color = '#58cc6e';
-        if (typeof loadStats === 'function') loadStats();
-      } else {
-        out.textContent = '✗ ' + (j.error || '失敗');
-        out.style.color = '#ff6b6b';
-      }
-    } finally {
+      preview = await (await fetch('/api/learning/sns_preset/preview')).json();
+    } catch (e) {
+      out.textContent = '取得失敗: ' + e;
+      out.style.color = '#ff6b6b';
       btn.disabled = false;
+      return;
     }
+    out.textContent = '';
+    showSnsPresetModal(preview, async (selectedDomains, selectedSenders) => {
+      btn.disabled = true;
+      out.textContent = '適用中…';
+      try {
+        const r = await fetch('/api/learning/sns_preset', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({domains: selectedDomains, senders: selectedSenders}),
+        });
+        const j = await r.json();
+        if (j.ok) {
+          out.innerHTML = `✓ 適用しました（ドメインルール ${j.domains} + 送信者ルール ${j.senders} を追加、${j.records_hidden.toLocaleString()} 件の既存記録を非表示に）`;
+          out.style.color = '#58cc6e';
+          if (typeof loadStats === 'function') loadStats();
+        } else {
+          out.textContent = '✗ ' + (j.error || '失敗');
+          out.style.color = '#ff6b6b';
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    }, () => { btn.disabled = false; });
   });
+}
+
+function showSnsPresetModal(preview, onApply, onCancel) {
+  const SOURCES = (window.SOURCE_LABEL_JA || {});
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;' +
+    'display:flex;align-items:center;justify-content:center;';
+  const box = document.createElement('div');
+  box.style.cssText =
+    'background:var(--bg-1);border-radius:12px;max-width:540px;width:90vw;' +
+    'max-height:85vh;overflow:auto;padding:24px;color:var(--text-1);' +
+    'box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+  const renderRow = (kind, item) => `
+    <label style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;cursor:pointer;">
+      <input type="checkbox" data-kind="${kind}" data-pattern="${esc(item.pattern)}" checked />
+      <span style="flex:1;font-family:ui-monospace,monospace;">${esc(item.pattern)}</span>
+      <span style="color:var(--text-3);">${item.count.toLocaleString()} 件</span>
+    </label>`;
+  const domainsHtml = (preview.domains || []).map(d => renderRow('domain', d)).join('');
+  const sendersHtml = (preview.senders || []).map(s => renderRow('sender', s)).join('');
+  const total = preview.total_records || 0;
+  box.innerHTML = `
+    <div style="font-size:18px;font-weight:600;margin-bottom:6px;">ノイズ一括非表示の確認</div>
+    <div style="color:var(--text-3);font-size:13px;margin-bottom:16px;">
+      チェックを外せば個別に除外できます。あなたの仕事関連メールが含まれていないか
+      ざっと目を通してください。
+    </div>
+    ${preview.domains?.length ? `<div style="font-size:12px;color:var(--text-3);margin:8px 0 4px;">ドメイン (${preview.domains.length})</div>${domainsHtml}` : ''}
+    ${preview.senders?.length ? `<div style="font-size:12px;color:var(--text-3);margin:16px 0 4px;">送信者パターン (${preview.senders.length})</div>${sendersHtml}` : ''}
+    ${total === 0 ? '<div style="color:var(--text-3);padding:18px 0;">対象となる記録はありません。</div>' : ''}
+    <div style="margin-top:20px;display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:13px;color:var(--text-2);">合計 <b id="sns-modal-count">${total.toLocaleString()}</b> 件が非表示になります</div>
+      <div>
+        <button id="sns-modal-cancel" class="settings-save-btn" style="background:transparent;color:var(--text-2);border:1px solid var(--border-1);margin-right:8px;">キャンセル</button>
+        <button id="sns-modal-apply" class="settings-save-btn" ${total === 0 ? 'disabled' : ''}>適用</button>
+      </div>
+    </div>`;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  const checkboxes = () => Array.from(box.querySelectorAll('input[type="checkbox"]'));
+  const updateCount = () => {
+    let n = 0;
+    checkboxes().forEach(cb => {
+      if (cb.checked) {
+        const kind = cb.dataset.kind;
+        const pat = cb.dataset.pattern;
+        const list = kind === 'domain' ? preview.domains : preview.senders;
+        const item = list.find(x => x.pattern === pat);
+        if (item) n += item.count;
+      }
+    });
+    document.getElementById('sns-modal-count').textContent = n.toLocaleString();
+    document.getElementById('sns-modal-apply').disabled = (n === 0);
+  };
+  checkboxes().forEach(cb => cb.addEventListener('change', updateCount));
+  document.getElementById('sns-modal-cancel').addEventListener('click', () => {
+    overlay.remove(); onCancel && onCancel();
+  });
+  document.getElementById('sns-modal-apply').addEventListener('click', () => {
+    const selDomains = checkboxes().filter(cb => cb.checked && cb.dataset.kind === 'domain').map(cb => cb.dataset.pattern);
+    const selSenders = checkboxes().filter(cb => cb.checked && cb.dataset.kind === 'sender').map(cb => cb.dataset.pattern);
+    overlay.remove();
+    onApply(selDomains, selSenders);
+  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); onCancel && onCancel(); } });
 }
 
 function renderCalendarPanel() {
@@ -8676,6 +8764,19 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             "exif": exif,
         }
 
+    @app.get("/api/health")
+    def api_health():
+        """Lightweight liveness probe for the menu-bar status indicator.
+
+        Returns 200 + small JSON so the Electron tray icon can ping every
+        30 s without paying for the heavier /api/status query. Includes
+        the running version so the tray can detect "DMG updated but
+        Python web server still running the old code" and prompt for
+        restart.
+        """
+        from bunshin import __version__
+        return {"ok": True, "version": __version__}
+
     @app.get("/api/status")
     def api_status():
         from bunshin.settings import get as get_setting
@@ -8850,20 +8951,51 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
 
             total_new = sum(r[1] for r in rows)
             total_all = (conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]) or 0
+            # Match /api/status's accounting so the "成長記録" card never
+            # contradicts the header chip. auto_filtered_count comes from
+            # the same signal_score threshold used in /api/status.
+            from bunshin.settings import get as _get_setting
+            min_signal = int(_get_setting(conn, "min_signal_score") or 0)
+            auto_filtered = 0
+            if min_signal > 0:
+                auto_filtered = conn.execute(
+                    """SELECT COUNT(*) FROM records
+                        WHERE COALESCE(signal_score, 50.0) <= ?
+                          AND COALESCE(user_signal, 0) != 1""",
+                    (min_signal,),
+                ).fetchone()[0]
+            visible_all = max(0, total_all - auto_filtered)
 
-            # New entities (created_at >= cutoff). Entities whose mentions
-            # come >80% from gmail/browser are usually newsletter noise
-            # (e.g. "note", "ポーランド" surfacing from note.com weekly
-            # digests rather than the user's actual interests). Drop them
-            # so this card surfaces what's *new in the user's life*, not
-            # what's new in their inbox.
+            # New entities = entities whose *first* mention falls inside
+            # the window. The previous version queried entities.created_at,
+            # which collapsed to whenever the entity-extraction job last
+            # rebuilt the table — so on a freshly re-indexed DB every
+            # entity looked "new" and the card just mirrored
+            # list_top_entities. Now we derive first-mention from
+            # record_entities ⨝ records and filter against the cutoff.
+            #
+            # Also keeps the gmail/browser noise filter (>80% means it's
+            # almost certainly a newsletter signal, not a real interest).
             try:
                 ent_rows = conn.execute(
-                    "SELECT e.id, e.name, e.type, COUNT(re.record_id) "
-                    "FROM entities e LEFT JOIN record_entities re ON re.entity_id = e.id "
-                    "WHERE e.created_at >= ? GROUP BY e.id "
-                    "ORDER BY 4 DESC LIMIT 30",
-                    (cutoff,),
+                    """
+                    SELECT e.id, e.name, e.type,
+                           COUNT(re.record_id) AS mentions_in_window
+                      FROM entities e
+                      JOIN record_entities re ON re.entity_id = e.id
+                      JOIN records r ON r.id = re.record_id
+                     WHERE r.timestamp >= ?
+                       AND NOT EXISTS (
+                         SELECT 1 FROM record_entities re2
+                           JOIN records r2 ON r2.id = re2.record_id
+                          WHERE re2.entity_id = e.id
+                            AND r2.timestamp < ?
+                       )
+                     GROUP BY e.id
+                     ORDER BY mentions_in_window DESC
+                     LIMIT 30
+                    """,
+                    (cutoff, cutoff),
                 ).fetchall()
                 new_entities = []
                 for eid, name, type_, mentions in ent_rows:
@@ -8892,7 +9024,13 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
 
             return {
                 "days": days,
+                # Three numbers so the UI can speak the same language as
+                # /api/status: raw total, what the user actually sees in
+                # search/flashback (auto-filter applied), and the
+                # auto-filter delta.
                 "total_records_now": total_all,
+                "visible_records_now": visible_all,
+                "auto_filtered_now": auto_filtered,
                 "total_records_new": total_new,
                 "new_by_source": new_by_source,
                 "top_new_entities": new_entities,
@@ -8900,8 +9038,69 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         finally:
             conn.close()
 
+    # The single source of truth for both the preview endpoint and the
+    # actual apply endpoint — so the user sees exactly what they're
+    # about to apply.
+    _SNS_PRESET_DOMAINS = [
+        "mail.note.com", "info@note.com",
+        "mailchimp.com", "mailchi.mp",
+        "sendgrid.net", "amazonses.com",
+        "info.mercari.com", "noreply.mercari.com",
+        "mail.paypal.co.jp",
+        "mail.amazon.co.jp",
+        "info.rakuten.co.jp", "rakuten-card.co.jp",
+        "info.linkedin.com",
+        "github.com",
+        "list-manage.com", "campaign-archive.com",
+        "ml.smartnews.com", "newspicks.com",
+    ]
+    _SNS_PRESET_SENDERS = [
+        "noreply", "no-reply", "do-not-reply", "donotreply",
+        "marketing@", "newsletter@", "notifications@",
+    ]
+
+    @app.get("/api/learning/sns_preset/preview")
+    def api_learning_sns_preset_preview():
+        """Return the curated SNS preset together with the live record
+        count for each pattern, so the UI can show a confirmation list
+        before the user applies the hide rules. Closes the reviewer
+        gap "I clicked a button and 3,961 records vanished without ever
+        seeing what I was hiding".
+        """
+        conn = init_db(db_path)
+        try:
+            domains = []
+            for d in _SNS_PRESET_DOMAINS:
+                n = conn.execute(
+                    "SELECT COUNT(*) FROM records "
+                    "WHERE sender_domain = ? AND COALESCE(user_signal, 0) = 0",
+                    (d,),
+                ).fetchone()[0]
+                if n > 0:
+                    domains.append({"pattern": d, "count": n})
+            senders = []
+            for s in _SNS_PRESET_SENDERS:
+                n = conn.execute(
+                    "SELECT COUNT(*) FROM records "
+                    "WHERE (sender LIKE ? OR sender LIKE ?) "
+                    "  AND COALESCE(user_signal, 0) = 0",
+                    (f"{s}%", f"%<{s}%"),
+                ).fetchone()[0]
+                if n > 0:
+                    senders.append({"pattern": s, "count": n})
+            return {
+                "domains": sorted(domains, key=lambda x: -x["count"]),
+                "senders": sorted(senders, key=lambda x: -x["count"]),
+                "total_records": (
+                    sum(d["count"] for d in domains) +
+                    sum(s["count"] for s in senders)
+                ),
+            }
+        finally:
+            conn.close()
+
     @app.post("/api/learning/sns_preset")
-    def api_learning_sns_preset():
+    def api_learning_sns_preset(payload: dict | None = None):
         """Apply a curated set of marketing-mail / SNS-notification domains
         as auto-hide learning rules. One-click hygiene pass that hides
         common transactional / promotional noise so the user's flashback
@@ -8911,27 +9110,22 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         endpoint is the engine, the settings UI is the trigger.
         """
         import time as _time
-        # Pattern style matches what apply_mark() stores: rule_type="domain"
-        # for whole-domain hides, "sender" for individual address hides.
-        DOMAINS = [
-            # JP marketing
-            "mail.note.com", "info@note.com",
-            "mailchimp.com", "mailchi.mp",
-            "sendgrid.net", "amazonses.com",
-            "info.mercari.com", "noreply.mercari.com",
-            "mail.paypal.co.jp",
-            "mail.amazon.co.jp",
-            "info.rakuten.co.jp", "rakuten-card.co.jp",
-            "info.linkedin.com",
-            "github.com",  # PR/issue noise; user can re-enable
-            # Tracking / unsub-bait
-            "list-manage.com", "campaign-archive.com",
-            "ml.smartnews.com", "newspicks.com",
-        ]
-        SENDERS = [
-            "noreply", "no-reply", "do-not-reply", "donotreply",
-            "marketing@", "newsletter@", "notifications@",
-        ]
+        # Caller can opt into a subset by sending {"domains": [...], "senders": [...]}.
+        # Defaults to the full curated list (back-compat with the
+        # one-click button).
+        payload = payload or {}
+        domains_sel = payload.get("domains")
+        senders_sel = payload.get("senders")
+        DOMAINS = (
+            [d for d in _SNS_PRESET_DOMAINS if d in domains_sel]
+            if isinstance(domains_sel, list)
+            else list(_SNS_PRESET_DOMAINS)
+        )
+        SENDERS = (
+            [s for s in _SNS_PRESET_SENDERS if s in senders_sel]
+            if isinstance(senders_sel, list)
+            else list(_SNS_PRESET_SENDERS)
+        )
         conn = init_db(db_path)
         now = int(_time.time())
         applied = {"domains": 0, "senders": 0, "records_hidden": 0}

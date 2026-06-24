@@ -680,23 +680,28 @@ function createTray() {
     // signal until they click the icon and get a blank window. Poll
     // /api/health every 30 s and reflect status in the tooltip + first
     // menu item.
-    let lastHealthy = true;
-    const updateTrayStatus = (healthy) => {
+    const bundledVersion = app.getVersion();
+    let lastState = {healthy: true, version: bundledVersion};
+    const updateTrayStatus = (state) => {
       if (!tray) return;
-      if (healthy) {
-        tray.setToolTip('Bunshin — 分身（個人記憶 AI） · 稼働中');
+      const versionMismatch = state.healthy && state.version && state.version !== bundledVersion;
+      let tip, top;
+      if (!state.healthy) {
+        tip = 'Bunshin — ⚠ Web UI 応答なし（クリックで再起動）';
+        top = { label: '⚠ Web UI 停止中 — クリックで再起動', enabled: true,
+                click: async () => { try { await startServer(); } catch (e) { console.error(e); } } };
+      } else if (versionMismatch) {
+        tip = `Bunshin — ⚠ サーバが古いコードで動作中 (${state.version} → ${bundledVersion}) クリックで再起動`;
+        top = { label: `⟳ 再起動が必要 (${state.version} → ${bundledVersion})`,
+                enabled: true,
+                click: async () => { try { await startServer(); } catch (e) { console.error(e); } } };
       } else {
-        tray.setToolTip('Bunshin — ⚠ Web UI 応答なし（クリックで再起動）');
+        tip = `Bunshin — 分身（個人記憶 AI） · 稼働中 v${state.version || bundledVersion}`;
+        top = { label: `● 稼働中 v${state.version || bundledVersion}`, enabled: false };
       }
-      const statusItem = {
-        label: healthy ? '● 稼働中' : '⚠ Web UI 停止中 — クリックで再起動',
-        enabled: !healthy,
-        click: healthy ? undefined : async () => {
-          try { await startServer(); } catch (e) { console.error(e); }
-        },
-      };
-      const menu = Menu.buildFromTemplate([
-        statusItem,
+      tray.setToolTip(tip);
+      tray.setContextMenu(Menu.buildFromTemplate([
+        top,
         { type: 'separator' },
         { label: 'Bunshin を開く', click: showMain },
         { type: 'separator' },
@@ -706,25 +711,27 @@ function createTray() {
         { label: '今日のフラッシュバック', click: () => focusTab('search') },
         { type: 'separator' },
         { label: 'Bunshin を終了', click: () => app.quit() },
-      ]);
-      tray.setContextMenu(menu);
+      ]));
     };
     const pingHealth = async () => {
+      let next;
       try {
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), 3000);
         const r = await fetch(`http://127.0.0.1:${serverPort || 8000}/api/health`, {signal: ctl.signal});
         clearTimeout(timer);
-        const healthy = r.ok;
-        if (healthy !== lastHealthy) {
-          lastHealthy = healthy;
-          updateTrayStatus(healthy);
+        if (r.ok) {
+          const j = await r.json().catch(() => ({}));
+          next = {healthy: true, version: j.version || null};
+        } else {
+          next = {healthy: false, version: null};
         }
       } catch (e) {
-        if (lastHealthy) {
-          lastHealthy = false;
-          updateTrayStatus(false);
-        }
+        next = {healthy: false, version: null};
+      }
+      if (next.healthy !== lastState.healthy || next.version !== lastState.version) {
+        lastState = next;
+        updateTrayStatus(next);
       }
     };
     pingHealth();

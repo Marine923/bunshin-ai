@@ -325,6 +325,10 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                 if len(out) >= max(1, n):
                     break
                 msgs = get_messages(conn, s["id"])
+                # Empty sessions (placeholder rows the user opened then
+                # walked away from) have no value to an external agent.
+                if not msgs:
+                    continue
                 first_user = next(
                     (m["content"] for m in msgs if m["role"] == "user"), None
                 )
