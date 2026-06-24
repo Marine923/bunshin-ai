@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 import numpy as np
 
-from bunshin.embeddings import embed_query
+from bunshin.embeddings import EmbedBusyError, embed_query
 from bunshin.storage import init_fts, load_vec_extension
 
 
@@ -244,6 +244,16 @@ def search(
         query_vec = embed_query(query)
         blob = np.asarray(query_vec, dtype=np.float32).tobytes()
         embedding_ok = True
+        fallback_reason = None
+    except EmbedBusyError as _busy:
+        # The embedding model is being held by a long-running backfill
+        # batch. Don't make the user wait 15 s for a single query —
+        # serve a keyword-only result immediately and let the next
+        # search (after backfill finishes) get the full vector pass.
+        print(f"[search] {_busy} — keyword fallback for {query!r}", flush=True)
+        embedding_ok = False
+        fallback_reason = "backfill"
+        blob = b""
     except Exception as _emb_exc:
         import traceback
         traceback.print_exc()
@@ -253,19 +263,28 @@ def search(
             flush=True,
         )
         embedding_ok = False
+        fallback_reason = "error"
         blob = b""
 
     if not embedding_ok:
         # Pure keyword fallback — LIKE-based, no vec, no rerank. Slower on
-        # big DBs but always returns *something* relevant.
+        # big DBs but always returns *something* relevant. Apply the
+        # same signal_score floor the UI uses so newsletter-noise
+        # records ("カレー好きな自由人さんにスキされました！") don't
+        # surface in keyword-only mode either.
+        from bunshin.settings import get as _get_setting
+        _min_signal = int(_get_setting(conn, "min_signal_score") or 0)
         like = f"%{query}%"
         rows = conn.execute(
             "SELECT id, source, content, metadata, timestamp, source_id, "
             "signal_score FROM records "
             "WHERE content LIKE ? AND length(content) >= ? "
+            "AND COALESCE(signal_score, 50.0) >= ? "
+            "AND COALESCE(user_signal, 0) != -1 "
             + (f"AND source IN ({','.join('?' * len(sources))}) " if sources else "")
             + "ORDER BY signal_score DESC, timestamp DESC LIMIT ?",
-            [like, min_content_length] + (list(sources) if sources else []) + [limit],
+            [like, min_content_length, _min_signal]
+            + (list(sources) if sources else []) + [limit],
         ).fetchall()
         import json as _json
         results = []
@@ -279,7 +298,10 @@ def search(
                 "metadata": meta, "timestamp": row[4], "source_id": row[5],
                 "signal_score": row[6] or 50.0,
                 "distance": 1.0,
-                "score_components": {"keyword_fallback": 1.0},
+                "score_components": {
+                    "keyword_fallback": 1.0,
+                    "fallback_reason": fallback_reason or "unknown",
+                },
             })
         return results
 

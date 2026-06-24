@@ -4,6 +4,55 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.7] - 2026-06-24
+
+第 8 回レビュー: 検索/RAG-chat が backfill 中に **15 秒タイムアウト**
+していた致命バグを根本対処 + 残り 6 件まとめて消化。
+
+### Fixed — 🚨🚨🚨 検索/RAG が backfill 中に 15 秒ハング
+- **根本原因**: `fastembed.TextEmbedding` がプロセス内シングルトン。
+  backfill ワーカーが推論中、検索側の `embed_query()` が順番待ちで
+  **正常時 10ms → 14.6s (1400 倍)** に。
+- **修正**: `embeddings._model_lock` を導入し、
+  - `embed_passages()` (backfill 側、長時間): 普通に lock 取得
+  - `embed_query()` (検索/RAG 側): `timeout=0.8s` で acquire、
+    取れなければ **新例外 `EmbedBusyError`** を raise
+- `search.py` は `EmbedBusyError` を catch して keyword fallback。
+  検索 UI には **「⚙ 現在「簡易検索」で表示中（分身が育成中）」** chip
+  を表示し、ユーザーに事情を伝える。
+- 友人配布の最悪ケース「初回 backfill 中に検索 → 15 秒待つ → 諦める」
+  が物理的に発生しない。
+
+### Fixed — 🚨 730 件の孤立 vector
+- `records` から削除されたが `records_vec` に残った行を起動時マイグ
+  レーション `orphan_vectors_v0_8_7` で一括削除。
+- 玄人レビューの「total_embeddings > total_records → backfill 100%
+  超え」が解消。
+
+### Fixed — pgrep が Claude wrapper を誤検出
+- `pgrep -f "bunshin mcp"` → **`pgrep -f "python.*bunshin mcp"`** に。
+  Claude.app の `disclaimer` helper や pgrep subprocess の残骸を
+  除外。素人レビューの「11 個と表示されるが実 MCP は 8 個」を修正。
+
+### Fixed — `/api/note` の重複検出メッセージ
+- 同じメモを 2 回保存すると「Empty content」を返していた問題。
+- empty / duplicate を区別し、**「Duplicate — 同じ内容のメモが既に
+  保存されています」** を返す。
+
+### Fixed — 検索 keyword fallback の signal_score フィルタ
+- `min_signal_score` 設定を keyword fallback パスにも適用。
+- 「カレー」で newsletter 「カレー好きな自由人さんにスキされました！」が
+  浮上する現象を解消。`user_signal == -1` (ユーザーが非表示) も除外。
+
+### Fixed — `/api/diagnostics` の numpy bool エラー
+- `bool(numpy_array)` → `v is not None and len(v) > 0`。
+- "The truth value of an array with more than one element is
+  ambiguous" を解消。
+
+### Docs
+- `README.ja.md` のメモリ要件を **「8 GB 以上」→「16 GB 以上（推奨
+  32 GB — fastembed + rerank で実 RSS ~11 GB）」** に修正。
+
 ## [0.8.6] - 2026-06-24
 
 第 7 回レビュー: v0.8.5 の MCP 鮮度バナーに **「pre-v0.8.5 プロセス

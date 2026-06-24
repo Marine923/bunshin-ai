@@ -6709,13 +6709,23 @@ async function doSearch(query) {
     const j = await (await fetch(`/api/search?${params}`)).json();
     if (!j.results?.length) { results.innerHTML = '<div class="empty">該当なし</div>'; return; }
     _lastResults = j.results;
+    // If the entire result set fell back to keyword search (embedding
+    // model busy with backfill), tell the user — otherwise they think
+    // the quality just regressed.
+    const allKeyword = j.results.every(r => r.score_components?.keyword_fallback);
+    const reason = j.results[0]?.score_components?.fallback_reason;
+    const fallbackBanner = (allKeyword && reason === 'backfill') ? `
+      <div style="background:rgba(106,109,255,0.10);border:1px solid var(--accent-1,#6a6dff);
+                  border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--text-2);">
+        ⚙ 現在「簡易検索」で表示中（分身が育成中）。育成完了後、もう一度検索すると意味検索＋リランクのフル品質に戻ります。
+      </div>` : '';
     const toolbar = `
       <div class="results-toolbar">
         <button class="copy-bundle-btn" id="copy-bundle-btn" type="button" title="検索結果を Markdown でクリップボードへ。Claude/ChatGPT にそのまま貼れます">
           ${icon('copy', 13)} まとめて Markdown でコピー
         </button>
       </div>`;
-    results.innerHTML = toolbar + j.results.map((r, i) => renderResult(r, i)).join('');
+    results.innerHTML = fallbackBanner + toolbar + j.results.map((r, i) => renderResult(r, i)).join('');
     const cb = document.getElementById('copy-bundle-btn');
     if (cb) cb.addEventListener('click', copyResultsBundle);
     document.querySelectorAll('.result').forEach((el, i) => {
@@ -8405,6 +8415,28 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
 
                 # v0.7.12: prune noise entities created by earlier LLM
                 # extraction runs (single chars, "the", "?", etc).
+                # v0.8.7: drop orphaned vectors (records_vec rows whose
+                # record_id no longer exists in records). Reviewer found
+                # 730 orphans on this dev DB → made total_embeddings
+                # exceed total_records and let phantom embeddings leak
+                # into rerank candidate pools.
+                if "orphan_vectors_v0_8_7" not in _applied:
+                    try:
+                        from bunshin.storage import load_vec_extension
+                        load_vec_extension(_conn)
+                        cur = _conn.execute(
+                            "DELETE FROM records_vec WHERE record_id NOT IN "
+                            "(SELECT id FROM records)"
+                        )
+                        print(f"[migration] pruned {cur.rowcount} orphan vectors", flush=True)
+                    except Exception as e:
+                        print(f"[migration] orphan_vectors skipped: {e}", flush=True)
+                    _conn.execute(
+                        "INSERT INTO migrations(key, applied_at) VALUES (?, ?)",
+                        ("orphan_vectors_v0_8_7", int(__import__("time").time())),
+                    )
+                    _conn.commit()
+
                 if "noise_entities_v0_7_12" not in _applied:
                     try:
                         from bunshin.knowledge_graph import NOISE_ENTITY_NAMES
@@ -8893,8 +8925,11 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         tracked_pids = {p.get("pid") for p in processes}
         my_pid = _os.getpid()
         try:
+            # Require "python" in the matched cmdline so we exclude
+            # Claude.app's "disclaimer" helper wrapper and stale pgrep
+            # subprocesses (reviewer saw both inflating the count).
             out = _sp.check_output(
-                ["pgrep", "-f", "bunshin mcp"],
+                ["pgrep", "-f", r"python.*bunshin mcp"],
                 text=True, stderr=_sp.DEVNULL, timeout=2,
             )
             for line in out.split():
@@ -9488,8 +9523,10 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         try:
             from bunshin.embeddings import embed_query
             v = embed_query("ヘルスチェック")
-            embedding_health["ok"] = bool(v) and len(v) > 0
-            embedding_health["dim"] = len(v) if v else 0
+            # `bool(numpy_array)` raises "truth value ... ambiguous" —
+            # check existence + length explicitly.
+            embedding_health["ok"] = v is not None and len(v) > 0
+            embedding_health["dim"] = len(v) if v is not None else 0
         except Exception as _e:
             embedding_health["error"] = str(_e)[:200]
 
@@ -10141,9 +10178,14 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
 
         conn = init_db(db_path)
         try:
+            # Distinguish "empty" from "duplicate" so the user gets an
+            # actionable message instead of a wrong "Empty content"
+            # response on a populated duplicate save.
+            if not (req.content or "").strip():
+                return {"saved": False, "error": "Empty content"}
             rid = add_note(conn, req.content, tags=req.tags)
             if not rid:
-                return {"saved": False, "error": "Empty content"}
+                return {"saved": False, "error": "Duplicate — 同じ内容のメモが既に保存されています"}
             if len(req.content) >= 20:
                 init_vector_db(conn, dimensions=DIMENSIONS)
                 for emb in embed_passages([req.content]):
