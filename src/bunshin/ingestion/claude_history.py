@@ -35,7 +35,19 @@ _SKIP_LINE_RES = [
     re.compile(r"^\s*<task-id>", re.IGNORECASE | re.MULTILINE),
     re.compile(r"^\s*<tool-use-id>", re.IGNORECASE | re.MULTILINE),
     re.compile(r"^\s*<output-file>", re.IGNORECASE | re.MULTILINE),
+    # Orphan closing tags — chunk_messages can split a wrapper across
+    # two chunks, leaving the closer alone at the top of the next one.
+    # Reviewer 13 found 10 records with just `</task-notification>` at
+    # the top after v0.8.11's MULTILINE fix.
+    re.compile(r"^\s*</task-notification>\s*$", re.IGNORECASE | re.MULTILINE),
+    re.compile(r"^\s*</user-prompt-submit-hook>\s*$", re.IGNORECASE | re.MULTILINE),
 ]
+
+# Lines that survive _strip_harness_noise but still carry an awkward
+# `[queue-operation]` role tag (Claude's internal queue marker that
+# never represents a real user/assistant role). Normalize to `[user]`
+# so chat snippets read naturally.
+_QUEUE_OP_PREFIX = re.compile(r"^\[queue-operation\]\s*", re.MULTILINE)
 
 
 def _strip_harness_noise(text: str) -> str:
@@ -45,6 +57,9 @@ def _strip_harness_noise(text: str) -> str:
     plumbing the user never wrote or read."""
     if not text:
         return text
+    # Normalize the awkward [queue-operation] tag even when we'd
+    # otherwise leave the body alone — it always looks wrong in chat.
+    text = _QUEUE_OP_PREFIX.sub("[user] ", text)
     if not any(p.search(text) for p in _SKIP_LINE_RES):
         return text
     out_lines = []
@@ -52,6 +67,10 @@ def _strip_harness_noise(text: str) -> str:
     for line in text.splitlines():
         if any(p.search(line) for p in _SKIP_LINE_RES):
             in_skip = True
+            # Single-line orphan closers self-terminate.
+            stripped_l = line.strip()
+            if stripped_l in ("</task-notification>", "</user-prompt-submit-hook>"):
+                in_skip = False
             continue
         if in_skip:
             # End of the wrapper block — closing tag or a blank line.

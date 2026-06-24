@@ -4032,6 +4032,14 @@ async function wireMemoryDiffPanel() {
     const entities = (j.top_new_entities || []).slice(0, 5)
       .map(e => `<li>${esc(e.name)} (${esc(e.type)}, ${e.mentions} 件)</li>`)
       .join('');
+    // Reviewer 13: short windows often have no first-mentions because
+    // entity extraction runs in batches, not per-ingest. Surface that
+    // honestly instead of just showing an empty <ul>.
+    const entitiesBlock = entities
+      ? `<div style="font-size:12px;color:var(--text-3);">この期間に初めて登場したエンティティ:</div>
+         <ul style="margin:4px 0 0 0;padding-left:18px;color:var(--text-2);">${entities}</ul>`
+      : `<div style="font-size:12px;color:var(--text-3);">この期間に <b>初登場</b> のエンティティはありません<br>
+         <span style="opacity:0.7;">（エンティティ抽出はバッチ実行のため、最近の ingest はまだ反映されていない場合があります）</span></div>`;
     const filteredNote = (j.auto_filtered_now > 0)
       ? ` <span style="color:var(--text-3);font-size:12px;">（うち ${filtered} 件は自動フィルター中）</span>`
       : '';
@@ -4040,7 +4048,7 @@ async function wireMemoryDiffPanel() {
         合計 <b>${total}</b> 件のうち、この 30 日で <b style="color:#58cc6e;">+${newC}</b> 件 追加${filteredNote}
       </div>
       <div style="margin-bottom:14px;">${sources}</div>
-      ${entities ? `<div style="font-size:12px;color:var(--text-3);">この期間に初めて登場したエンティティ:</div><ul style="margin:4px 0 0 0;padding-left:18px;color:var(--text-2);">${entities}</ul>` : ''}
+      ${entitiesBlock}
     `;
   } catch (e) {
     el.textContent = '取得失敗: ' + e;
@@ -8435,6 +8443,42 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 # _strip_harness_noise() only runs on fresh ingestion, so
                 # 296 polluted records from earlier versions still carry
                 # harness XML that leaks into chat context.
+                # v0.8.13: pick up the orphan `</task-notification>`
+                # closers + `[queue-operation]` normalization that v0.8.11
+                # added to _strip_harness_noise. Same idempotent shape as
+                # the prior cleanup migrations.
+                if "harness_noise_v0_8_13" not in _applied:
+                    try:
+                        from bunshin.ingestion.claude_history import _strip_harness_noise
+                        rows = _conn.execute(
+                            "SELECT id, content FROM records "
+                            "WHERE source='claude' AND ("
+                            "  content LIKE '%task-notification%' "
+                            "  OR content LIKE '%tool-use-id%' "
+                            "  OR content LIKE '%user-prompt-submit-hook%' "
+                            "  OR content LIKE '%queue-operation%' "
+                            "  OR content LIKE '%output-file>%' "
+                            "  OR content LIKE '%</task-notification%' "
+                            "  OR content LIKE '%</user-prompt-submit-hook%')"
+                        ).fetchall()
+                        n_cleaned = 0
+                        for rid, content in rows:
+                            cleaned = _strip_harness_noise(content)
+                            if cleaned and cleaned != content:
+                                _conn.execute(
+                                    "UPDATE records SET content=? WHERE id=?",
+                                    (cleaned, rid),
+                                )
+                                n_cleaned += 1
+                        print(f"[migration] v0.8.13 cleaned {n_cleaned} records (orphan closers + queue-op)", flush=True)
+                    except Exception as e:
+                        print(f"[migration] harness_noise_v0_8_13 skipped: {e}", flush=True)
+                    _conn.execute(
+                        "INSERT INTO migrations(key, applied_at) VALUES (?, ?)",
+                        ("harness_noise_v0_8_13", int(__import__("time").time())),
+                    )
+                    _conn.commit()
+
                 # v0.8.11: re-scrub once more, now that the regex actually
                 # works. v0.8.8〜v0.8.10 all shipped without re.MULTILINE,
                 # so the gate check returned False for any text whose first
@@ -9556,20 +9600,37 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 applied["senders"] += 1
             # Apply the new rules to existing records right now (mark
             # user_signal = -1 for noise so search/flashback respects it).
+            # Also bump each rule's applied_count so the learning dashboard
+            # shows the real impact instead of permanent 0. Reviewer 13
+            # caught the missing roll-up.
             for d in DOMAINS:
                 cur = conn.execute(
                     "UPDATE records SET user_signal = -1 "
                     "WHERE sender_domain = ? AND user_signal = 0",
                     (d,),
                 )
-                applied["records_hidden"] += cur.rowcount or 0
+                n = cur.rowcount or 0
+                applied["records_hidden"] += n
+                if n:
+                    conn.execute(
+                        "UPDATE learning_rules SET applied_count = applied_count + ? "
+                        "WHERE rule_type='domain' AND pattern=? AND action='hide'",
+                        (n, d),
+                    )
             for s in SENDERS:
                 cur = conn.execute(
                     "UPDATE records SET user_signal = -1 "
                     "WHERE (sender LIKE ? OR sender LIKE ?) AND user_signal = 0",
                     (f"{s}%", f"%<{s}%"),
                 )
-                applied["records_hidden"] += cur.rowcount or 0
+                n = cur.rowcount or 0
+                applied["records_hidden"] += n
+                if n:
+                    conn.execute(
+                        "UPDATE learning_rules SET applied_count = applied_count + ? "
+                        "WHERE rule_type='sender' AND pattern=? AND action='hide'",
+                        (n, s),
+                    )
             conn.commit()
         finally:
             conn.close()

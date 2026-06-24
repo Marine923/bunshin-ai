@@ -4,6 +4,39 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.13] - 2026-06-25
+
+第 13 回レビューの 3 件 + 残骸 cleanup。
+
+### Fixed — `[queue-operation]` 行頭タグを `[user]` に正規化
+- Claude harness 内部の queue marker が chat の context に
+  `[queue-operation] OK` として surface していた。
+- `_strip_harness_noise` の冒頭で `[queue-operation] ` → `[user] `
+  に置換。今後の ingest + 既存 record 両方に効く。
+
+### Fixed — 孤立した `</task-notification>` 閉じタグの除去
+- `chunk_messages` が wrapper を跨いで chunk を切ると、closer だけが
+  次 chunk の冒頭に残る。10 件残存していたパターンを
+  `_SKIP_LINE_RES` に `</task-notification>` / `</user-prompt-submit-hook>`
+  単独行マッチ追加で消す。
+
+### Fixed — `learning_rules.applied_count` が永久に 0
+- SNS preset 適用時、各 rule が hide した record 数を
+  `learning_rules.applied_count` に rollup していなかった。
+- 学習ダッシュボード上で「このルールが何件 hide しているか」が
+  ずっと 0 表示 → 実数 (例: `mail.note.com → 1184 件`) に。
+
+### Changed — `memory_diff` で 7日窓に新規エンティティが無い時の UI
+- entity extraction はバッチ実行のため、短い window では空配列が
+  返ることが多い。空 `<ul>` の代わりに：
+  > 「この期間に **初登場** のエンティティはありません」
+  > 「（エンティティ抽出はバッチ実行のため、最近の ingest は
+  >    まだ反映されていない場合があります）」
+
+### Migration — `harness_noise_v0_8_13`
+- 上記 2 つの新パターン (queue-op 正規化 + 孤立 closer) を既存
+  records に再適用。
+
 ## [0.8.12] - 2026-06-24
 
 ### Fixed — 🐛 ライトモードでチャット応答の **太字** が白く消える
