@@ -3937,6 +3937,65 @@ function renderExportPanel() {
   });
 })();
 
+function renderSystemHealthPanel() {
+  return `
+    <div id="system-health-panel" style="margin-bottom:18px;"></div>`;
+}
+
+async function wireSystemHealthPanel() {
+  const root = document.getElementById('system-health-panel');
+  if (!root) return;
+  const banners = [];
+
+  // ── MCP version mismatch ──────────────────────────────────────────
+  try {
+    const m = await (await fetch('/api/mcp/status')).json();
+    if (m && m.stale_count > 0) {
+      const stale = m.mcp_processes.filter(p => !p.matches);
+      const versions = [...new Set(stale.map(p => p.version || '?'))].join(', ');
+      banners.push(`
+        <div style="background:rgba(255,176,0,0.12);border:1px solid #ffb000;
+                    border-radius:8px;padding:12px 14px;color:var(--text-1);
+                    font-size:13px;line-height:1.6;">
+          <b style="color:#ffb000;">⟳ Claude を再起動してください</b><br>
+          Bunshin は <b>v${m.bundled_version}</b> ですが、Claude が掴んでいる MCP プロセスは
+          <b>v${versions}</b> のままです (${m.stale_count} 個)。
+          Claude を <b>⌘Q</b> で終了→再起動すると、外部 AI からの問い合わせも v${m.bundled_version} のロジックで返るようになります。
+        </div>`);
+    }
+  } catch {}
+
+  // ── Embedding backfill progress ───────────────────────────────────
+  try {
+    const e = await (await fetch('/api/embedding/status')).json();
+    if (e && e.active && e.pending > 0) {
+      const pct = Math.round(100 * (e.filled || 0) / e.pending);
+      banners.push(`
+        <div style="background:rgba(106,109,255,0.10);border:1px solid var(--accent-1,#6a6dff);
+                    border-radius:8px;padding:12px 14px;color:var(--text-1);font-size:13px;">
+          <b>分身が育っています…</b>
+          <div style="margin:8px 0;background:rgba(0,0,0,0.15);height:8px;border-radius:4px;overflow:hidden;">
+            <div style="background:var(--accent-1,#6a6dff);height:100%;width:${pct}%;transition:width 0.6s;"></div>
+          </div>
+          <div style="color:var(--text-3);font-size:12px;">
+            ${(e.filled||0).toLocaleString()} / ${e.pending.toLocaleString()} 件 (${pct}%) — 意味検索の射程内に取り込んでいます
+          </div>
+        </div>`);
+      // Auto-refresh every 5s while backfill is running.
+      setTimeout(wireSystemHealthPanel, 5000);
+    } else if (e && e.error) {
+      banners.push(`
+        <div style="background:rgba(255,107,107,0.10);border:1px solid #ff6b6b;
+                    border-radius:8px;padding:12px 14px;color:var(--text-1);font-size:13px;">
+          <b style="color:#ff6b6b;">⚠ 埋め込みの追加に失敗しました</b><br>
+          <code style="font-size:11px;">${esc(e.error)}</code>
+        </div>`);
+    }
+  } catch {}
+
+  root.innerHTML = banners.join('<div style="height:8px;"></div>');
+}
+
 function renderMemoryDiffPanel() {
   return `
     <div class="settings-section">
@@ -4963,6 +5022,7 @@ async function loadSettings() {
       <button class="settings-save-btn" id="settings-save-btn">保存</button>
     </div>`;
     // Extra panels that don't fit the schema-driven flow.
+    html += renderSystemHealthPanel();
     html += renderPrivacyPanel();
     html += renderMemoryDiffPanel();
     html += renderCalendarPanel();
@@ -4975,6 +5035,7 @@ async function loadSettings() {
     html += renderUninstallPanel();
     root.innerHTML = html;
     settingsLoaded = true;
+    wireSystemHealthPanel();
     wireCalendarPanel();
     wireMemoryDiffPanel();
     wireBackupPanel();
@@ -8425,6 +8486,10 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     (rid, text) for rid, text in get_records_without_vectors(_conn)
                     if len(text or "") >= 20
                 ]
+                _embed_progress["pending"] = len(pending)
+                _embed_progress["filled"] = 0
+                _embed_progress["active"] = bool(pending)
+                _embed_progress["error"] = None
                 if not pending:
                     print("[startup] all records already embedded", flush=True)
                     return
@@ -8437,9 +8502,13 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                         for (rid, _), emb in zip(batch, embeddings):
                             insert_vector(_conn, rid, emb)
                         _conn.commit()
+                        _embed_progress["filled"] = i + len(batch)
                     except Exception as e:
                         print(f"[startup] embed batch failed at offset {i}: {e}", flush=True)
+                        _embed_progress["error"] = str(e)
+                        _embed_progress["active"] = False
                         return  # bail gracefully — UI fallback covers it
+                _embed_progress["active"] = False
                 print(f"[startup] filled {len(pending)} missing embeddings", flush=True)
             finally:
                 _conn.close()
@@ -8773,6 +8842,50 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             "ocr_preview": ocr_text[:300],
             "exif": exif,
         }
+
+    @app.get("/api/mcp/status")
+    def api_mcp_status():
+        """List every Bunshin MCP process currently running, with each
+        one's reported version. Reviewer-driven feedback: the MCP server
+        is spawned once per Claude session and never picks up DMG
+        updates on its own, so users see "fix didn't apply" until they
+        ⌘Q Claude. This endpoint backs the settings-tab banner that
+        flags the mismatch."""
+        from bunshin import __version__
+        import os as _os
+        status_dir = Path.home() / ".bunshin" / "mcp_status"
+        processes = []
+        if status_dir.exists():
+            for f in sorted(status_dir.glob("*.json")):
+                try:
+                    info = json.loads(f.read_text())
+                    pid = info.get("pid")
+                    # Drop stale entries whose PID no longer exists.
+                    try:
+                        if pid:
+                            _os.kill(pid, 0)
+                    except OSError:
+                        f.unlink(missing_ok=True)
+                        continue
+                    info["matches"] = (info.get("version") == __version__)
+                    processes.append(info)
+                except Exception:
+                    continue
+        return {
+            "bundled_version": __version__,
+            "mcp_processes": processes,
+            "stale_count": sum(1 for p in processes if not p.get("matches")),
+        }
+
+    _embed_progress = {"pending": 0, "filled": 0, "active": False, "error": None}
+
+    @app.get("/api/embedding/status")
+    def api_embedding_status():
+        """Live progress of the startup embedding backfill. Used by the
+        settings tab to surface a progress bar — first-run users see
+        "15,691 / 20,317 件 (76%)" instead of wondering why the app
+        feels quiet for 15 minutes."""
+        return dict(_embed_progress)
 
     @app.get("/api/health")
     def api_health():

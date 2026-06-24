@@ -341,10 +341,75 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         finally:
             conn.close()
 
+    @mcp.tool()
+    def get_server_info() -> str:
+        """Return the running MCP server's version + uptime info.
+
+        Use this on session start to detect "Bunshin was updated but
+        Claude is still talking to the old MCP server" — if the
+        version returned here lags behind the bundled DMG version,
+        ask the user to quit and relaunch Claude so a fresh MCP
+        process is spawned.
+        """
+        from bunshin import __version__
+        import os as _os
+        return json.dumps({
+            "server": "bunshin-mcp",
+            "version": __version__,
+            "pid": _os.getpid(),
+            "tools": [
+                "search_memory", "recall_session", "get_flashback",
+                "list_top_entities", "get_today_hero", "get_recent_chat",
+                "get_server_info",
+            ],
+            "note": (
+                "If this version is older than the Bunshin app you just "
+                "updated, quit Claude (⌘Q) and relaunch — the MCP "
+                "process is spawned once per Claude session and won't "
+                "pick up DMG updates otherwise."
+            ),
+        }, ensure_ascii=False, indent=2)
+
     return mcp
+
+
+def _write_status_file() -> None:
+    """Write {pid, version, started_at} to ~/.bunshin/mcp_status/<pid>.json
+    so the Bunshin web server can detect "MCP process running an older
+    version than the DMG-bundled web server" and surface a banner.
+
+    Reviewers in rounds 4-6 all hit the same trap: edited code on disk
+    + a Claude-spawned MCP process still importing the previous version
+    = silent "your fix isn't applied". Disk status files are the
+    cross-process source of truth that closes this loop.
+    """
+    try:
+        from bunshin import __version__
+        import os as _os, json as _json, time as _time
+        status_dir = Path.home() / ".bunshin" / "mcp_status"
+        status_dir.mkdir(parents=True, exist_ok=True)
+        # Prune dead siblings — their PIDs no longer exist.
+        for f in status_dir.glob("*.json"):
+            try:
+                pid = int(f.stem)
+                _os.kill(pid, 0)  # signal 0 = existence check
+            except (OSError, ValueError):
+                f.unlink(missing_ok=True)
+        path = status_dir / f"{_os.getpid()}.json"
+        path.write_text(_json.dumps({
+            "pid": _os.getpid(),
+            "version": __version__,
+            "started_at": int(_time.time()),
+        }, ensure_ascii=False))
+        # Best-effort cleanup at shutdown.
+        import atexit as _atexit
+        _atexit.register(lambda: path.unlink(missing_ok=True))
+    except Exception as e:
+        log.warning(f"failed to write mcp status file: {e}")
 
 
 def run(db_path: Path = DEFAULT_DB_PATH) -> None:
     log.info(f"Bunshin MCP server starting (db={db_path})")
+    _write_status_file()
     mcp = create_mcp(db_path)
     mcp.run()

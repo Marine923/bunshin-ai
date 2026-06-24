@@ -4,6 +4,41 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.5] - 2026-06-24
+
+第 6 回レビューの **MCP プロセス鮮度問題** を構造的に解決。
+両レビュアー (素人/玄人) が 3 回連続で踏んだ "Claude 側 MCP が古い" 罠を、
+設定タブの自動バナーで物理的に見逃せなくしました。
+
+### Added — MCP プロセスバージョン監視
+- 新エンドポイント `GET /api/mcp/status`: ローカルで動作中の全
+  Bunshin MCP プロセスの **PID + version + 起動時刻** を返す
+  (`~/.bunshin/mcp_status/<pid>.json` ベース)。
+- 新 MCP ツール `get_server_info()`: Claude Desktop 側から
+  自分が見ている MCP の version を取得可能。Claude が起動時に
+  自発的に呼び、bundled と差があれば user に知らせるためのフック。
+- MCP `run()` で起動時に status ファイル書き出し、atexit で削除。
+  死んだ PID は自動清掃。
+
+### Added — 設定タブに **「⟳ Claude を再起動してください」バナー**
+- 設定タブ最上部に新コンポーネント `system-health-panel` を追加。
+- MCP の `version` が `bunshin.__version__` と不一致なら自動表示:
+  > ⟳ Claude を再起動してください
+  > Bunshin は v0.8.5 ですが、Claude が掴んでいる MCP プロセスは
+  > v0.8.4 のままです (1 個)。Claude を ⌘Q で終了→再起動すると…
+
+### Added — Embedding backfill **進捗バー**
+- 新エンドポイント `GET /api/embedding/status`:
+  `{pending, filled, active, error}` を返す。
+- 設定パネルに「分身が育っています…」のプログレスバー (5 秒間隔
+  オートリフレッシュ)。素人レビュー: 初回起動 15 分の沈黙が
+  「動いてるの？」と感じる問題を解消。
+
+### Docs
+- `docs/SETUP.md` に「Bunshin を更新した後に」セクション追加。
+  Claude を ⌘Q→再起動する手順 + v0.8.5 のバナーで自動検知される
+  ことを明記。
+
 ## [0.8.4] - 2026-06-24
 
 第 5 回レビュー — **0.8 系を通じて潜伏していた致命バグ 1 件** を発見+修正。
