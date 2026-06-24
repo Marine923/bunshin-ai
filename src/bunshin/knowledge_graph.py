@@ -101,6 +101,87 @@ def parse_projects_from_memory() -> list[dict]:
     return projects
 
 
+# Known-good entity-type mappings. LLM extractors routinely mislabel
+# household names (e.g. YouTube as "place", note as "organization", etc).
+# These overrides take precedence over whatever the LLM produced.
+ENTITY_TYPE_OVERRIDES = {
+    # Tech companies / services → organization
+    "YouTube": "organization",
+    "Google": "organization",
+    "Apple": "organization",
+    "Microsoft": "organization",
+    "OpenAI": "organization",
+    "Anthropic": "organization",
+    "GitHub": "organization",
+    "Twitter": "organization",
+    "X": "organization",
+    "LINE": "organization",
+    "Facebook": "organization",
+    "Instagram": "organization",
+    "TikTok": "organization",
+    "Spotify": "organization",
+    "Suno": "organization",
+    "Slack": "organization",
+    "Notion": "organization",
+    "Discord": "organization",
+    "Zoom": "organization",
+    "note": "organization",  # the JP blogging platform note.com
+    # Countries / regions / cities → place
+    "日本": "place",
+    "東京": "place",
+    "京都": "place",
+    "大阪": "place",
+    "OSAKA": "place",
+    "福岡": "place",
+    "壱岐": "place",
+    "壱岐島": "place",
+    "壱岐市": "place",
+    "長崎": "place",
+    "沼津": "place",
+    "ポーランド": "place",
+    "韓国": "place",
+    "中国": "place",
+    "アメリカ": "place",
+    # Programming languages / tech → topic
+    "Python": "topic",
+    "JavaScript": "topic",
+    "TypeScript": "topic",
+    "Rust": "topic",
+    "Go": "topic",
+    "MCP": "topic",
+    "AI": "topic",
+    "LLM": "topic",
+    "Ollama": "topic",
+    "Claude": "topic",
+    "ChatGPT": "topic",
+    "GPT": "topic",
+}
+
+
+def normalize_entity_type(name: str, default_type: str) -> str:
+    """Return the canonical entity type for `name`, overriding the LLM's
+    guess if we have a known-good mapping."""
+    return ENTITY_TYPE_OVERRIDES.get(name, default_type)
+
+
+def apply_entity_type_overrides(conn: sqlite3.Connection) -> int:
+    """Patch existing entities whose `type` disagrees with the override
+    dict. Returns the number of rows updated.
+
+    Called from app startup so old DBs heal themselves on the next launch.
+    """
+    fixed = 0
+    for name, canonical_type in ENTITY_TYPE_OVERRIDES.items():
+        cur = conn.execute(
+            "UPDATE entities SET type = ? WHERE name = ? AND type != ?",
+            (canonical_type, name, canonical_type),
+        )
+        fixed += cur.rowcount
+    if fixed:
+        conn.commit()
+    return fixed
+
+
 def upsert_entity(
     conn: sqlite3.Connection,
     name: str,
@@ -108,9 +189,15 @@ def upsert_entity(
     aliases: Optional[list[str]] = None,
     description: Optional[str] = None,
 ) -> int:
+    # Always normalize the type against our override dict — LLM-extracted
+    # types are noisy and we can do better with a curated list.
+    type_ = normalize_entity_type(name, type_)
     cursor = conn.execute("SELECT id FROM entities WHERE name = ?", (name,))
     row = cursor.fetchone()
     if row:
+        # If the existing row has the wrong type, fix it.
+        conn.execute("UPDATE entities SET type = ? WHERE id = ? AND type != ?",
+                     (type_, row[0], type_))
         return row[0]
     cursor = conn.execute(
         """INSERT INTO entities(name, type, aliases, description, created_at)

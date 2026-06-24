@@ -256,7 +256,7 @@ def generate_llm_digest(
     out: dict = {"digest": "", "model": None, "covered_records": 0, "error": None}
 
     try:
-        from bunshin.chat import OLLAMA_HOST, check_ollama, pick_model
+        from bunshin.chat import OLLAMA_HOST, check_ollama, pick_light_model
         import httpx
     except ImportError as e:
         out["error"] = f"imports failed: {e}"
@@ -267,7 +267,10 @@ def generate_llm_digest(
         out["error"] = "Ollama not available"
         return out
 
-    chosen = model or pick_model(available)
+    # Use the LIGHT model picker — digesting 200 records with a 32b model
+    # routinely times out at 3 minutes. A 7b/3b model finishes in 30-60 s
+    # with effectively equivalent summary quality.
+    chosen = model or pick_light_model(available)
     out["model"] = chosen
 
     now_ts = int(datetime.now().timestamp())

@@ -7789,6 +7789,20 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             pass
     threading.Thread(target=_backfill, daemon=True, name="signal-backfill").start()
 
+    # One-time entity-type cleanup on startup — heals existing DBs where
+    # the LLM mislabeled YouTube as a place, note as organization, etc.
+    def _entity_heal():
+        try:
+            _conn = init_db(db_path)
+            try:
+                from bunshin.knowledge_graph import apply_entity_type_overrides
+                apply_entity_type_overrides(_conn)
+            finally:
+                _conn.close()
+        except Exception:
+            pass
+    threading.Thread(target=_entity_heal, daemon=True, name="entity-heal").start()
+
     @app.get("/", response_class=HTMLResponse)
     def index():
         return INDEX_HTML
@@ -9137,6 +9151,17 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                         sid = None
                 if not sid:
                     sid = create_session(conn, model=chosen)
+                    # Auto-name the session from the first user message so
+                    # the history sidebar doesn't fill up with "(empty)"
+                    # entries. ChatGPT/Claude do this; users expect it.
+                    try:
+                        from bunshin.chat_history import update_session_title
+                        first_line = q.strip().split("\n", 1)[0]
+                        title = first_line[:40] + ("…" if len(first_line) > 40 else "")
+                        if title:
+                            update_session_title(conn, sid, title)
+                    except Exception:
+                        pass
 
                 # Augment the search query with the last 2 user turns so
                 # pronouns ("で、それいくら？") resolve correctly.

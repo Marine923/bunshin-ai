@@ -152,6 +152,36 @@ def _max_model_size_for_ram(ram_gb: int) -> float:
     return 1.5
 
 
+# For batch / long-prompt tasks (digest, entity extraction, query expansion)
+# we deliberately prefer smaller models even when bigger ones are installed.
+# Quality gain from 32b over 14b is invisible on a "summarize 200 records"
+# task, but the latency difference is the gap between "3 minutes" and "30 s".
+LIGHT_TASK_PREFERRED = [
+    "qwen2.5:7b",
+    "qwen2.5:3b",
+    "llama3.2:3b",
+    "qwen2.5:14b",
+    "phi3:mini",
+    "llama3.2:1b",
+    "qwen2.5:1.5b",
+]
+
+
+def pick_light_model(available: list[str], ram_gb: Optional[int] = None) -> Optional[str]:
+    """Choose a small + fast model for batch jobs (digest, entity extract, etc).
+
+    Falls back to pick_model() if none of the light candidates are installed.
+    """
+    available_set = set(available)
+    if ram_gb is None:
+        ram_gb = _detect_ram_gb()
+    ceiling = _max_model_size_for_ram(ram_gb) if ram_gb else float("inf")
+    for p in LIGHT_TASK_PREFERRED:
+        if p in available_set and _MODEL_PARAM_B.get(p, 999) <= ceiling:
+            return p
+    return pick_model(available, ram_gb=ram_gb)
+
+
 def pick_model(available: list[str], ram_gb: Optional[int] = None) -> Optional[str]:
     """Choose the best model that fits this Mac's RAM.
 

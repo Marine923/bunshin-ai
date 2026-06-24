@@ -4,6 +4,30 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.6] - 2026-06-24
+
+AI 玄人レビューで指摘された **「見えない構造的問題」 3 件** を修正。
+
+### Fixed — Insights ダイジェストの 3 分タイムアウト
+- 「今週のダイジェスト」が常時タイムアウト（`covered_records: 200` 件
+  を `qwen2.5:32b` で要約しようとして 3 分超過）していたバグ。
+- 新規 `pick_light_model()` を追加し、digest / entity 抽出 / query 拡張
+  などの **バッチ系・長プロンプト系処理は軽量モデル優先** に変更。
+  - digest なら `qwen2.5:7b` か `:3b` で 30〜60 秒に収まる。
+
+### Fixed — チャット履歴が「(empty)」だらけ
+- 新規チャット作成時、最初の発話で **session.title が自動更新されな
+  かった** 問題を修正（玄人レビュー指摘）。
+- 1 件目の user message の先頭 40 字をタイトルとして即保存。ChatGPT /
+  Claude と同じ動作。これで履歴サイドバーが判別可能になる。
+
+### Fixed — エンティティタイプの誤分類
+- 「YouTube が place」「note が organization」のように LLM 抽出が雑に
+  ラベル付けていた問題を修正。`ENTITY_TYPE_OVERRIDES` という curated
+  辞書（Tech 企業 / 国・地域 / プログラミング言語など 40 件）を追加し、
+  `upsert_entity()` で常に正規化されるように。
+- 起動時に既存 DB の誤ラベルも一括 patch（バックグラウンド・非同期）。
+
 ## [0.7.5] - 2026-06-24
 
 **緊急修正 + UX 全面磨き直し**。AI 素人視点 + AI 玄人視点の評価をもとに、Bunshin の中核機能を救出し、第一印象を救う改修。
