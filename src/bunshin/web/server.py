@@ -2501,13 +2501,15 @@ INDEX_HTML = """<!DOCTYPE html>
     color: var(--text-2);
     border-bottom-left-radius: 4px;
   }
-  /* Markdown rendered inside assistant chat messages. */
-  .chat-msg strong { color: #fff; font-weight: 600; }
+  /* Markdown rendered inside assistant chat messages.
+     Use text-1 (theme-aware) — hardcoded white was invisible in light
+     mode, swallowing "2026年6月〜7月" inside **bold** runs. */
+  .chat-msg strong { color: var(--text-1); font-weight: 700; }
   .chat-msg em { font-style: italic; color: var(--text-1); }
   .chat-msg .md-h {
     margin: 14px 0 8px;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-1);
     line-height: 1.3;
   }
   .chat-msg .md-h1 { font-size: 19px; }

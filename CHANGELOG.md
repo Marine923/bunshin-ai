@@ -4,6 +4,18 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.12] - 2026-06-24
+
+### Fixed — 🐛 ライトモードでチャット応答の **太字** が白く消える
+- `.chat-msg strong` と `.chat-msg .md-h` に `color: #fff` がハード
+  コードされており、**ライトモード（白背景）で白文字 = 透明**
+  状態だった。LLM が回答に `**2026年6月〜7月**` のような太字
+  markdown を含めると、その箇所だけスクリーンショットで空白に見える。
+- 修正: `color: var(--text-1)` (テーマ追従) に変更。ダークモードでも
+  従来通り白く表示される。
+- ユーザーが実機スクショで発見:「壱岐黄金プロジェクトの初出荷予定は
+  ___ です」と日付が空白に。
+
 ## [0.8.11] - 2026-06-24
 
 第 12 回レビュー: 致命 `re.MULTILINE` 欠落 + 中度 3。
