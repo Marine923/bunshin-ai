@@ -8089,6 +8089,85 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             pass
     threading.Thread(target=_entity_heal, daemon=True, name="entity-heal").start()
 
+    # One-shot migrations. Each one runs at most once per DB; tracked in
+    # the `migrations` table so we don't re-scan 15k records every launch.
+    def _run_migrations():
+        try:
+            _conn = init_db(db_path)
+            try:
+                _conn.execute(
+                    "CREATE TABLE IF NOT EXISTS migrations ("
+                    "key TEXT PRIMARY KEY, applied_at INTEGER)"
+                )
+                _applied = {
+                    r[0] for r in _conn.execute(
+                        "SELECT key FROM migrations"
+                    ).fetchall()
+                }
+
+                # v0.7.11: re-score every existing browser record so the
+                # SNS/YouTube demotion added in v0.7.8 (-35) actually
+                # applies to data already in the DB. Without this, the
+                # flashback keeps surfacing YouTube titles even after the
+                # signal logic change.
+                if "sns_demotion_v0_7_11" not in _applied:
+                    from bunshin.signals import compute_signal_score, extract_sender
+                    rows = _conn.execute(
+                        "SELECT id, metadata, content FROM records "
+                        "WHERE source = 'browser'"
+                    ).fetchall()
+                    for rid, metadata, content in rows:
+                        sender, domain = extract_sender(metadata)
+                        score = compute_signal_score(content or "", "browser", sender, domain)
+                        _conn.execute(
+                            "UPDATE records SET signal_score = ? WHERE id = ?",
+                            (score, rid),
+                        )
+                    _conn.execute(
+                        "INSERT INTO migrations(key, applied_at) VALUES (?, ?)",
+                        ("sns_demotion_v0_7_11",
+                         int(__import__("time").time())),
+                    )
+                    _conn.commit()
+
+                # v0.7.11: name old "(empty)" chat sessions retroactively
+                # from their first user message (mirrors the auto-naming
+                # added in v0.7.6 for new sessions).
+                if "session_titles_v0_7_11" not in _applied:
+                    try:
+                        empty_sessions = _conn.execute(
+                            "SELECT id FROM chat_sessions "
+                            "WHERE (title IS NULL OR title = '' OR title = '(empty)')"
+                        ).fetchall()
+                        for (sid,) in empty_sessions:
+                            row = _conn.execute(
+                                "SELECT content FROM chat_messages "
+                                "WHERE session_id = ? AND role = 'user' "
+                                "ORDER BY created_at ASC LIMIT 1",
+                                (sid,),
+                            ).fetchone()
+                            if row and row[0]:
+                                first_line = row[0].strip().split("\n", 1)[0]
+                                title = first_line[:40] + ("…" if len(first_line) > 40 else "")
+                                if title:
+                                    _conn.execute(
+                                        "UPDATE chat_sessions SET title = ? WHERE id = ?",
+                                        (title, sid),
+                                    )
+                    except Exception:
+                        pass  # tables may not exist in very old DBs
+                    _conn.execute(
+                        "INSERT INTO migrations(key, applied_at) VALUES (?, ?)",
+                        ("session_titles_v0_7_11",
+                         int(__import__("time").time())),
+                    )
+                    _conn.commit()
+            finally:
+                _conn.close()
+        except Exception:
+            pass
+    threading.Thread(target=_run_migrations, daemon=True, name="migrations").start()
+
     @app.get("/", response_class=HTMLResponse)
     def index():
         return INDEX_HTML
@@ -9462,13 +9541,36 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     except Exception:
                         pass
 
+                # Skip RAG for trivial greetings / pure chit-chat — the
+                # reviewer reported that typing just "hello" caused the
+                # assistant to dredge up five Claude Code sessions from
+                # the past, which feels invasive. Heuristic: very short
+                # messages OR exact greeting matches → no context.
+                _CHITCHAT = {
+                    "hello", "hi", "hey", "yo", "やあ", "ハロー", "ハーイ",
+                    "おはよう", "おはようございます",
+                    "こんにちは", "こんばんは",
+                    "ありがとう", "ありがとうございます", "thx", "thanks", "thank you",
+                    "おやすみ", "おやすみなさい",
+                    "test", "テスト",
+                }
+                stripped = q.strip().lower().rstrip("。.!?！？")
+                is_chitchat = (
+                    len(stripped) <= 8 and stripped in _CHITCHAT
+                ) or (
+                    len(stripped) <= 3  # 「??」「うん」程度
+                )
+
                 # Augment the search query with the last 2 user turns so
                 # pronouns ("で、それいくら？") resolve correctly.
                 aug_q = q
                 if history:
                     from bunshin.chat import _augment_query_with_history
                     aug_q = _augment_query_with_history(q, history)
-                results = search(conn, aug_q, limit=context_limit) if context_limit > 0 else []
+                results = (
+                    [] if is_chitchat
+                    else (search(conn, aug_q, limit=context_limit) if context_limit > 0 else [])
+                )
 
                 # Emit session id + context for the client.
                 yield json.dumps({"session_id": sid, "model": chosen}, ensure_ascii=False) + "\n"

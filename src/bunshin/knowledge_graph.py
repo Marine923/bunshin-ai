@@ -429,7 +429,10 @@ def entity_records(
 
 def entity_by_id(conn: sqlite3.Connection, entity_id: int) -> Optional[dict]:
     cursor = conn.execute(
-        "SELECT id, name, type, aliases, description FROM entities WHERE id = ?",
+        "SELECT e.id, e.name, e.type, e.aliases, e.description, "
+        "       COUNT(re.record_id) AS mentions "
+        "FROM entities e LEFT JOIN record_entities re ON re.entity_id = e.id "
+        "WHERE e.id = ? GROUP BY e.id",
         (entity_id,),
     )
     r = cursor.fetchone()
@@ -441,6 +444,8 @@ def entity_by_id(conn: sqlite3.Connection, entity_id: int) -> Optional[dict]:
         "type": r[2],
         "aliases": json.loads(r[3]) if r[3] else [],
         "description": r[4],
+        "mentions": r[5] or 0,
+        "mention_count": r[5] or 0,  # alias for compatibility with MCP callers
     }
 
 

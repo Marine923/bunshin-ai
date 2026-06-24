@@ -4,6 +4,37 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.11] - 2026-06-24
+
+実機レビュー（玄人 + 素人）で見つかった残り 4 件を修正。
+
+### Fixed — 既存ブラウザ履歴の SNS demotion が効いていなかった（致命的）
+- v0.7.8 の `-35 点` ロジックは **新規取り込み時のみ** 適用されていた。
+  既存 2,000+ 件の browser 記録は signal_score がそのままで、
+  フラッシュバックや検索に YouTube/SNS が出続けていた。
+- **起動時のマイグレーション**を追加: 初回起動で全 browser 記録の
+  signal_score を再計算。1 回だけ実行（`migrations` テーブルで記録）。
+- これで「金のため23匹のヘビが入った寝袋で寝る男達 - YouTube」が消える。
+
+### Fixed — 旧 `(empty)` セッションが履歴サイドバーに残る
+- v0.7.6 で新規セッションは自動命名されるようになったが、**過去の
+  (empty) セッションはそのまま残骸として表示** されていた。
+- 起動時マイグレーションで既存 sessions も最初の発言から自動命名。
+
+### Fixed — `entity.mention_count` が API で常に null
+- `entity_by_id()` が単純 SELECT で `record_entities` を JOIN
+  していなかったため、MCP / API 越しに見ると `mention_count: null`
+  になっていた。
+- LEFT JOIN + COUNT を追加。後方互換のため `mentions` と
+  `mention_count` 両方のキーで返却。
+
+### Added — チャットの雑談判定（短いクエリは RAG しない）
+- 「hello」「おはよう」「ありがとう」など **短い挨拶** は context 取得
+  をスキップし、AI に過去記憶を渡さないように。
+- 素人レビュー: 「hello だけ送ったら 5 件の Claude 会話を勝手に
+  掘り起こされて『侵略的』に感じた」。
+- ヒューリスティック: 8 文字以下の挨拶リストマッチ、または 3 文字以下。
+
 ## [0.7.10] - 2026-06-24
 
 ### Changed — エクスポートからブラウザ履歴を既定除外（プライバシー対応）
