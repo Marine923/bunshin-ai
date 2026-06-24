@@ -2688,6 +2688,25 @@ INDEX_HTML = """<!DOCTYPE html>
     text-align: center;
   }
   .chat-status.error { color: #ff6666; }
+  .chat-status.thinking { color: var(--text-2); }
+  .thinking-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .thinking-dots span {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-1, #6a6dff);
+    animation: thinking-bounce 1.2s infinite ease-in-out;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes thinking-bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+    30%           { transform: translateY(-4px); opacity: 1; }
+  }
 
   /* ── Insights pane ── */
   .insights-section {
@@ -4031,6 +4050,11 @@ function renderTroubleshootPanel() {
   return `
     <div class="settings-section">
       <h2><span class="h2-icon">${icon('life-buoy', 18)}</span> 困った時は</h2>
+
+      <div id="search-health" style="margin-bottom:14px;padding:12px 14px;border:1px solid var(--border-1);border-radius:8px;background:var(--bg-1);font-size:13px;color:var(--text-2);">
+        検索エンジンの状態を確認中…
+      </div>
+
       <div class="settings-help" style="margin-bottom:12px;">
         うまく動かない時は、下のボタンで診断情報を取得して、開発者にメールで送ってください。
         個人データ（メール本文・写真・記憶）は含まれません。OS バージョン・Bunshin バージョン・Ollama 状態・直近のログ 100 行だけです。
@@ -4055,7 +4079,83 @@ function renderTroubleshootPanel() {
     </div>`;
 }
 
+async function refreshSearchHealth() {
+  const el = document.getElementById('search-health');
+  if (!el) return;
+  try {
+    const j = await (await fetch('/api/diagnostics')).json();
+    const emb = j.embedding || {};
+    const total = j.db?.record_count || 0;
+    const indexed = emb.vec_count || 0;
+    const pct = total > 0 ? Math.round((indexed / total) * 100) : 0;
+    const ok = emb.ok && !emb.needs_rebuild;
+    if (ok) {
+      el.innerHTML = `${icon('check-circle', 14)} <b>検索エンジン正常</b>: ${total.toLocaleString()} 件の記憶のうち ${indexed.toLocaleString()} 件（${pct}%）がインデックス済み`;
+      el.style.borderColor = 'rgba(88,204,110,0.4)';
+      el.style.background = 'rgba(88,204,110,0.06)';
+    } else {
+      const errMsg = emb.error ? `<br><span style="color:var(--text-3);font-size:11px;">原因: ${esc(emb.error.slice(0, 100))}</span>` : '';
+      const need = emb.needs_rebuild
+        ? `<br><b style="color:#ff9b6b;">⚠ 検索インデックスが壊れている可能性があります</b> (${total.toLocaleString()} 件中 ${indexed.toLocaleString()} 件しかインデックスされていません)`
+        : '';
+      el.innerHTML = `
+        ${icon('alert-triangle', 14)} <b>検索エンジンに問題があります</b>${errMsg}${need}
+        <div style="margin-top:10px;">
+          <button class="settings-save-btn" id="rebuild-embeddings-btn" type="button">${icon('database', 14)} 検索インデックスを再構築</button>
+          <span id="rebuild-progress" style="margin-left:10px;color:var(--text-3);font-size:12px;"></span>
+        </div>`;
+      el.style.borderColor = 'rgba(255,155,107,0.5)';
+      el.style.background = 'rgba(255,155,107,0.06)';
+      const rb = document.getElementById('rebuild-embeddings-btn');
+      if (rb) rb.addEventListener('click', rebuildEmbeddings);
+    }
+  } catch (e) {
+    el.textContent = '状態取得に失敗しました';
+  }
+}
+
+async function rebuildEmbeddings() {
+  const btn = document.getElementById('rebuild-embeddings-btn');
+  const pg = document.getElementById('rebuild-progress');
+  if (!btn) return;
+  if (!confirm('全 ' + (window._totalRecords || '?') + ' 件の記憶を再インデックスします。10〜30 分かかります。続けますか？')) return;
+  btn.disabled = true;
+  pg.textContent = '開始中…';
+  try {
+    const r = await fetch('/api/embedding/rebuild', { method: 'POST' });
+    if (!r.body) { pg.textContent = '応答なし'; return; }
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\\n');
+      buffer = lines.pop() || '';
+      for (const ln of lines) {
+        if (!ln.trim()) continue;
+        try {
+          const j = JSON.parse(ln);
+          if (j.phase === 'progress') {
+            const pct = Math.round((j.done / j.total) * 100);
+            pg.textContent = `${j.done} / ${j.total} (${pct}%)`;
+          } else if (j.phase === 'done') {
+            pg.textContent = `✓ 完了 (${j.total} 件)`;
+            setTimeout(refreshSearchHealth, 800);
+          } else if (j.phase === 'error') {
+            pg.textContent = '✗ ' + (j.error || 'エラー');
+          }
+        } catch {}
+      }
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function wireTroubleshootPanel() {
+  refreshSearchHealth();
   const btn = document.getElementById('diag-fetch-btn');
   const out = document.getElementById('diag-output');
   const copy = document.getElementById('diag-copy-btn');
@@ -7472,8 +7572,8 @@ chatForm.addEventListener('submit', async (e) => {
   appendMsg('user', query);
   chatInput.value = '';
   chatSend.disabled = true;
-  chatStatus.textContent = '記憶を検索中…';
-  chatStatus.className = 'chat-status';
+  chatStatus.className = 'chat-status thinking';
+  chatStatus.innerHTML = '<span class="thinking-dots"><span></span><span></span><span></span></span> 過去のあなたを読み込み中…';
 
   const respMsg = appendMsg('assistant', '');
   try {
@@ -7511,7 +7611,7 @@ chatForm.addEventListener('submit', async (e) => {
             contextList = j.context;
             const n = contextList.length;
             const mdl = _selectedModel || 'AI';
-            chatStatus.textContent = `${n} 件の過去記憶を参考に ${mdl} が考え中…（10〜30 秒）`;
+            chatStatus.innerHTML = `<span class="thinking-dots"><span></span><span></span><span></span></span> ${n} 件の過去記憶を読みました。${esc(mdl)} が考え中…（10〜30 秒）`;
           } else if (j.delta) {
             if (firstDelta) { chatStatus.textContent = ''; firstDelta = false; }
             fullText += j.delta;
@@ -7615,45 +7715,47 @@ def _start_background_watcher(db_path: Path) -> None:
         print(f"[bunshin] file watcher failed: {e}", flush=True)
 
 
-def friendly_error(exc: Exception, fallback: str = "予期しないエラーが発生しました") -> dict:
+def friendly_error(exc: Exception, fallback: str = "うまく動かなかったみたいです") -> dict:
     """Translate an internal exception to a JP-language payload safe for the UI.
 
-    Never returns Python class names, tracebacks, or paths the user can't act on.
-    The {error, hint, code} shape is what the frontend renders.
+    Never returns Python class names, tracebacks, paths, "ターミナル", or "ログ"
+    — those words turn non-technical users away. The {error, hint, code} shape
+    is what the frontend renders; hint should always be a *next action* the
+    user themselves can take.
     """
     if isinstance(exc, FileNotFoundError):
         return {
             "error": "ファイルが見つかりません",
-            "hint": "リネームや移動をした場合は再取り込みしてください",
+            "hint": "リネームや移動をした場合は、もう一度取り込んでみてください",
             "code": "file_not_found",
         }
     if isinstance(exc, PermissionError):
         return {
             "error": "権限がありません",
-            "hint": "macOS の「フルディスクアクセス」や App Password の設定を確認してください",
+            "hint": "システム設定 → プライバシーとセキュリティ で Bunshin を許可してください",
             "code": "permission_denied",
         }
     if isinstance(exc, (ConnectionError, ConnectionRefusedError)):
         return {
-            "error": "接続に失敗しました",
-            "hint": "対象のサービスが起動しているか、ネットワークを確認してください",
+            "error": "つながりませんでした",
+            "hint": "Ollama アプリが起動しているか確認してから、もう一度試してください",
             "code": "connection_failed",
         }
     if isinstance(exc, TimeoutError):
         return {
-            "error": "タイムアウトしました",
-            "hint": "ネットワークを確認するか、もう一度試してください",
+            "error": "時間がかかりすぎました",
+            "hint": "もう一度試してみてください。続く場合は AI モデルを軽いものに変えてみてください",
             "code": "timeout",
         }
     if isinstance(exc, ValueError):
         return {
-            "error": "入力が正しくありません",
+            "error": "入力が正しくないようです",
             "hint": "値を確認してもう一度お試しください",
             "code": "invalid_value",
         }
     return {
         "error": fallback,
-        "hint": "ターミナルの bunshin web のログに詳細が出ています",
+        "hint": "もう一度試してみてください。続く場合は 設定 → 困った時は から開発者に教えてください",
         "code": "internal_error",
     }
 
@@ -8294,6 +8396,32 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         except Exception:
             pass
 
+        # Embedding health probe — the most common silent failure is
+        # fastembed cache corruption (model.onnx_data partial download).
+        embedding_health = {"ok": False, "error": None, "vec_count": 0, "needs_rebuild": False}
+        try:
+            from bunshin.embeddings import embed_query
+            v = embed_query("ヘルスチェック")
+            embedding_health["ok"] = bool(v) and len(v) > 0
+            embedding_health["dim"] = len(v) if v else 0
+        except Exception as _e:
+            embedding_health["error"] = str(_e)[:200]
+
+        # Vector chunk count vs records — if drastically off, search is dead.
+        try:
+            _conn = init_db(db_path)
+            try:
+                from bunshin.storage import load_vec_extension
+                load_vec_extension(_conn)
+                row = _conn.execute("SELECT COUNT(*) FROM records_vec").fetchone()
+                embedding_health["vec_count"] = row[0] if row else 0
+                if record_count > 0 and embedding_health["vec_count"] < record_count * 0.1:
+                    embedding_health["needs_rebuild"] = True
+            finally:
+                _conn.close()
+        except Exception:
+            pass
+
         return {
             "bunshin_version": bunshin_version,
             "os": {
@@ -8302,6 +8430,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 "machine": _platform.machine(),
             },
             "ollama": _check_status(),
+            "embedding": embedding_health,
             "db": {
                 "path": str(db_path),
                 "size_bytes": db_size,
@@ -8310,6 +8439,58 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             },
             "logs": logs,
         }
+
+    @app.post("/api/embedding/rebuild")
+    def api_embedding_rebuild():
+        """Wipe the vector table and re-embed every record. Long-running.
+
+        Called from the troubleshoot panel when the search index is broken.
+        Streams progress so the UI can show a progress bar.
+        """
+        import asyncio, json as _json
+        from bunshin.embeddings import DIMENSIONS, embed_passages
+        from bunshin.storage import (
+            detect_vec_dimensions,
+            drop_vector_db,
+            get_records_without_vectors,
+            init_vector_db,
+            insert_vector,
+        )
+
+        def stream():
+            conn = init_db(db_path)
+            try:
+                # Drop & recreate to guarantee clean state.
+                existing_dim = detect_vec_dimensions(conn)
+                if existing_dim is not None:
+                    drop_vector_db(conn)
+                init_vector_db(conn, dimensions=DIMENSIONS)
+                pending = [
+                    (rid, text) for rid, text in get_records_without_vectors(conn)
+                    if len(text or "") >= 20
+                ]
+                total = len(pending)
+                yield _json.dumps({"phase": "start", "total": total}) + "\n"
+                batch_size = 16
+                done = 0
+                for i in range(0, total, batch_size):
+                    batch = pending[i : i + batch_size]
+                    texts = [t for _, t in batch]
+                    try:
+                        embeddings = list(embed_passages(texts))
+                        for (rid, _), emb in zip(batch, embeddings):
+                            insert_vector(conn, rid, emb)
+                        conn.commit()
+                    except Exception as e:
+                        yield _json.dumps({"phase": "error", "error": str(e)[:200]}) + "\n"
+                        return
+                    done += len(batch)
+                    yield _json.dumps({"phase": "progress", "done": done, "total": total}) + "\n"
+                yield _json.dumps({"phase": "done", "total": total}) + "\n"
+            finally:
+                conn.close()
+
+        return StreamingResponse(stream(), media_type="application/x-ndjson")
 
     @app.get("/api/scheduler/status")
     def api_scheduler_status():

@@ -4,6 +4,46 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.5] - 2026-06-24
+
+**緊急修正 + UX 全面磨き直し**。AI 素人視点 + AI 玄人視点の評価をもとに、Bunshin の中核機能を救出し、第一印象を救う改修。
+
+### Fixed — 検索が壊れていた致命的バグ
+- **embedding model cache の破損で検索が常時 0 件を返す** バグを修正。
+  fastembed の `model.onnx_data` が部分ダウンロードのまま放置されていた
+  ことで、ONNX ロードが失敗し、`/api/search` が常に空を返していた。
+- **`search()` に keyword fallback を追加**。embedding が万が一壊れても
+  全件 0 件にはならず、`content LIKE '%query%'` で必ず何かを返す。
+- **設定タブ「困った時は」に検索エンジン健全性表示** を追加。
+  「N 件中 M 件インデックス済み」を可視化し、壊れていれば **「検索
+  インデックスを再構築」ボタン** ですぐ復旧可能。
+- 新規 endpoints: `/api/embedding/rebuild` (NDJSON ストリーム)。
+
+### Changed — エラーメッセージから「ターミナル」「ログ」を一掃
+- AI 素人の評価で「`ターミナルのログに詳細が出ています` と言われた瞬間
+  に閉じる」と指摘されたので、`friendly_error()` の hint を全て **次に
+  ユーザー自身が取れる行動** に書き直した:
+  - 「もう一度試してみてください。続く場合は 設定 → 困った時は から
+    開発者に教えてください」
+  - 「システム設定 → プライバシーとセキュリティ で Bunshin を許可して
+    ください」 etc.
+
+### Changed — チャット待ち時間に「考えてるよ」アニメ
+- 数十秒の無反応で離脱されないように、チャット送信瞬間から **跳ねる
+  3 つのドット** を表示。「過去のあなたを読み込み中…」 → 「N 件の
+  過去記憶を読みました。{model} が考え中…」 → 応答開始で消える。
+
+### Changed — デフォルトチャットモデルを 14b 優先に
+- `PREFERRED_MODELS` の先頭を `qwen2.5:32b` から `qwen2.5:14b` に変更。
+  32b は応答に 30〜60 秒かかり「壊れた？」と思われる主因。14b なら
+  10〜20 秒で品質も十分。RAM-aware の `pick_model()` と組み合わさって、
+  16 GB Mac の体感が劇的に良くなる。
+
+### Changed — SETUP.md の冒頭に DMG ユーザー向け案内
+- AI 素人が「`brew install python@3.11` で挫折確定」と指摘した問題に
+  対応。`.dmg` 版にはすべて内包されているので「ここから先は読まなくて
+  大丈夫」を **ページ最上部に大きく明示**。
+
 ## [0.7.4] - 2026-06-24
 
 ### Added — カレンダー登録 UI

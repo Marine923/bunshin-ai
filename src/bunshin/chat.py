@@ -11,14 +11,17 @@ from bunshin.search import search
 
 OLLAMA_HOST = "http://localhost:11434"
 PREFERRED_MODELS = [
-    # Best Japanese quality first — larger models score higher.
-    "qwen2.5:72b",
-    "qwen2.5:32b",
+    # Quality-first order, but pick_model() also applies a RAM-based
+    # ceiling so we never silently pick a model that will swap. We bias
+    # toward smaller models because non-technical first-time users care
+    # more about "response within 30 s" than "perfect prose"; power users
+    # can override via the model selector or `優先するチャットモデル` setting.
     "qwen2.5:14b",
+    "qwen2.5:32b",
+    "qwen2.5:72b",
     "qwen2.5:7b",
     "qwen2.5:3b",
     "qwen2.5:1.5b",
-    # Cross-lingual fallbacks.
     "llama3.3:70b",
     "llama3.1:8b",
     "llama3.2:3b",

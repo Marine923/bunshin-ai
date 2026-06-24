@@ -236,8 +236,52 @@ def search(
             # tokenizes and ORs them.
             query = query + " " + " ".join(variants)
 
-    query_vec = embed_query(query)
-    blob = np.asarray(query_vec, dtype=np.float32).tobytes()
+    # Embedding can fail (e.g. fastembed cache corruption, missing model
+    # download). When it does, we *must not* return zero results — that
+    # silently breaks the entire app. Fall back to keyword-only search so
+    # the user at least sees something + a clear error in the log.
+    try:
+        query_vec = embed_query(query)
+        blob = np.asarray(query_vec, dtype=np.float32).tobytes()
+        embedding_ok = True
+    except Exception as _emb_exc:
+        import traceback
+        traceback.print_exc()
+        print(
+            f"[search] embedding failed ({_emb_exc!r}); falling back to "
+            f"keyword-only search for query: {query!r}",
+            flush=True,
+        )
+        embedding_ok = False
+        blob = b""
+
+    if not embedding_ok:
+        # Pure keyword fallback — LIKE-based, no vec, no rerank. Slower on
+        # big DBs but always returns *something* relevant.
+        like = f"%{query}%"
+        rows = conn.execute(
+            "SELECT id, source, content, metadata, timestamp, source_id, "
+            "signal_score FROM records "
+            "WHERE content LIKE ? AND length(content) >= ? "
+            + (f"AND source IN ({','.join('?' * len(sources))}) " if sources else "")
+            + "ORDER BY signal_score DESC, timestamp DESC LIMIT ?",
+            [like, min_content_length] + (list(sources) if sources else []) + [limit],
+        ).fetchall()
+        import json as _json
+        results = []
+        for row in rows:
+            try:
+                meta = _json.loads(row[3]) if row[3] else {}
+            except Exception:
+                meta = {}
+            results.append({
+                "id": row[0], "source": row[1], "content": row[2],
+                "metadata": meta, "timestamp": row[4], "source_id": row[5],
+                "signal_score": row[6] or 50.0,
+                "distance": 1.0,
+                "score_components": {"keyword_fallback": 1.0},
+            })
+        return results
 
     # Over-fetch from vec so we can post-filter and still hit `limit`
     # even after deduplication collapses chunks.
