@@ -8344,7 +8344,8 @@ def friendly_error(exc: Exception, fallback: str = "うまく動かなかった�
 
 
 def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
-    app = FastAPI(title="分身 (Bunshin)")
+    from bunshin import __version__ as _BUNSHIN_VERSION
+    app = FastAPI(title="分身 (Bunshin)", version=_BUNSHIN_VERSION)
 
     @app.exception_handler(Exception)
     async def _all_exceptions(_request, exc):
@@ -8432,6 +8433,43 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 # _strip_harness_noise() only runs on fresh ingestion, so
                 # 296 polluted records from earlier versions still carry
                 # harness XML that leaks into chat context.
+                # v0.8.11: re-scrub once more, now that the regex actually
+                # works. v0.8.8〜v0.8.10 all shipped without re.MULTILINE,
+                # so the gate check returned False for any text whose first
+                # line wasn't a wrapper — silently no-op'ing on records
+                # where the noise appeared anywhere but the very top.
+                # Reviewer 12 found 1,148 polluted records still in the
+                # DB despite three migrations claiming to have cleaned them.
+                if "harness_noise_v0_8_11" not in _applied:
+                    try:
+                        from bunshin.ingestion.claude_history import _strip_harness_noise
+                        rows = _conn.execute(
+                            "SELECT id, content FROM records "
+                            "WHERE source='claude' AND ("
+                            "  content LIKE '%task-notification%' "
+                            "  OR content LIKE '%tool-use-id%' "
+                            "  OR content LIKE '%user-prompt-submit-hook%' "
+                            "  OR content LIKE '%queue-operation%' "
+                            "  OR content LIKE '%output-file>%')"
+                        ).fetchall()
+                        n_cleaned = 0
+                        for rid, content in rows:
+                            cleaned = _strip_harness_noise(content)
+                            if cleaned and cleaned != content:
+                                _conn.execute(
+                                    "UPDATE records SET content=? WHERE id=?",
+                                    (cleaned, rid),
+                                )
+                                n_cleaned += 1
+                        print(f"[migration] v0.8.11 re-stripped harness noise from {n_cleaned} records (MULTILINE-aware)", flush=True)
+                    except Exception as e:
+                        print(f"[migration] harness_noise_v0_8_11 skipped: {e}", flush=True)
+                    _conn.execute(
+                        "INSERT INTO migrations(key, applied_at) VALUES (?, ?)",
+                        ("harness_noise_v0_8_11", int(__import__("time").time())),
+                    )
+                    _conn.commit()
+
                 # v0.8.10: re-scrub harness noise — v0.8.9 regex missed
                 # the "[user] <task-notification>" / "[assistant] <…>"
                 # variants because the tag wrapping was role-prefixed
@@ -8735,6 +8773,32 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         if not res.get("ok"):
             raise HTTPException(status_code=400, detail=res.get("error", "バックアップの復元に失敗しました"))
         return res
+
+    @app.get("/api/records/{record_id}")
+    def api_record_get(record_id: str):
+        """Fetch a single record by ID. Reviewer 12 flagged that
+        DELETE existed but GET didn't, breaking API symmetry."""
+        conn = init_db(db_path)
+        try:
+            row = conn.execute(
+                "SELECT id, source, source_id, timestamp, content, metadata, "
+                "       signal_score, user_signal "
+                "FROM records WHERE id = ?",
+                (record_id,),
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="該当する記録が見つかりません")
+            try:
+                meta = json.loads(row[5]) if row[5] else None
+            except Exception:
+                meta = None
+            return {
+                "id": row[0], "source": row[1], "source_id": row[2],
+                "timestamp": row[3], "content": row[4], "metadata": meta,
+                "signal_score": row[6], "user_signal": row[7],
+            }
+        finally:
+            conn.close()
 
     @app.delete("/api/records/{record_id}")
     def api_record_delete(record_id: str):

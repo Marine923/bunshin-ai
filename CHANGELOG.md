@@ -4,6 +4,43 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.11] - 2026-06-24
+
+第 12 回レビュー: 致命 `re.MULTILINE` 欠落 + 中度 3。
+
+### Fixed — 🚨🚨🚨 `_SKIP_LINE_RES` の `re.MULTILINE` 欠落
+- v0.8.8〜v0.8.10 で 3 回 migration を走らせたが、regex に
+  `re.MULTILINE` フラグが無く、`^` が "start of STRING" だけに
+  マッチ → 多くの records が「ゲート check で即 return」されて
+  silently no-op していた。
+- 素人レビュー 12 が再現テスト付きで指摘:
+  ```python
+  text = "[user] hi\n<task-notification>..."
+  pattern.search(text)  # → None (BUG)
+  ```
+- **修正**: 全 7 パターンに `re.IGNORECASE | re.MULTILINE` 追加。
+- 私の手元で再確認:
+  ```
+  input : '意味のある最初の行\n[user] something else\n[queue-operation] <task-notification>\n...'
+  out   : '意味のある最初の行\n[user] something else\n[user] 本物のメッセージ'
+  ```
+- 起動時 migration `harness_noise_v0_8_11` で 1,148 件 (玄人計測)
+  の汚染レコードを再 scrub。
+
+### Fixed — `FastAPI(title=..., version=...)` ハードコード `0.1.0`
+- `/openapi.json` が `info.version: "0.1.0"` を返していた。
+- `bunshin.__version__` を渡すよう修正。
+
+### Fixed — `sort=newest` / `sort=oldest` が `limit ≥ 5` で壊れる
+- hybrid retrieval の「wider candidate pool」(`scored[:max(limit*2,20)]`)
+  が trim 後の最終 results に sort されないまま return されていた。
+- 関数末尾で `if sort == "newest": results.sort(...)` の最終
+  sort pass を追加。
+
+### Added — `GET /api/records/{record_id}` (API 対称性)
+- `DELETE` だけ存在していて `GET` が無かったので追加。
+- 外部 API 利用者が特定 record を ID で取得できるように。
+
 ## [0.8.10] - 2026-06-24
 
 第 11 回レビュー: 致命 typo 1 + 中度 3 + ドキュメント 1。

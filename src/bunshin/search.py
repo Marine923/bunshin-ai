@@ -501,4 +501,14 @@ def search(
     else:
         results = results[:limit]
 
+    # For non-relevance sorts, force the final order to honor the
+    # caller's wish. Reviewer 12 found limit≥5 in sort=newest mixing
+    # dates because the hybrid retrieval's "wider candidate pool"
+    # (limit*2 or 20) was preserved instead of getting one final sort
+    # pass over the trimmed-to-`limit` results.
+    if sort == "newest":
+        results.sort(key=lambda r: -(r.get("timestamp") or 0))
+    elif sort == "oldest":
+        results.sort(key=lambda r: (r.get("timestamp") or 0))
+
     return results
