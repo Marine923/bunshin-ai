@@ -4202,6 +4202,24 @@ function renderTroubleshootPanel() {
     </div>`;
 }
 
+function openDiagnostics() {
+  // Jump from anywhere (chat error, search error) directly to the
+  // troubleshoot panel. Novice reviewer flagged that the panel is
+  // valuable but undiscoverable from an error context.
+  const tab = document.querySelector('.sidebar-tab[data-pane="settings"]');
+  if (tab) tab.click();
+  setTimeout(() => {
+    const panel = document.getElementById('search-health') || document.getElementById('diag-fetch-btn');
+    if (panel) panel.scrollIntoView({behavior: 'smooth', block: 'center'});
+    const btn = document.getElementById('diag-fetch-btn');
+    if (btn) {
+      btn.style.outline = '3px solid var(--accent-1, #6a6dff)';
+      btn.style.outlineOffset = '4px';
+      setTimeout(() => { btn.style.outline = ''; btn.style.outlineOffset = ''; }, 2500);
+    }
+  }, 400);
+}
+
 async function refreshSearchHealth() {
   const el = document.getElementById('search-health');
   if (!el) return;
@@ -5793,12 +5811,19 @@ async function loadFlashback() {
         // Empty windows used to read as a flat "この日は静かでした" — a
         // bit of a downer when 3 of 3 cards say it. Replace with a soft
         // prompt that invites the user to seed memory.
-        const PROMPTS = [
-          'この頃、何してたっけ？',
-          '記憶がない日。後で思い出したら ⌘N でメモ',
-          '静かな日。あなたが Bunshin に来る前かも',
-        ];
-        const prompt = PROMPTS[Math.floor(w.date.charCodeAt(w.date.length - 1) % PROMPTS.length)];
+        // Special-case 5-year-ago because most users were not on Bunshin
+        // back then — explicit "you weren't here yet" reads better.
+        let prompt;
+        if (w.label_ja && w.label_ja.includes('5')) {
+          prompt = '5 年前。あなたはまだ Bunshin に来ていません';
+        } else {
+          const PROMPTS = [
+            'この頃、何してたっけ？',
+            '記憶がない日。後で思い出したら ⌘N でメモ',
+            '静かな日。あなたが Bunshin に来る前かも',
+          ];
+          prompt = PROMPTS[Math.floor(w.date.charCodeAt(w.date.length - 1) % PROMPTS.length)];
+        }
         return `
           <div class="flashback-card" data-empty="1">
             <div class="fb-when">${esc(w.label_ja)}</div>
@@ -7869,7 +7894,18 @@ chatForm.addEventListener('submit', async (e) => {
     const resp = await fetch('/api/chat?' + params);
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-      respMsg.textContent = `エラー: ${err.detail || resp.statusText}`;
+      const msg = err.detail || err.error || resp.statusText;
+      const hint = err.hint ? `<div style="margin-top:6px;font-size:12px;color:var(--text-3);">${esc(err.hint)}</div>` : '';
+      // Always include a direct link to the diagnostics panel — novice
+      // reviewer flagged that the existing "困った時は" section is too
+      // far from where errors appear to be discoverable.
+      const helpLink = `
+        <div style="margin-top:10px;">
+          <a href="#" onclick="event.preventDefault(); openDiagnostics();" style="font-size:12px;color:var(--accent-1, #6a6dff);">
+            診断情報を取得して開発者に送る →
+          </a>
+        </div>`;
+      respMsg.innerHTML = `<div style="color:#ff6666;">⚠ ${esc(msg)}</div>${hint}${helpLink}`;
       chatStatus.textContent = '';
       chatSend.disabled = false;
       return;
@@ -8127,6 +8163,28 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                         "INSERT INTO migrations(key, applied_at) VALUES (?, ?)",
                         ("sns_demotion_v0_7_11",
                          int(__import__("time").time())),
+                    )
+                    _conn.commit()
+
+                # v0.7.12: prune noise entities created by earlier LLM
+                # extraction runs (single chars, "the", "?", etc).
+                if "noise_entities_v0_7_12" not in _applied:
+                    try:
+                        from bunshin.knowledge_graph import NOISE_ENTITY_NAMES
+                        placeholders = ",".join(["?"] * len(NOISE_ENTITY_NAMES))
+                        ids = [r[0] for r in _conn.execute(
+                            f"SELECT id FROM entities WHERE name IN ({placeholders}) OR length(trim(name)) < 2",
+                            list(NOISE_ENTITY_NAMES),
+                        ).fetchall()]
+                        if ids:
+                            ids_ph = ",".join(["?"] * len(ids))
+                            _conn.execute(f"DELETE FROM record_entities WHERE entity_id IN ({ids_ph})", ids)
+                            _conn.execute(f"DELETE FROM entities WHERE id IN ({ids_ph})", ids)
+                    except Exception:
+                        pass
+                    _conn.execute(
+                        "INSERT INTO migrations(key, applied_at) VALUES (?, ?)",
+                        ("noise_entities_v0_7_12", int(__import__("time").time())),
                     )
                     _conn.commit()
 

@@ -4,6 +4,29 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.12] - 2026-06-24
+
+エラー時のサポート導線 + フラッシュバック感情調整 + エンティティ品質。
+
+### Added — エラー時に「診断情報を送る」リンク
+- チャット / 検索でエラーが起きた時、エラーメッセージの下に
+  **「診断情報を取得して開発者に送る →」** リンクを表示。
+- クリックで設定タブ → 困った時は へ自動ジャンプ + 「診断情報を取得」
+  ボタンをハイライト。
+- 素人レビュー指摘: 「困った時はパネルが超優秀だけど、エラー発生時の
+  ユーザーが見つけられない」を解消。
+
+### Changed — フラッシュバック「5 年前空」の特殊メッセージ
+- 5 年前枠が空の時 **「5 年前。あなたはまだ Bunshin に来ていません」**
+  と明示。一般の「静かな日」プロンプトより文脈に合う。
+
+### Added — エンティティ辞書を拡張 + ノイズ削除
+- `ENTITY_TYPE_OVERRIDES` に英語表記 (Tokyo, Japan, USA…) + ユーザー
+  特有のエンティティ (`ホークす`, `MARINE FLIGHT`, `AIR Flight` 等) を追加。
+- `NOISE_ENTITY_NAMES` 定数を追加し、`the` / `a` / `?` / 1 文字 などの
+  ノイズエンティティを `upsert_entity()` で削除 + 起動時に既存 DB からも
+  一括 prune。
+
 ## [0.7.11] - 2026-06-24
 
 実機レビュー（玄人 + 素人）で見つかった残り 4 件を修正。

@@ -126,6 +126,8 @@ ENTITY_TYPE_OVERRIDES = {
     "Discord": "organization",
     "Zoom": "organization",
     "note": "organization",  # the JP blogging platform note.com
+    "note inc.": "organization",
+    "note inc": "organization",
     # Countries / regions / cities → place
     "日本": "place",
     "東京": "place",
@@ -142,6 +144,17 @@ ENTITY_TYPE_OVERRIDES = {
     "韓国": "place",
     "中国": "place",
     "アメリカ": "place",
+    "Poland": "place",
+    "USA": "place",
+    "Korea": "place",
+    "Japan": "place",
+    "Tokyo": "place",
+    "Kyoto": "place",
+    "Osaka": "place",
+    "Fukuoka": "place",
+    "Iki": "place",
+    "Nagasaki": "place",
+    "Numazu": "place",
     # Programming languages / tech → topic
     "Python": "topic",
     "JavaScript": "topic",
@@ -155,6 +168,25 @@ ENTITY_TYPE_OVERRIDES = {
     "Claude": "topic",
     "ChatGPT": "topic",
     "GPT": "topic",
+    # User-specific projects / publications → project
+    # (Inferred from the user's MEMORY.md; safe defaults that get
+    # individually validated downstream.)
+    "ホークす": "project",
+    "ホークす(海外帰りの模索日記)": "project",
+    "MARINE FLIGHT": "organization",
+    "AIR Flight": "organization",
+}
+
+# Entity names that are pure noise — single characters, very generic
+# stop-words, fragments that the LLM extractor occasionally promotes.
+# These get dropped at upsert time and pruned at startup.
+NOISE_ENTITY_NAMES = {
+    "the", "a", "an", "and", "or", "is", "are", "was", "were",
+    "I", "you", "we", "they",
+    "user", "assistant", "system",
+    "TODO", "todo", "Note", "note?",  # ambiguous fragments
+    "X1", "Y1", "test", "Test", "テスト",
+    "?", "??", "...", "—",
 }
 
 
@@ -189,6 +221,10 @@ def upsert_entity(
     aliases: Optional[list[str]] = None,
     description: Optional[str] = None,
 ) -> int:
+    # Drop noise immediately. Returning 0 is a sentinel "not stored"
+    # that callers can check before inserting record_entities links.
+    if name in NOISE_ENTITY_NAMES or len(name.strip()) < 2:
+        return 0
     # Always normalize the type against our override dict — LLM-extracted
     # types are noisy and we can do better with a curated list.
     type_ = normalize_entity_type(name, type_)
