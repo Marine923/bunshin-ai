@@ -4,6 +4,44 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.19] - 2026-06-25
+
+第 15 回レビュー (両レビュアー 100+ 回触り) の致命 4 + 中度 3 を消化。
+
+### Fixed — 🚨 関連エンティティに「undefined回共起」表示
+- 玄人レビュー指摘: API は `weight` を返すが UI が
+  `r.co_occurrences` を読んでいた。1 行修正 + `toLocaleString()`。
+
+### Fixed — 🚨 関係性タブのエンティティ一覧で noise 未除外
+- UI が `/api/entities` をオプション無しで叩いていた → note (1185
+  件) が 1 位に。`?exclude_noisy=true&with_sources=true&limit=500`
+  に変更、MCP `list_top_entities` と同じ結果に揃った。
+
+### Fixed — 🚨 チャット履歴 UI に `hello/hi/test` が残る
+- `/api/chat/sessions` に `min_user_chars=8` (デフォルト) と
+  `include_empty=False` クエリパラメータ追加。短い greeting と
+  空セッションは默認で隠れる。MCP `get_recent_chat` の挙動と一致。
+
+### Fixed — Insights の hero card に `[assistant]` プレフィックス
+- 表示時に `stripRolePrefix()` ヘルパーで `[user]/[assistant]/[tool]`
+  接頭辞を除去 (ingest の harness scrub と相補)。
+
+### Fixed — `describe` JSON parse 散発失敗
+- 小型ローカル LLM (llama3.2:3b) が生成した text に制御文字
+  (`\x01`〜`\x08`) が混入 → JSON 厳格モードでパース失敗。
+  サーバ側で description / candidates / reasoning を sanitize。
+
+### Changed — 検索結果カードのデフォルト折りたたみ
+- 1 結果あたり長文 PDF/Claude transcript が縦に数十行 → 2 件目に
+  辿り着くのに 20 スクロール、の UX 問題を解消。
+- `.result-content` に `max-height: 180px` + 下部 fade + 「もっと
+  見る ▾」ボタン (280 文字超のときのみ表示)。
+
+### Changed — 検索ヘッダーを sticky 化
+- 検索バー + ソート + ソース chip を `position: sticky; top: 0;` の
+  ラッパーに格納。スクロールしても画面上部に残り、再検索時に
+  トップへ戻る必要なし。
+
 ## [0.8.18] - 2026-06-25
 
 ### Fixed — 🐛 関係性のセッション内共起バイアス

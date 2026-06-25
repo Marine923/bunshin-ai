@@ -1810,7 +1810,28 @@ INDEX_HTML = """<!DOCTYPE html>
     color: var(--text-2);
     font-size: 13.5px;
     line-height: 1.55;
+    /* Reviewer 15: long PDFs/Claude transcripts expanded to dozens of
+       lines per card made the user scroll 20× before reaching result
+       #2. Cap each card to ~8 lines with a gradient fade and let them
+       click "もっと見る" to expand. */
+    max-height: 180px;
+    overflow: hidden;
+    position: relative;
   }
+  .result-content.expanded { max-height: none; }
+  .result-content:not(.expanded)::after {
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: 0; height: 36px;
+    background: linear-gradient(180deg, transparent, var(--bg-0));
+    pointer-events: none;
+  }
+  .result-expand-btn {
+    background: transparent; border: 1px solid var(--border-1);
+    color: var(--text-2); font-size: 11px;
+    padding: 3px 10px; border-radius: 4px; cursor: pointer;
+    margin-top: 6px; transition: background 0.15s;
+  }
+  .result-expand-btn:hover { background: var(--bg-1); }
   /* Photo / PDF preview that sits above the OCR text on photo and
      file results so the user can see the actual image instead of
      just the recovered text. */
@@ -3403,6 +3424,7 @@ INDEX_HTML = """<!DOCTYPE html>
 <main>
   <!-- ============== Search Pane ============== -->
   <section class="pane active" id="pane-search">
+   <div class="search-stickybar" style="position:sticky;top:0;z-index:50;background:var(--bg-0);padding-top:4px;padding-bottom:8px;margin:-4px 0 8px;">
     <input class="search-box" id="q" type="text" placeholder="過去の自分に聞いてみる…" autofocus>
     <div class="hint">日本語OK。意味で検索します。クリックで会話全体を展開。</div>
 
@@ -3459,6 +3481,7 @@ INDEX_HTML = """<!DOCTYPE html>
     <div class="autocomplete-anchor">
       <div class="autocomplete-dropdown" id="autocomplete" role="listbox" aria-hidden="true"></div>
     </div>
+   </div><!-- /.search-stickybar -->
     <div class="results" id="results">
       <div class="empty" id="search-empty-state">読み込み中…</div>
     </div>
@@ -3760,6 +3783,14 @@ INDEX_HTML = """<!DOCTYPE html>
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; };
+// Strip leading [user] / [assistant] / [tool] / [queue-operation] role
+// tags that leak in from Claude transcript chunking. Reviewer 15 saw
+// "[assistant] I have sufficient verified data..." as the stale-project
+// hero card body. These tags are channel plumbing, not user content.
+function stripRolePrefix(s) {
+  if (!s) return '';
+  return String(s).replace(/^\s*\[(user|assistant|tool|queue-operation)\]\s*/i, '').trim();
+}
 
 // ===== Icon library (inline SVG, Feather/Lucide-style, currentColor) =====
 // Replaces every emoji in the UI with a real outline icon so Bunshin
@@ -5179,7 +5210,11 @@ async function loadEntities() {
   if (entitiesLoaded) return;
   const listEl = $('entity-list');
   try {
-    const j = await (await fetch('/api/entities')).json();
+    // Strip newsletter-driven noise (note 1185 mentions etc.) and
+    // include top_sources so the list view matches what the MCP
+    // list_top_entities returns. Reviewer 15 saw the UI list 1 位 as
+    // "note 1185 件" while MCP filtered it out — fixed.
+    const j = await (await fetch('/api/entities?exclude_noisy=true&with_sources=true&limit=500')).json();
     allEntities = j.entities || [];
     if (!allEntities.length) {
       listEl.innerHTML = '<div class="empty">エンティティ未構築<br><br>ターミナルで <code>bun graph build</code> を実行してください</div>';
@@ -5299,7 +5334,7 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
             <div class="name">${esc(r.name)}</div>
             <div class="meta">
               <span class="type-${esc(r.type)}">${esc(r.type)}</span> ·
-              ${r.co_occurrences}回共起 ·
+              ${(r.weight ?? r.co_occurrences ?? 0).toLocaleString()}回共起 ·
               <span style="color:var(--good);">特異性 ${(r.specificity*100).toFixed(0)}%</span>
             </div>
           </div>`).join('')}
@@ -5908,7 +5943,7 @@ async function loadInsights() {
           <div class="insights-card alert">
             <div class="title">${esc(p.name)} — <span style="color:#ef4a4a">${p.days_ago}日未活動</span></div>
             <div class="meta">最終 ${esc(p.last_seen)} ｜ ${esc(p.description)}</div>
-            <div class="body">${esc(p.snippet)}…</div>
+            <div class="body">${esc(stripRolePrefix(p.snippet))}…</div>
           </div>`;
       }
       html += '</div>';
@@ -7082,10 +7117,23 @@ function renderResult(r, idx) {
         </button>
       </div>
       ${media}
-      <div class="result-content">${body}</div>
+      <div class="result-content" data-result-content>${body}</div>
+      ${(body && body.length > 280) ? `<button class="result-expand-btn" data-expand-toggle type="button">もっと見る ▾</button>` : ''}
     </div>
   `;
 }
+
+// Wire the "もっと見る" toggle (delegated for newly rendered cards).
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('[data-expand-toggle]');
+  if (!btn) return;
+  e.stopPropagation();
+  const card = btn.closest('.result-card');
+  const body = card && card.querySelector('[data-result-content]');
+  if (!body) return;
+  const expanded = body.classList.toggle('expanded');
+  btn.textContent = expanded ? '閉じる ▴' : 'もっと見る ▾';
+});
 
 // Record deletion (with confirmation).
 document.addEventListener('click', async (e) => {
@@ -11069,7 +11117,20 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             verdict = _judge_best_description(
                 ename, etype, user_context_label, candidates, api_key,
             )
-            description = verdict["description"]
+            # Sanitize raw control chars that small local LLMs sometimes
+            # emit (literal \x01, \x02, etc.) — they break clients that
+            # JSON-parse the response with strict mode. Newlines and tabs
+            # stay (FastAPI escapes them properly in JSON).
+            import re as _re
+            def _clean_text(s: str) -> str:
+                if not s:
+                    return s
+                return _re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
+            description = _clean_text(verdict["description"])
+            for c in candidates:
+                c["description"] = _clean_text(c.get("description") or "")
+            if verdict.get("reasoning"):
+                verdict["reasoning"] = _clean_text(verdict["reasoning"])
 
             conn.execute(
                 "UPDATE entities SET description = ? WHERE id = ?",
@@ -11154,11 +11215,35 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             conn.close()
 
     @app.get("/api/chat/sessions")
-    def api_chat_sessions(q: Optional[str] = Query(None)):
-        from bunshin.chat_history import list_sessions
+    def api_chat_sessions(
+        q: Optional[str] = Query(None),
+        min_user_chars: int = Query(8, ge=0, le=200),
+        include_empty: bool = Query(False),
+    ):
+        """List chat sessions. Reviewer 15 spotted "hello/hi/test" still
+        cluttering the sidebar — the MCP path already filters them via
+        min_user_chars, but the HTTP path didn't. Default min_user_chars
+        is 8; pass min_user_chars=0 to see everything."""
+        from bunshin.chat_history import list_sessions, get_messages
         conn = init_db(db_path)
         try:
-            return {"sessions": list_sessions(conn, query=q)}
+            sessions = list_sessions(conn, query=q)
+            if min_user_chars > 0 or not include_empty:
+                kept = []
+                for s in sessions:
+                    msgs = get_messages(conn, s["id"])
+                    if not msgs and not include_empty:
+                        continue
+                    first_user = next(
+                        (m["content"] for m in msgs if m["role"] == "user"), None
+                    )
+                    if first_user is None and not include_empty:
+                        continue
+                    if first_user is not None and len(first_user.strip()) < min_user_chars:
+                        continue
+                    kept.append(s)
+                sessions = kept
+            return {"sessions": sessions}
         finally:
             conn.close()
 
