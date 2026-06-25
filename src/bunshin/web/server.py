@@ -5333,10 +5333,14 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
           const candidates = (j.candidates || []).map(c => `
             <details style="margin-top:6px;font-size:11px;">
               <summary style="cursor:pointer;color:var(--text-3);">
-                ${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener" style="color:var(--accent-1);">${esc(c.source)}</a>` : esc(c.source)}
+                ✓ ${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener" style="color:var(--accent-1);">${esc(c.source)}</a>` : esc(c.source)}
               </summary>
               <div style="padding:6px 10px;margin-top:4px;background:var(--bg-1);border-radius:4px;color:var(--text-2);line-height:1.5;white-space:pre-wrap;">${esc(c.description.slice(0, 600))}</div>
             </details>`).join('');
+          const failed = (j.failed_sources || []).map(f => `
+            <div style="margin-top:4px;font-size:11px;color:var(--text-3);opacity:0.7;">
+              ✗ ${esc(f.source)} <span style="font-style:italic;">(${esc(f.reason || '失敗')})</span>
+            </div>`).join('');
           slot.outerHTML = `<div class="description" id="entity-describe-slot">
             ${esc(j.description)}
             <div style="margin-top:8px;color:var(--text-3);font-size:11px;">
@@ -5349,6 +5353,7 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
             </div>
             ${reasoning}
             ${candidates ? `<div style="margin-top:10px;">${candidates}</div>` : ''}
+            ${failed ? `<div style="margin-top:6px;">${failed}</div>` : ''}
           </div>`;
           const newBtn = document.getElementById('entity-describe-btn');
           if (newBtn) newBtn.addEventListener('click', () => describeBtn.click());
@@ -8560,6 +8565,48 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 # _strip_harness_noise() only runs on fresh ingestion, so
                 # 296 polluted records from earlier versions still carry
                 # harness XML that leaks into chat context.
+                # v0.8.18: backfill learning_rules.applied_count from
+                # actual hidden-record counts. v0.8.13 added the rollup
+                # logic, but it only fires on new preset application;
+                # rules that were applied in earlier versions still
+                # showed applied_count=0 in the dashboard while their
+                # records were genuinely hidden. Reviewer 14 caught it.
+                if "learning_count_backfill_v0_8_18" not in _applied:
+                    try:
+                        # Domain rules
+                        _conn.execute("""
+                            UPDATE learning_rules
+                               SET applied_count = (
+                                 SELECT COUNT(*) FROM records
+                                  WHERE COALESCE(user_signal, 0) = -1
+                                    AND sender_domain = learning_rules.pattern
+                               )
+                             WHERE rule_type = 'domain'
+                        """)
+                        # Sender rules (LIKE matches against sender)
+                        sender_rows = _conn.execute(
+                            "SELECT id, pattern FROM learning_rules WHERE rule_type = 'sender'"
+                        ).fetchall()
+                        for rid, pattern in sender_rows:
+                            n = _conn.execute(
+                                "SELECT COUNT(*) FROM records "
+                                "WHERE COALESCE(user_signal, 0) = -1 "
+                                "  AND (sender LIKE ? OR sender LIKE ?)",
+                                (f"{pattern}%", f"%<{pattern}%"),
+                            ).fetchone()[0]
+                            _conn.execute(
+                                "UPDATE learning_rules SET applied_count=? WHERE id=?",
+                                (n, rid),
+                            )
+                        print("[migration] backfilled learning_rules.applied_count", flush=True)
+                    except Exception as e:
+                        print(f"[migration] learning_count_backfill skipped: {e}", flush=True)
+                    _conn.execute(
+                        "INSERT INTO migrations(key, applied_at) VALUES (?, ?)",
+                        ("learning_count_backfill_v0_8_18", int(__import__("time").time())),
+                    )
+                    _conn.commit()
+
                 # v0.8.13: pick up the orphan `</task-notification>`
                 # closers + `[queue-operation]` normalization that v0.8.11
                 # added to _strip_harness_noise. Same idempotent shape as
@@ -10996,15 +11043,22 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             tasks.append(("local", lambda: _describe_via_local_llm(ename, etype, samples)))
 
             candidates: list[dict] = []
+            failed_sources: list[dict] = []
             with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
                 futures = {pool.submit(fn): name for name, fn in tasks}
-                for fut in futures:
+                for fut, src_label in futures.items():
                     try:
                         result = fut.result(timeout=70)
                         if result and result.get("description"):
                             candidates.append(result)
-                    except Exception:
-                        continue
+                        else:
+                            failed_sources.append(
+                                {"source": src_label, "reason": "no result"}
+                            )
+                    except Exception as e:
+                        failed_sources.append(
+                            {"source": src_label, "reason": str(e)[:100]}
+                        )
 
             if not candidates:
                 raise HTTPException(
@@ -11034,6 +11088,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                      "url": c.get("url")}
                     for c in candidates
                 ],
+                "failed_sources": failed_sources,
                 "samples_used": len(rows),
             }
         finally:

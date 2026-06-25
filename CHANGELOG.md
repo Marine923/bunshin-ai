@@ -4,6 +4,33 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.18] - 2026-06-25
+
+### Fixed — 🐛 関係性のセッション内共起バイアス
+- 玄人レビュー指摘: 「壱岐島」の関連 Top10 が Sequoia / X/Twitter /
+  Product Hunt / a16z などに支配されていた。これらは dj-engine の
+  Claude 1 セッションが大量 chunks を生成 → 全 chunk に両エンティティ
+  が含まれる → `COUNT(*)` が水増しされる構造バグ。
+- `entity_relations` の SQL を `COUNT(*)` → `COUNT(DISTINCT
+  r.source_id)` に修正:
+  - 1 セッションで何回共起しても 1 カウント
+  - 修正後の壱岐島 Top1 が **ドローン (weight=155)** に変わった ✅
+  - 「あなたの本当の関係性」(ドローン会社 / 農家 / リーフボール) が
+    浮上、セッション偽装組は降格。
+
+### Fixed — `learning_rules.applied_count` を既存 rule にも backfill
+- v0.8.13 で rollup 追加したが forward-only だった。3,961 件 hidden
+  なのにダッシュボードでは 0 のまま。
+- 起動時 migration `learning_count_backfill_v0_8_18` で各 rule の
+  実 hidden 数を SQL で再集計し直す。
+
+### Added — `describe` の失敗ソース可視化
+- マルチソース調査で hit しなかったソース (Wikipedia 該当なし、
+  公式サイト推測失敗 等) を `failed_sources` で返す。
+- UI で「✓ 採用」「✗ Wikipedia (no result)」のように成功/失敗を
+  両方明示。「複数ソース調べました」と謳って 1 件しか出ないと
+  「あれ?」となる UX を解消。
+
 ## [0.8.17] - 2026-06-25
 
 ### Changed — エンティティ説明を **マルチエージェント・マルチソース** 化

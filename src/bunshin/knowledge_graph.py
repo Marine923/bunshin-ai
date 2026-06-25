@@ -447,9 +447,15 @@ def entity_relations(
     """Find related entities with both co-occurrence and specificity scores.
 
     Returns each relation with:
-      - weight: raw co-occurrence count
-      - e2_total: total mentions of the related entity (denominator)
-      - specificity: weight / e2_total (0..1, how much of this entity is dedicated to ours)
+      - weight: SESSION-level co-occurrence count (DISTINCT r.source_id)
+        — a single Claude conversation that mentions both entities
+        across 117 chunks counts as 1, not 117. Without this normalization
+        a single long dj-engine chat session was pushing entities like
+        "Sequoia"/"X/Twitter"/"a16z" to the top of 壱岐島's relations
+        (specificity=1.0) just because they happened to ride along in
+        the same session's records. Reviewer-Honda 14 caught this.
+      - e2_total: total SESSIONS where the related entity appears
+      - specificity: weight / e2_total (0..1)
       - score: hybrid score for ranking = weight * sqrt(specificity)
 
     Sorted by score DESC so we get strong AND specific relations first,
@@ -457,15 +463,20 @@ def entity_relations(
     """
     cursor = conn.execute(
         """SELECT e2.id, e2.name, e2.type,
-                  COUNT(*) AS weight,
-                  (SELECT COUNT(*) FROM record_entities
-                   WHERE entity_id = e2.id) AS e2_total
+                  COUNT(DISTINCT r1.source_id) AS weight,
+                  (SELECT COUNT(DISTINCT r.source_id)
+                     FROM record_entities re_x
+                     JOIN records r ON r.id = re_x.record_id
+                    WHERE re_x.entity_id = e2.id
+                      AND r.source_id IS NOT NULL) AS e2_total
            FROM record_entities re1
+           JOIN records r1 ON r1.id = re1.record_id
            JOIN record_entities re2
-             ON re1.record_id = re2.record_id
-             AND re1.entity_id != re2.entity_id
+             ON re2.record_id = re1.record_id
+             AND re2.entity_id != re1.entity_id
            JOIN entities e2 ON e2.id = re2.entity_id
            WHERE re1.entity_id = ?
+             AND r1.source_id IS NOT NULL
            GROUP BY e2.id""",
         (entity_id,),
     )
