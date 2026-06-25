@@ -5218,11 +5218,19 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
   const detailEl = $('entity-detail');
   if (!detailEl) return;
   // The hardcoded "(LLM 抽出)" placeholder is information-free.
-  // If we have a real description, show it; otherwise offer to ask the
-  // local LLM to synthesize one from the user's records.
+  // If we have a real description, show it + a "やり直し" button so
+  // the user can regenerate (Wikipedia lookup may have improved since).
+  // Otherwise offer the initial AI describe button.
   const isPlaceholder = !e.description || e.description === '(LLM 抽出)';
   const realDescription = !isPlaceholder
-    ? `<div class="description">${esc(e.description)}</div>`
+    ? `<div class="description" id="entity-describe-slot">
+         ${esc(e.description)}
+         <button class="settings-save-btn" id="entity-describe-btn" type="button" data-id="${e.id}"
+                 title="Wikipedia と記録を見直して再生成"
+                 style="margin-left:8px;padding:2px 8px;font-size:11px;background:transparent;color:var(--text-3);border:1px solid var(--border-1);">
+           ${icon('refresh-cw', 11)} やり直し
+         </button>
+       </div>`
     : `<div class="description" id="entity-describe-slot" style="display:flex;align-items:center;gap:8px;color:var(--text-3);font-size:13px;">
          <span>説明なし</span>
          <button class="settings-save-btn" id="entity-describe-btn" type="button" data-id="${e.id}"
@@ -5294,12 +5302,31 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
       const slot = document.getElementById('entity-describe-slot');
       const id = describeBtn.dataset.id;
       describeBtn.disabled = true;
-      slot.innerHTML = `<span style="color:var(--text-3);font-size:13px;">${icon('sparkles', 12)} AI が記録を読んで説明を生成中…（10〜30 秒）</span>`;
+      slot.innerHTML = `<span style="color:var(--text-3);font-size:13px;">${icon('sparkles', 12)} Wikipedia と記録を読んで AI が説明を生成中…（10〜30 秒）</span>`;
       try {
         const r = await fetch(`/api/entities/${encodeURIComponent(id)}/describe`, {method: 'POST'});
         const j = await r.json();
         if (r.ok && j.description) {
-          slot.outerHTML = `<div class="description">${esc(j.description)} <span style="color:var(--text-3);font-size:11px;">— ${esc(j.model || 'AI')} が ${j.samples_used} 件の記録から生成</span></div>`;
+          const wikiLink = j.wikipedia?.url
+            ? `<a href="${esc(j.wikipedia.url)}" target="_blank" rel="noopener" style="color:var(--accent-1);text-decoration:none;">Wikipedia (${esc(j.wikipedia.lang)})</a>`
+            : 'Wikipedia 該当なし';
+          slot.outerHTML = `<div class="description" id="entity-describe-slot">
+            ${esc(j.description)}
+            <div style="margin-top:6px;color:var(--text-3);font-size:11px;">
+              ソース: ${wikiLink} ・ ${esc(j.model || 'AI')} ・ ${j.samples_used} 件の記録
+              <button class="settings-save-btn" type="button" data-id="${esc(String(id))}" id="entity-describe-btn"
+                      title="Wikipedia と記録を見直して再生成"
+                      style="margin-left:8px;padding:2px 8px;font-size:11px;background:transparent;color:var(--text-3);border:1px solid var(--border-1);">
+                ${icon('refresh-cw', 11)} やり直し
+              </button>
+            </div>
+          </div>`;
+          // Re-wire the regenerated button (DOM was replaced).
+          renderEntityDetailFromAPI.__rewire = true;
+          const newBtn = document.getElementById('entity-describe-btn');
+          if (newBtn) {
+            newBtn.addEventListener('click', () => describeBtn.click());
+          }
         } else {
           slot.innerHTML = `<span style="color:#ff9b6b;font-size:12px;">✗ ${esc(j.detail || '失敗')}</span>`;
         }
@@ -10500,23 +10527,99 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         finally:
             conn.close()
 
+    def _fetch_wikipedia_summary(name: str, entity_type: str | None = None) -> dict | None:
+        """Look up `name` on Japanese Wikipedia and return a short
+        extract. Returns None on no-match or any error.
+
+        We send only the entity NAME — never the user's record content
+        — so this is a "famous-name lookup" not a privacy leak.
+
+        Tries query variants for type-disambiguation hits (so "note" as
+        an organization → try "note (サービス)" / "note株式会社" too).
+        Reviewer-Honda v0.8.15: "note" was being skipped because it's
+        a disambiguation page; that left the LLM to confabulate.
+        """
+        import httpx as _httpx
+        from urllib.parse import quote
+        # Build candidate query variants. Type-aware variants first so
+        # we get the most specific page if it exists.
+        candidates = [name]
+        if entity_type == "organization":
+            candidates += [f"{name} (企業)", f"{name} (サービス)", f"{name}株式会社"]
+        elif entity_type == "place":
+            candidates += [f"{name} (都市)"]
+        elif entity_type == "project":
+            candidates += [f"{name} (プロジェクト)", f"{name} (サービス)"]
+
+        client = _httpx.Client(
+            timeout=5.0,
+            headers={
+                "User-Agent": "Bunshin/0.8 (personal memory app; +https://github.com/Marine923/bunshin-ai)",
+                "Accept": "application/json",
+            },
+            follow_redirects=True,
+        )
+        try:
+            for lang_host in ("ja.wikipedia.org", "en.wikipedia.org"):
+                disambig_fallback = None
+                for q in candidates:
+                    try:
+                        r = client.get(
+                            f"https://{lang_host}/api/rest_v1/page/summary/{quote(q, safe='')}"
+                        )
+                        if r.status_code != 200:
+                            continue
+                        d = r.json()
+                        extract = (d.get("extract") or "").strip()
+                        if not extract:
+                            continue
+                        if d.get("type") == "disambiguation":
+                            # Keep as fallback but keep trying for a
+                            # specific page from the remaining variants.
+                            if disambig_fallback is None:
+                                disambig_fallback = {
+                                    "extract": extract,
+                                    "url": d.get("content_urls", {}).get("desktop", {}).get("page"),
+                                    "lang": lang_host.split(".")[0],
+                                    "disambiguation": True,
+                                }
+                            continue
+                        return {
+                            "extract": extract,
+                            "url": d.get("content_urls", {}).get("desktop", {}).get("page"),
+                            "lang": lang_host.split(".")[0],
+                            "disambiguation": False,
+                        }
+                    except Exception:
+                        continue
+                if disambig_fallback:
+                    return disambig_fallback
+            return None
+        finally:
+            client.close()
+
     @app.post("/api/entities/{entity_id}/describe")
     def api_entity_describe(entity_id: int):
-        """Have the local LLM read this entity's mentions across all
-        sources and produce a 1-3 line "what IS this thing" description.
+        """Produce a "what IS this thing?" description by combining
+        Wikipedia's factual definition with the user's actual mentions.
 
-        Reviewer-Honda's specific ask: the relationships panel shows
-        related entities and record snippets, but the user still doesn't
-        know what the centered entity actually IS. The local AI is the
-        right tool — it has access to the same memory, but can synthesize
-        a definition the user can read in one breath.
+        Reviewer-Honda v0.8.15 caught the problem: pure-LLM synthesis
+        from snippets is fiction. The small local model labeled note.com
+        as "ユーザーが記録した情報や意見をまとめた記述" — completely
+        wrong, because the LLM doesn't know what note.com is and the
+        records don't define it either, so it confabulated.
 
-        Result is persisted into entities.description, replacing the
-        "(LLM 抽出)" placeholder so the next visit shows it instantly.
+        v0.8.16 flow:
+          1. Wikipedia JA (then EN) lookup on the entity NAME only
+          2. Local LLM blends Wikipedia's factual paragraph with the
+             user's record snippets ("Wikipedia says X. In your records
+             it shows up in Y context.")
+          3. If Wikipedia has nothing, the LLM is instructed to say
+             「詳細不明」 honestly rather than guess.
+
+        Result is persisted into entities.description.
         """
-        from bunshin.knowledge_graph import (
-            entity_by_id, init_kg_schema,
-        )
+        from bunshin.knowledge_graph import entity_by_id, init_kg_schema
         from bunshin.chat import OLLAMA_HOST, check_ollama, pick_light_model
         import httpx as _httpx
         conn = init_db(db_path)
@@ -10531,33 +10634,39 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     status_code=503,
                     detail="Ollama が起動していません。/Applications/Ollama.app を起動して、qwen2.5:14b など日本語対応モデルを pull してください。",
                 )
-            # Pull up to 8 representative snippets (longest content gets
-            # priority — short greetings tell the LLM nothing).
+            # Pull up to 6 representative snippets (longest content first).
             rows = conn.execute(
                 "SELECT r.source, r.content FROM record_entities re "
                 "JOIN records r ON r.id = re.record_id "
                 "WHERE re.entity_id = ? AND length(r.content) >= 50 "
-                "ORDER BY length(r.content) DESC LIMIT 8",
+                "ORDER BY length(r.content) DESC LIMIT 6",
                 (entity_id,),
             ).fetchall()
-            if not rows:
-                raise HTTPException(
-                    status_code=404,
-                    detail="このエンティティに紐づく十分な長さの記録がありません",
+            wiki = _fetch_wikipedia_summary(entity["name"], entity.get("type"))
+            if wiki:
+                disambig_note = (
+                    "\n（注: 同名のものが複数あります。ユーザーの記録の文脈から、どれを指しているか判断してください）"
+                    if wiki.get("disambiguation") else ""
                 )
+                wiki_block = (
+                    f"=== Wikipedia ({wiki['lang']}) ===\n{wiki['extract']}{disambig_note}\n"
+                )
+            else:
+                wiki_block = "=== Wikipedia ===\n（該当ページなし）\n"
             samples = "\n\n---\n".join(
-                f"[{src}] {(content or '')[:800]}" for src, content in rows
-            )[:8000]
+                f"[{src}] {(content or '')[:600]}" for src, content in rows
+            )[:5000] if rows else "（記録なし）"
             prompt = (
-                f"以下は「{entity['name']}」についてユーザーの記録に登場した抜粋です。\n"
-                f"これらを読んで、「{entity['name']}」とは何か を **2〜3 行の日本語** で説明してください。\n\n"
+                f"以下は「{entity['name']}」についての参考情報です。\n\n"
+                f"{wiki_block}\n"
+                f"=== あなたの記録での登場 ({len(rows)} 件抜粋) ===\n{samples}\n=== ここまで ===\n\n"
+                "上記を踏まえて、「" + entity['name'] + "」とは何か を **2〜4 行の日本語** で書いてください。\n"
                 "ルール:\n"
-                "- 一般的な事実 + ユーザーの文脈の組み合わせで書く\n"
-                "- 「ユーザーの記録によると」「抜粋から推測すると」のような前置きは不要\n"
-                "- 「〜です」「〜。」体で書く（淡々と）\n"
-                "- 推測で固有名詞を捏造しない\n"
-                "- 抜粋から判断できないなら正直に「詳細不明」と書く\n\n"
-                f"=== 抜粋 ===\n{samples}\n=== ここまで ==="
+                "- まず 1 文で「これは何か」の客観的な定義 (Wikipedia があればそれを基礎に)\n"
+                "- 次に 1〜2 文で「あなたの記録ではどう登場しているか」\n"
+                "- Wikipedia に該当なし & 記録から判断できない場合は **正直に「詳細不明」** と書く (推測で捏造しない)\n"
+                "- 「ユーザーの記録によると」「Wikipedia によると」のような出典前置きは不要 — 淡々と事実だけ\n"
+                "- 「〜です」「〜。」体"
             )
             model = pick_light_model(available)
             try:
@@ -10567,7 +10676,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                         "model": model,
                         "messages": [
                             {"role": "system",
-                             "content": "You write concise, factual Japanese descriptions."},
+                             "content": "You write concise, factual Japanese descriptions. Never invent facts."},
                             {"role": "user", "content": prompt},
                         ],
                         "stream": False,
@@ -10580,7 +10689,6 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 raise HTTPException(status_code=502, detail=f"Ollama 呼び出し失敗: {e}")
             if not description:
                 raise HTTPException(status_code=502, detail="LLM 応答が空でした")
-            # Persist so the next visit skips the round-trip.
             conn.execute(
                 "UPDATE entities SET description = ? WHERE id = ?",
                 (description, entity_id),
@@ -10592,6 +10700,9 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 "description": description,
                 "model": model,
                 "samples_used": len(rows),
+                "wikipedia": (
+                    {"lang": wiki["lang"], "url": wiki["url"]} if wiki else None
+                ),
             }
         finally:
             conn.close()

@@ -4,6 +4,27 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.16] - 2026-06-25
+
+### Fixed — 🚨 AI 説明が幻覚 (note を「ユーザーが記録した記述」と説明)
+- ユーザー指摘:「note は文章投稿アプリ。AI が嘘ついたら誰も使わ
+  なくなる」。v0.8.15 はローカル LLM (3b モデル) だけで合成 →
+  小さいモデルは note.com を知らないので捏造していた。
+- **修正**: Wikipedia 日本語 API (fallback: 英語) で entity 名を
+  まず引く → その正確な定義 + ユーザー記録 snippet を LLM が
+  ブレンドする方式に変更。
+  - Wikipedia ヒットなし → LLM は **「詳細不明」と書く** よう指示
+  - disambiguation (`note` 等) → 「同名複数あり、文脈で判定して」と
+    LLM に伝える
+  - organization type なら `{name} (企業)` `{name}株式会社` も試す
+- 送信するのは **entity 名のみ** (記録本文は送らない)。プライバシー
+  原則は維持。
+
+### Changed — 描写 UI に出典リンク + 「やり直し」ボタン
+- 生成された description の下に小さく **「ソース: Wikipedia (ja) ・
+  qwen2.5:14b ・ 6 件の記録」** を表示。
+- 「↻ やり直し」ボタンで再生成可能 (Wikipedia が更新されたとき用)。
+
 ## [0.8.15] - 2026-06-25
 
 ### Added — エンティティ詳細に「AI に説明させる」ボタン
