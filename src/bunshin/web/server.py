@@ -5217,11 +5217,19 @@ async function loadEntityWeb(centerId) {
 function renderEntityDetailFromAPI(e, related, firstSeen, records) {
   const detailEl = $('entity-detail');
   if (!detailEl) return;
-  // The hardcoded "(LLM 抽出)" placeholder is information-free —
-  // hide it and lean on the real-record snippets below to remind
-  // the user what this entity actually is.
-  const realDescription = (e.description && e.description !== '(LLM 抽出)')
-    ? `<div class="description">${esc(e.description)}</div>` : '';
+  // The hardcoded "(LLM 抽出)" placeholder is information-free.
+  // If we have a real description, show it; otherwise offer to ask the
+  // local LLM to synthesize one from the user's records.
+  const isPlaceholder = !e.description || e.description === '(LLM 抽出)';
+  const realDescription = !isPlaceholder
+    ? `<div class="description">${esc(e.description)}</div>`
+    : `<div class="description" id="entity-describe-slot" style="display:flex;align-items:center;gap:8px;color:var(--text-3);font-size:13px;">
+         <span>説明なし</span>
+         <button class="settings-save-btn" id="entity-describe-btn" type="button" data-id="${e.id}"
+                 style="padding:4px 10px;font-size:12px;background:var(--bg-2);color:var(--text-1);">
+           ${icon('sparkles', 12)} AI に説明させる
+         </button>
+       </div>`;
   const mentions = (e.mention_count ?? e.mentions ?? records.length) || 0;
   const fmtDate = (ts) => {
     if (!ts) return '';
@@ -5280,6 +5288,26 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
       loadEntityWeb(el.dataset.id);
     });
   });
+  const describeBtn = document.getElementById('entity-describe-btn');
+  if (describeBtn) {
+    describeBtn.addEventListener('click', async () => {
+      const slot = document.getElementById('entity-describe-slot');
+      const id = describeBtn.dataset.id;
+      describeBtn.disabled = true;
+      slot.innerHTML = `<span style="color:var(--text-3);font-size:13px;">${icon('sparkles', 12)} AI が記録を読んで説明を生成中…（10〜30 秒）</span>`;
+      try {
+        const r = await fetch(`/api/entities/${encodeURIComponent(id)}/describe`, {method: 'POST'});
+        const j = await r.json();
+        if (r.ok && j.description) {
+          slot.outerHTML = `<div class="description">${esc(j.description)} <span style="color:var(--text-3);font-size:11px;">— ${esc(j.model || 'AI')} が ${j.samples_used} 件の記録から生成</span></div>`;
+        } else {
+          slot.innerHTML = `<span style="color:#ff9b6b;font-size:12px;">✗ ${esc(j.detail || '失敗')}</span>`;
+        }
+      } catch (err) {
+        slot.innerHTML = `<span style="color:#ff9b6b;font-size:12px;">✗ ${esc(String(err))}</span>`;
+      }
+    });
+  }
 }
 
 function drawWeb(center, neighbors) {
@@ -10468,6 +10496,102 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 "first_seen": first_seen,
                 "relations": entity_relations(conn, entity_id, limit=30),
                 "records": entity_records(conn, entity_id, limit=10),
+            }
+        finally:
+            conn.close()
+
+    @app.post("/api/entities/{entity_id}/describe")
+    def api_entity_describe(entity_id: int):
+        """Have the local LLM read this entity's mentions across all
+        sources and produce a 1-3 line "what IS this thing" description.
+
+        Reviewer-Honda's specific ask: the relationships panel shows
+        related entities and record snippets, but the user still doesn't
+        know what the centered entity actually IS. The local AI is the
+        right tool — it has access to the same memory, but can synthesize
+        a definition the user can read in one breath.
+
+        Result is persisted into entities.description, replacing the
+        "(LLM 抽出)" placeholder so the next visit shows it instantly.
+        """
+        from bunshin.knowledge_graph import (
+            entity_by_id, init_kg_schema,
+        )
+        from bunshin.chat import OLLAMA_HOST, check_ollama, pick_light_model
+        import httpx as _httpx
+        conn = init_db(db_path)
+        try:
+            init_kg_schema(conn)
+            entity = entity_by_id(conn, entity_id)
+            if not entity:
+                raise HTTPException(status_code=404, detail="entity not found")
+            ok, available = check_ollama()
+            if not ok or not available:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Ollama が起動していません。/Applications/Ollama.app を起動して、qwen2.5:14b など日本語対応モデルを pull してください。",
+                )
+            # Pull up to 8 representative snippets (longest content gets
+            # priority — short greetings tell the LLM nothing).
+            rows = conn.execute(
+                "SELECT r.source, r.content FROM record_entities re "
+                "JOIN records r ON r.id = re.record_id "
+                "WHERE re.entity_id = ? AND length(r.content) >= 50 "
+                "ORDER BY length(r.content) DESC LIMIT 8",
+                (entity_id,),
+            ).fetchall()
+            if not rows:
+                raise HTTPException(
+                    status_code=404,
+                    detail="このエンティティに紐づく十分な長さの記録がありません",
+                )
+            samples = "\n\n---\n".join(
+                f"[{src}] {(content or '')[:800]}" for src, content in rows
+            )[:8000]
+            prompt = (
+                f"以下は「{entity['name']}」についてユーザーの記録に登場した抜粋です。\n"
+                f"これらを読んで、「{entity['name']}」とは何か を **2〜3 行の日本語** で説明してください。\n\n"
+                "ルール:\n"
+                "- 一般的な事実 + ユーザーの文脈の組み合わせで書く\n"
+                "- 「ユーザーの記録によると」「抜粋から推測すると」のような前置きは不要\n"
+                "- 「〜です」「〜。」体で書く（淡々と）\n"
+                "- 推測で固有名詞を捏造しない\n"
+                "- 抜粋から判断できないなら正直に「詳細不明」と書く\n\n"
+                f"=== 抜粋 ===\n{samples}\n=== ここまで ==="
+            )
+            model = pick_light_model(available)
+            try:
+                r = _httpx.post(
+                    f"{OLLAMA_HOST}/api/chat",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system",
+                             "content": "You write concise, factual Japanese descriptions."},
+                            {"role": "user", "content": prompt},
+                        ],
+                        "stream": False,
+                    },
+                    timeout=60.0,
+                )
+                r.raise_for_status()
+                description = r.json().get("message", {}).get("content", "").strip()
+            except _httpx.HTTPError as e:
+                raise HTTPException(status_code=502, detail=f"Ollama 呼び出し失敗: {e}")
+            if not description:
+                raise HTTPException(status_code=502, detail="LLM 応答が空でした")
+            # Persist so the next visit skips the round-trip.
+            conn.execute(
+                "UPDATE entities SET description = ? WHERE id = ?",
+                (description, entity_id),
+            )
+            conn.commit()
+            return {
+                "ok": True,
+                "entity_id": entity_id,
+                "description": description,
+                "model": model,
+                "samples_used": len(rows),
             }
         finally:
             conn.close()

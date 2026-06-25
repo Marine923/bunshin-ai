@@ -4,6 +4,22 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.15] - 2026-06-25
+
+### Added — エンティティ詳細に「AI に説明させる」ボタン
+- ユーザー実機指摘 v0.8.14 直後:「記憶の中から見つけてきて使い方を
+  見せても、根本のこれが何かはわからない。AI 自身の言葉で説明させて」
+- 新エンドポイント `POST /api/entities/{id}/describe`:
+  - 該当エンティティの全 mention records (上位 8 件、文字数長い順) を
+    pick light model (qwen2.5:14b 推奨) に渡す
+  - 「2〜3 行の日本語で、ユーザーの文脈と一般知識をブレンドして説明」
+    と prompt
+  - 生成結果を `entities.description` に永続保存 → 次回開いた時は
+    即表示 (再生成不要)
+- UI: description が `(LLM 抽出)` placeholder のとき
+  「✨ AI に説明させる」ボタン表示 → クリックで生成 → 完了後 inline
+  に description を差し込む (モデル名 + 使用記録数のフッター付き)。
+
 ## [0.8.14] - 2026-06-25
 
 ### Changed — 関係性タブの右パネルに「これ何だっけ?」セクション
