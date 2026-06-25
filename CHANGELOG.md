@@ -4,6 +4,21 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.14] - 2026-06-25
+
+### Changed — 関係性タブの右パネルに「これ何だっけ?」セクション
+- ユーザー実機指摘:「中心の Native Instruments が何か思い出せない。
+  関連エンティティを並べてくれてもそもそも本人が分からない」
+- 改善:
+  - description が `(LLM 抽出)` プレースホルダーのときは **非表示**
+  - 新セクション **「あなたの記録での登場」** を追加:
+    - **初出** (日付 + ソース + 抜粋 280 字)
+    - **最新** (日付 + ソース + 抜粋、初出と違う record の場合のみ)
+    - 計 N 件で言及
+  - `/api/entities/{id}` のレスに `first_seen` フィールド追加
+- 「関連エンティティだけ並べる」UI から、「**自分の記録を読み返して
+  自己想起する**」UI へ。
+
 ## [0.8.13] - 2026-06-25
 
 第 13 回レビューの 3 件 + 残骸 cleanup。

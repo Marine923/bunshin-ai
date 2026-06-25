@@ -5208,22 +5208,59 @@ async function loadEntityWeb(centerId) {
     _webRoot = { center, neighbors };
     drawWeb(center, neighbors);
     loading.style.display = 'none';
-    renderEntityDetailFromAPI(center, all);
+    renderEntityDetailFromAPI(center, all, j.first_seen, j.records || []);
   } catch (e) {
     loading.textContent = 'エラー: ' + String(e);
   }
 }
 
-function renderEntityDetailFromAPI(e, related) {
+function renderEntityDetailFromAPI(e, related, firstSeen, records) {
   const detailEl = $('entity-detail');
   if (!detailEl) return;
+  // The hardcoded "(LLM 抽出)" placeholder is information-free —
+  // hide it and lean on the real-record snippets below to remind
+  // the user what this entity actually is.
+  const realDescription = (e.description && e.description !== '(LLM 抽出)')
+    ? `<div class="description">${esc(e.description)}</div>` : '';
+  const mentions = (e.mention_count ?? e.mentions ?? records.length) || 0;
+  const fmtDate = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts * 1000);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  };
+  // "What IS this?" — first + most recent record snippet so the user
+  // can self-recall without leaving the panel. Reviewer-Honda asked:
+  // "I see the relationships, but I don't even remember what the center
+  // entity IS." This is the answer.
+  const newest = records[0];
+  const sameAsFirst = newest && firstSeen && newest.id === firstSeen.id;
+  const recallBlock = (firstSeen || newest) ? `
+    <div class="section">
+      <h3><span class="h3-icon">${icon('clock', 14)}</span> あなたの記録での登場</h3>
+      ${firstSeen ? `
+        <div style="font-size:12px;color:var(--text-3);margin:6px 0 2px;">
+          初出: <b style="color:var(--text-2);">${fmtDate(firstSeen.timestamp)}</b> ・ <span style="opacity:0.7;">${esc(firstSeen.source)}</span>
+        </div>
+        <div style="padding:10px 12px;border-left:3px solid var(--accent-1);background:var(--bg-1);border-radius:4px;font-size:13px;color:var(--text-1);line-height:1.55;white-space:pre-wrap;max-height:120px;overflow-y:auto;">${esc((firstSeen.snippet || '').trim())}</div>
+      ` : ''}
+      ${(newest && !sameAsFirst) ? `
+        <div style="font-size:12px;color:var(--text-3);margin:10px 0 2px;">
+          最新: <b style="color:var(--text-2);">${fmtDate(newest.timestamp)}</b> ・ <span style="opacity:0.7;">${esc(newest.source)}</span>
+        </div>
+        <div style="padding:10px 12px;border-left:3px solid var(--text-3);background:var(--bg-1);border-radius:4px;font-size:13px;color:var(--text-1);line-height:1.55;white-space:pre-wrap;max-height:120px;overflow-y:auto;">${esc((newest.content || '').slice(0,280).trim())}</div>
+      ` : ''}
+      <div style="margin-top:8px;font-size:11px;color:var(--text-3);">
+        計 <b>${mentions.toLocaleString()}</b> 件の記録で言及
+      </div>
+    </div>` : '';
   detailEl.innerHTML = `
     <h2>${esc(e.name)}</h2>
     <div>
       <span class="type-badge type-${esc(e.type)}">${esc(e.type)}</span>
       ${e.aliases?.length ? `<span style="color:var(--text-3);font-size:12px;">別名: ${esc(e.aliases.join(', '))}</span>` : ''}
     </div>
-    ${e.description ? `<div class="description">${esc(e.description)}</div>` : ''}
+    ${realDescription}
+    ${recallBlock}
     <div class="section">
       <h3><span class="h3-icon">${icon('link', 14)}</span> 関連エンティティ（特異性スコア順）</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;">
@@ -10405,8 +10442,30 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             entity = entity_by_id(conn, entity_id)
             if not entity:
                 return {"error": "Entity not found"}
+            # Reviewer-Honda screenshot feedback: the right panel was
+            # showing only the entity name + type, leaving the user
+            # stuck asking "what IS Native Instruments anyway?" The
+            # oldest and newest record where the entity first/last
+            # surfaced gives the user a fast self-recall: "ah, this
+            # came up in the dj-engine research thread on 2026-05-26".
+            first_row = conn.execute(
+                "SELECT r.id, r.source, r.source_id, r.content, r.timestamp "
+                "FROM record_entities re JOIN records r ON r.id = re.record_id "
+                "WHERE re.entity_id = ? "
+                "ORDER BY r.timestamp ASC LIMIT 1",
+                (entity_id,),
+            ).fetchone()
+            first_seen = None
+            if first_row:
+                first_seen = {
+                    "id": first_row[0], "source": first_row[1],
+                    "source_id": first_row[2],
+                    "snippet": (first_row[3] or "")[:280],
+                    "timestamp": first_row[4],
+                }
             return {
                 "entity": entity,
+                "first_seen": first_seen,
                 "relations": entity_relations(conn, entity_id, limit=30),
                 "records": entity_records(conn, entity_id, limit=10),
             }
