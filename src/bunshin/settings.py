@@ -113,6 +113,24 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "help_en": "Directory the file watcher monitors. Empty = ~/Documents. Restart to apply.",
         "section": "ingestion",
     },
+    "anthropic_api_key": {
+        "default": "",
+        "type": "secret",
+        "label_ja": "Anthropic API キー（Claude）",
+        "label_en": "Anthropic API key (Claude)",
+        "help_ja": "「AI に説明させる」機能でクラウド Claude を 1 ソースとして使い、判定 (judge) も Claude で行います。空欄ならローカル LLM のみ。設定すると entity 名のみ送信され、記録本文は送りません。",
+        "help_en": "Used in the 'AI describes entity' feature: Claude becomes one of the parallel sources and the judge. Only the entity NAME is sent — record bodies stay local.",
+        "section": "external",
+    },
+    "describe_enable_web": {
+        "default": True,
+        "type": "bool",
+        "label_ja": "「AI に説明させる」で Web を参照する",
+        "label_en": "Allow web lookups in 'AI describe'",
+        "help_ja": "Wikipedia / DuckDuckGo / 公式サイトに entity 名のみ送信して定義を取得します。オフだとローカル LLM の知識のみ。",
+        "help_en": "Sends only the entity name to Wikipedia / DuckDuckGo / official sites for grounding. Off = local LLM knowledge only.",
+        "section": "external",
+    },
     "min_signal_score": {
         "default": 30,
         "type": "int",
@@ -181,6 +199,9 @@ def set_value(conn: sqlite3.Connection, key: str, value: Any) -> None:
         elif t == "enum":
             if value not in schema["enum"]:
                 raise ValueError(f"value must be one of {schema['enum']}")
+            raw = str(value)
+        elif t == "secret":
+            # Stored as plain string but the UI hides it.
             raw = str(value)
         else:
             raw = str(value)

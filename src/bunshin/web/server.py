@@ -5125,6 +5125,12 @@ function renderSettingControl(key, meta, current) {
     const max = meta.max !== undefined ? `max="${meta.max}"` : '';
     return `<input type="number" class="settings-input" data-key="${esc(key)}" value="${esc(String(current))}" ${min} ${max}>`;
   }
+  if (meta.type === 'secret') {
+    // Mask the existing value (show only "saved" indicator), let the
+    // user paste a new one. Save sends only non-empty values.
+    const placeholder = current ? '保存済み（変更する場合のみ入力）' : 'sk-ant-... を貼り付け';
+    return `<input type="password" class="settings-input" data-key="${esc(key)}" data-secret="1" placeholder="${esc(placeholder)}" autocomplete="off">`;
+  }
   return `<input type="text" class="settings-input" data-key="${esc(key)}" value="${esc(String(current))}">`;
 }
 
@@ -5135,10 +5141,18 @@ async function saveSettings() {
   toast.textContent = '保存中…';
   toast.classList.remove('error');
   try {
+    // Strip secret fields that the user didn't change (empty input) so
+    // we don't overwrite an existing API key with "".
+    const toSave = {};
+    for (const [k, v] of Object.entries(settingsCurrent)) {
+      const meta = settingsSchemaCache[k];
+      if (meta?.type === 'secret' && (v === '' || v == null)) continue;
+      toSave[k] = v;
+    }
     const r = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: settingsCurrent }),
+      body: JSON.stringify({ values: toSave }),
     });
     const j = await r.json();
     if (j.errors && Object.keys(j.errors).length) {
@@ -5302,31 +5316,42 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
       const slot = document.getElementById('entity-describe-slot');
       const id = describeBtn.dataset.id;
       describeBtn.disabled = true;
-      slot.innerHTML = `<span style="color:var(--text-3);font-size:13px;">${icon('sparkles', 12)} Wikipedia と記録を読んで AI が説明を生成中…（10〜30 秒）</span>`;
+      slot.innerHTML = `<span style="color:var(--text-3);font-size:13px;">${icon('sparkles', 12)} 4 つのソース (Wikipedia / DuckDuckGo / 公式サイト / Claude) を並列調査中…（10〜40 秒）</span>`;
       try {
         const r = await fetch(`/api/entities/${encodeURIComponent(id)}/describe`, {method: 'POST'});
         const j = await r.json();
         if (r.ok && j.description) {
-          const wikiLink = j.wikipedia?.url
-            ? `<a href="${esc(j.wikipedia.url)}" target="_blank" rel="noopener" style="color:var(--accent-1);text-decoration:none;">Wikipedia (${esc(j.wikipedia.lang)})</a>`
-            : 'Wikipedia 該当なし';
+          const judgeBadge = j.judge
+            ? `<span style="background:var(--bg-2);padding:1px 6px;border-radius:3px;font-family:ui-monospace,monospace;">${esc(j.judge)} 選定</span>`
+            : '';
+          const chosen = j.chosen_source
+            ? ` ・ 採用: <b style="color:var(--text-2);">${esc(j.chosen_source)}</b>`
+            : '';
+          const reasoning = j.reasoning
+            ? `<div style="margin-top:4px;color:var(--text-3);font-size:11px;font-style:italic;">理由: ${esc(j.reasoning)}</div>`
+            : '';
+          const candidates = (j.candidates || []).map(c => `
+            <details style="margin-top:6px;font-size:11px;">
+              <summary style="cursor:pointer;color:var(--text-3);">
+                ${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener" style="color:var(--accent-1);">${esc(c.source)}</a>` : esc(c.source)}
+              </summary>
+              <div style="padding:6px 10px;margin-top:4px;background:var(--bg-1);border-radius:4px;color:var(--text-2);line-height:1.5;white-space:pre-wrap;">${esc(c.description.slice(0, 600))}</div>
+            </details>`).join('');
           slot.outerHTML = `<div class="description" id="entity-describe-slot">
             ${esc(j.description)}
-            <div style="margin-top:6px;color:var(--text-3);font-size:11px;">
-              ソース: ${wikiLink} ・ ${esc(j.model || 'AI')} ・ ${j.samples_used} 件の記録
+            <div style="margin-top:8px;color:var(--text-3);font-size:11px;">
+              ${judgeBadge}${chosen} ・ 候補 ${(j.candidates||[]).length} 件 ・ 記録 ${j.samples_used} 件
               <button class="settings-save-btn" type="button" data-id="${esc(String(id))}" id="entity-describe-btn"
-                      title="Wikipedia と記録を見直して再生成"
+                      title="もう一度全ソースを調査して再生成"
                       style="margin-left:8px;padding:2px 8px;font-size:11px;background:transparent;color:var(--text-3);border:1px solid var(--border-1);">
                 ${icon('refresh-cw', 11)} やり直し
               </button>
             </div>
+            ${reasoning}
+            ${candidates ? `<div style="margin-top:10px;">${candidates}</div>` : ''}
           </div>`;
-          // Re-wire the regenerated button (DOM was replaced).
-          renderEntityDetailFromAPI.__rewire = true;
           const newBtn = document.getElementById('entity-describe-btn');
-          if (newBtn) {
-            newBtn.addEventListener('click', () => describeBtn.click());
-          }
+          if (newBtn) newBtn.addEventListener('click', () => describeBtn.click());
         } else {
           slot.innerHTML = `<span style="color:#ff9b6b;font-size:12px;">✗ ${esc(j.detail || '失敗')}</span>`;
         }
@@ -10431,7 +10456,17 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         from bunshin.settings import all_settings, settings_schema
         conn = init_db(db_path)
         try:
-            return {"settings": all_settings(conn), "schema": settings_schema()}
+            schema = settings_schema()
+            values = all_settings(conn)
+            # Replace secret values with a "has-value" boolean so the API
+            # never returns the raw API key over HTTP.
+            masked = {}
+            for k, v in values.items():
+                if schema.get(k, {}).get("type") == "secret":
+                    masked[k] = bool(v)  # True = saved, False = empty
+                else:
+                    masked[k] = v
+            return {"settings": masked, "schema": schema}
         finally:
             conn.close()
 
@@ -10527,6 +10562,301 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         finally:
             conn.close()
 
+    # ── Multi-source entity description helpers (v0.8.17) ─────────────
+    # Reviewer-Honda asked for "many investigators in parallel" rather
+    # than relying on Wikipedia alone. Each helper below returns either
+    # a {source, description, url?} dict on success or None on miss/error.
+    # The describe endpoint fan-outs them concurrently, then a judge
+    # agent picks the most accurate one.
+
+    def _fetch_duckduckgo_summary(name: str) -> dict | None:
+        """DuckDuckGo Instant Answer API — free, no key, no auth.
+        Good for famous brands/companies that have Wikipedia-derived
+        abstracts but where the JA wiki page doesn't exist."""
+        import httpx as _httpx
+        try:
+            r = _httpx.get(
+                "https://api.duckduckgo.com/",
+                params={"q": name, "format": "json", "no_html": "1", "skip_disambig": "1"},
+                timeout=5.0,
+                headers={"User-Agent": "Bunshin/0.8"},
+            )
+            if r.status_code != 200:
+                return None
+            d = r.json()
+            abstract = (d.get("AbstractText") or "").strip()
+            if not abstract or len(abstract) < 20:
+                return None
+            return {
+                "source": "DuckDuckGo",
+                "description": abstract,
+                "url": d.get("AbstractURL") or None,
+            }
+        except Exception:
+            return None
+
+    def _fetch_official_site_meta(name: str, entity_type: str | None = None) -> dict | None:
+        """Try probable official URLs (e.g. note.com → check meta
+        description). Only for organization / project types."""
+        if entity_type not in ("organization", "project"):
+            return None
+        import httpx as _httpx
+        import re as _re
+        # Strip whitespace and pick a likely slug.
+        slug = name.strip().lower()
+        # If the name already looks like a domain, use it directly.
+        if "." in slug and " " not in slug:
+            candidates = [f"https://{slug}", f"https://www.{slug}"]
+        else:
+            # ASCII-only slug — try .com / .co.jp / .jp / .io
+            ascii_slug = _re.sub(r"[^a-z0-9-]+", "", slug.replace(" ", ""))
+            if not ascii_slug or len(ascii_slug) < 2:
+                return None
+            candidates = [
+                f"https://{ascii_slug}.com",
+                f"https://www.{ascii_slug}.com",
+                f"https://{ascii_slug}.co.jp",
+                f"https://{ascii_slug}.jp",
+            ]
+        meta_re = _re.compile(
+            r'<meta[^>]+(?:name|property)=["\'](?:description|og:description)["\'][^>]+content=["\']([^"\']+)["\']',
+            _re.IGNORECASE,
+        )
+        title_re = _re.compile(r'<title[^>]*>([^<]+)</title>', _re.IGNORECASE)
+        for url in candidates:
+            try:
+                r = _httpx.get(
+                    url, timeout=4.0, follow_redirects=True,
+                    headers={"User-Agent": "Mozilla/5.0 Bunshin/0.8"},
+                )
+                if r.status_code != 200 or not r.text:
+                    continue
+                html = r.text[:50000]
+                m_meta = meta_re.search(html)
+                m_title = title_re.search(html)
+                if not (m_meta or m_title):
+                    continue
+                title = m_title.group(1).strip() if m_title else ""
+                desc = m_meta.group(1).strip() if m_meta else ""
+                blurb = f"{title} — {desc}".strip(" —")
+                if len(blurb) < 20:
+                    continue
+                return {
+                    "source": "公式サイト",
+                    "description": blurb[:500],
+                    "url": str(r.url),
+                }
+            except Exception:
+                continue
+        return None
+
+    def _describe_via_claude(name: str, entity_type: str | None,
+                              user_context: str, api_key: str) -> dict | None:
+        """Ask Anthropic Claude API directly for a definition.
+        Sends entity NAME + a short hint about the user's context
+        category (no record bodies)."""
+        if not api_key:
+            return None
+        import httpx as _httpx
+        prompt = (
+            f"「{name}」（種別: {entity_type or '不明'}）について、"
+            "2〜4 行の日本語で「これは何か」を客観的に説明してください。"
+            "知らない / 確信が持てない場合は「該当する有名な対象が見当たりません」と書いてください。"
+            "推測で固有名詞を捏造しないこと。\n\n"
+            f"参考: ユーザーの記録カテゴリ: {user_context}"
+        )
+        try:
+            r = _httpx.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 400,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=25.0,
+            )
+            if r.status_code != 200:
+                return None
+            content = r.json().get("content") or []
+            text = "".join(
+                block.get("text", "") for block in content if block.get("type") == "text"
+            ).strip()
+            if not text or len(text) < 15:
+                return None
+            return {"source": "Claude", "description": text}
+        except Exception:
+            return None
+
+    def _describe_via_local_llm(name: str, entity_type: str | None,
+                                 samples: str) -> dict | None:
+        """Local LLM (qwen2.5:*) reading only the user's records.
+        Honest about being grounded in the user's notes only."""
+        from bunshin.chat import OLLAMA_HOST, check_ollama, pick_light_model
+        import httpx as _httpx
+        ok, available = check_ollama()
+        if not ok or not available:
+            return None
+        prompt = (
+            f"以下はユーザーの記録に登場した「{name}」関連の抜粋です。\n"
+            f"これだけを根拠に、「{name}」がユーザーにとって何かを 2〜3 行で書いてください。\n"
+            "抜粋から判断できない場合は「ユーザー記録からは詳細不明」と正直に書く。\n\n"
+            f"=== 抜粋 ===\n{samples}\n=== ここまで ==="
+        )
+        model = pick_light_model(available)
+        try:
+            r = _httpx.post(
+                f"{OLLAMA_HOST}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "You write concise, factual Japanese descriptions. Never invent facts."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "stream": False,
+                },
+                timeout=60.0,
+            )
+            if r.status_code != 200:
+                return None
+            text = (r.json().get("message", {}).get("content") or "").strip()
+            if not text:
+                return None
+            return {"source": f"ローカル LLM ({model})", "description": text}
+        except Exception:
+            return None
+
+    def _judge_best_description(
+        name: str, entity_type: str | None, user_context: str,
+        candidates: list[dict], api_key: str,
+    ) -> dict:
+        """Take the parallel-collected descriptions and either ask
+        Claude (if API key present) or the local LLM to pick the best
+        one and synthesize a final answer that lists the source.
+        Returns {description, chosen_source, reasoning, judge}."""
+        if not candidates:
+            return {
+                "description": "詳細不明（どのソースからも有用な情報が得られませんでした）",
+                "chosen_source": None, "reasoning": "no candidates",
+                "judge": "fallback",
+            }
+        # Build a numbered list for the judge.
+        listed = "\n\n".join(
+            f"【候補 {i+1} ({c['source']})】\n{c['description']}"
+            for i, c in enumerate(candidates)
+        )
+        judge_prompt = (
+            f"あなたは「{name}」（種別: {entity_type or '不明'}）について、複数のソースから集めた説明候補を比較し、"
+            "**最も正確で、ユーザーの文脈に最も合致する説明** を 1 つ選んで日本語で書き直す judge です。\n\n"
+            "ルール:\n"
+            "- 客観的な定義 (1 文) → ユーザーとの関係 (1〜2 文) の構成\n"
+            "- 候補が食い違う場合は、より具体的・検証可能な内容を優先\n"
+            "- どの候補も「不明」「該当なし」なら正直に「詳細不明」と書く\n"
+            "- 推測で固有名詞を補わない\n"
+            "- 出典の前置きは不要（淡々と事実だけ）\n\n"
+            f"ユーザーのこの entity への接触: {user_context}\n\n"
+            f"=== 候補 ===\n{listed}\n=== ここまで ===\n\n"
+            "出力 (JSON):\n"
+            '{"description": "<書き直した日本語説明>", "chosen_source": "<採用した候補のソース名>", "reasoning": "<選択理由 1 文>"}'
+        )
+        import json as _json
+        import httpx as _httpx
+        # Prefer Claude as judge if available; fall back to local LLM.
+        if api_key:
+            try:
+                r = _httpx.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-haiku-4-5-20251001",
+                        "max_tokens": 600,
+                        "messages": [{"role": "user", "content": judge_prompt}],
+                    },
+                    timeout=30.0,
+                )
+                if r.status_code == 200:
+                    content = r.json().get("content") or []
+                    text = "".join(b.get("text", "") for b in content if b.get("type") == "text").strip()
+                    # Extract JSON (Claude may wrap in code fence).
+                    import re as _re
+                    m = _re.search(r'\{.*\}', text, _re.DOTALL)
+                    if m:
+                        try:
+                            parsed = _json.loads(m.group(0))
+                            return {
+                                "description": parsed.get("description", text)[:1200],
+                                "chosen_source": parsed.get("chosen_source"),
+                                "reasoning": parsed.get("reasoning"),
+                                "judge": "Claude",
+                            }
+                        except Exception:
+                            pass
+                    return {
+                        "description": text[:1200],
+                        "chosen_source": None,
+                        "reasoning": "Claude returned non-JSON",
+                        "judge": "Claude",
+                    }
+            except Exception:
+                pass
+        # Local fallback.
+        from bunshin.chat import OLLAMA_HOST, check_ollama, pick_light_model
+        ok, available = check_ollama()
+        if ok and available:
+            try:
+                model = pick_light_model(available)
+                r = _httpx.post(
+                    f"{OLLAMA_HOST}/api/chat",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": "You output JSON only. Never invent facts."},
+                            {"role": "user", "content": judge_prompt},
+                        ],
+                        "stream": False,
+                    },
+                    timeout=60.0,
+                )
+                if r.status_code == 200:
+                    text = (r.json().get("message", {}).get("content") or "").strip()
+                    import re as _re
+                    m = _re.search(r'\{.*\}', text, _re.DOTALL)
+                    if m:
+                        try:
+                            parsed = _json.loads(m.group(0))
+                            return {
+                                "description": parsed.get("description", text)[:1200],
+                                "chosen_source": parsed.get("chosen_source"),
+                                "reasoning": parsed.get("reasoning"),
+                                "judge": f"ローカル LLM ({model})",
+                            }
+                        except Exception:
+                            pass
+                    return {
+                        "description": text[:1200],
+                        "chosen_source": None,
+                        "reasoning": "local LLM returned non-JSON",
+                        "judge": f"ローカル LLM ({model})",
+                    }
+            except Exception:
+                pass
+        # Last resort — return the first candidate verbatim.
+        c = candidates[0]
+        return {
+            "description": c["description"],
+            "chosen_source": c["source"],
+            "reasoning": "judge unavailable, picked first candidate",
+            "judge": "none",
+        }
+
     def _fetch_wikipedia_summary(name: str, entity_type: str | None = None) -> dict | None:
         """Look up `name` on Japanese Wikipedia and return a short
         extract. Returns None on no-match or any error.
@@ -10600,41 +10930,34 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
 
     @app.post("/api/entities/{entity_id}/describe")
     def api_entity_describe(entity_id: int):
-        """Produce a "what IS this thing?" description by combining
-        Wikipedia's factual definition with the user's actual mentions.
+        """v0.8.17 multi-source describe.
 
-        Reviewer-Honda v0.8.15 caught the problem: pure-LLM synthesis
-        from snippets is fiction. The small local model labeled note.com
-        as "ユーザーが記録した情報や意見をまとめた記述" — completely
-        wrong, because the LLM doesn't know what note.com is and the
-        records don't define it either, so it confabulated.
+        Fans out 4 investigators in parallel (Wikipedia, DuckDuckGo,
+        official site, Claude), each returns a candidate description.
+        A judge agent (Claude if API key set, else local LLM) picks the
+        most accurate one and rewrites it in the house style.
 
-        v0.8.16 flow:
-          1. Wikipedia JA (then EN) lookup on the entity NAME only
-          2. Local LLM blends Wikipedia's factual paragraph with the
-             user's record snippets ("Wikipedia says X. In your records
-             it shows up in Y context.")
-          3. If Wikipedia has nothing, the LLM is instructed to say
-             「詳細不明」 honestly rather than guess.
-
-        Result is persisted into entities.description.
+        Reviewer-Honda explicitly asked for this: "Wikipedia だけじゃ
+        弱い。いろんな人がいろんな場所を調べて最適解を出すイメージ".
         """
         from bunshin.knowledge_graph import entity_by_id, init_kg_schema
-        from bunshin.chat import OLLAMA_HOST, check_ollama, pick_light_model
-        import httpx as _httpx
+        from bunshin.settings import get as _get_setting
+        from concurrent.futures import ThreadPoolExecutor
         conn = init_db(db_path)
         try:
             init_kg_schema(conn)
             entity = entity_by_id(conn, entity_id)
             if not entity:
                 raise HTTPException(status_code=404, detail="entity not found")
-            ok, available = check_ollama()
-            if not ok or not available:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Ollama が起動していません。/Applications/Ollama.app を起動して、qwen2.5:14b など日本語対応モデルを pull してください。",
-                )
-            # Pull up to 6 representative snippets (longest content first).
+
+            api_key = _get_setting(conn, "anthropic_api_key") or ""
+            web_enabled = _get_setting(conn, "describe_enable_web")
+            if web_enabled is None:
+                web_enabled = True
+
+            # User's record context — kept on this machine, only passed
+            # to local LLM and judge (judge may be Claude). Sources that
+            # touch the open web only get the entity NAME.
             rows = conn.execute(
                 "SELECT r.source, r.content FROM record_entities re "
                 "JOIN records r ON r.id = re.record_id "
@@ -10642,53 +10965,58 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 "ORDER BY length(r.content) DESC LIMIT 6",
                 (entity_id,),
             ).fetchall()
-            wiki = _fetch_wikipedia_summary(entity["name"], entity.get("type"))
-            if wiki:
-                disambig_note = (
-                    "\n（注: 同名のものが複数あります。ユーザーの記録の文脈から、どれを指しているか判断してください）"
-                    if wiki.get("disambiguation") else ""
-                )
-                wiki_block = (
-                    f"=== Wikipedia ({wiki['lang']}) ===\n{wiki['extract']}{disambig_note}\n"
-                )
-            else:
-                wiki_block = "=== Wikipedia ===\n（該当ページなし）\n"
             samples = "\n\n---\n".join(
                 f"[{src}] {(content or '')[:600]}" for src, content in rows
-            )[:5000] if rows else "（記録なし）"
-            prompt = (
-                f"以下は「{entity['name']}」についての参考情報です。\n\n"
-                f"{wiki_block}\n"
-                f"=== あなたの記録での登場 ({len(rows)} 件抜粋) ===\n{samples}\n=== ここまで ===\n\n"
-                "上記を踏まえて、「" + entity['name'] + "」とは何か を **2〜4 行の日本語** で書いてください。\n"
-                "ルール:\n"
-                "- まず 1 文で「これは何か」の客観的な定義 (Wikipedia があればそれを基礎に)\n"
-                "- 次に 1〜2 文で「あなたの記録ではどう登場しているか」\n"
-                "- Wikipedia に該当なし & 記録から判断できない場合は **正直に「詳細不明」** と書く (推測で捏造しない)\n"
-                "- 「ユーザーの記録によると」「Wikipedia によると」のような出典前置きは不要 — 淡々と事実だけ\n"
-                "- 「〜です」「〜。」体"
+            )[:5000] if rows else "（十分な長さの記録なし）"
+
+            # Short, non-quoting context label sent to web-touching sources.
+            source_counts = {}
+            for src, _ in rows:
+                source_counts[src] = source_counts.get(src, 0) + 1
+            user_context_label = (
+                ", ".join(f"{s} {n}件" for s, n in source_counts.items())
+                or "記録少数"
             )
-            model = pick_light_model(available)
-            try:
-                r = _httpx.post(
-                    f"{OLLAMA_HOST}/api/chat",
-                    json={
-                        "model": model,
-                        "messages": [
-                            {"role": "system",
-                             "content": "You write concise, factual Japanese descriptions. Never invent facts."},
-                            {"role": "user", "content": prompt},
-                        ],
-                        "stream": False,
-                    },
-                    timeout=60.0,
+
+            ename = entity["name"]
+            etype = entity.get("type")
+
+            # Fan out — each task returns a candidate dict or None.
+            tasks: list[tuple[str, callable]] = []
+            if web_enabled:
+                tasks.append(("wikipedia", lambda: _wiki_to_candidate(
+                    _fetch_wikipedia_summary(ename, etype)
+                )))
+                tasks.append(("duckduckgo", lambda: _fetch_duckduckgo_summary(ename)))
+                tasks.append(("official", lambda: _fetch_official_site_meta(ename, etype)))
+                if api_key:
+                    tasks.append(("claude", lambda: _describe_via_claude(
+                        ename, etype, user_context_label, api_key
+                    )))
+            tasks.append(("local", lambda: _describe_via_local_llm(ename, etype, samples)))
+
+            candidates: list[dict] = []
+            with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
+                futures = {pool.submit(fn): name for name, fn in tasks}
+                for fut in futures:
+                    try:
+                        result = fut.result(timeout=70)
+                        if result and result.get("description"):
+                            candidates.append(result)
+                    except Exception:
+                        continue
+
+            if not candidates:
+                raise HTTPException(
+                    status_code=503,
+                    detail="どのソースからも情報が取得できませんでした（Ollama 未起動 / ネット未接続 / Web 無効化など）",
                 )
-                r.raise_for_status()
-                description = r.json().get("message", {}).get("content", "").strip()
-            except _httpx.HTTPError as e:
-                raise HTTPException(status_code=502, detail=f"Ollama 呼び出し失敗: {e}")
-            if not description:
-                raise HTTPException(status_code=502, detail="LLM 応答が空でした")
+
+            verdict = _judge_best_description(
+                ename, etype, user_context_label, candidates, api_key,
+            )
+            description = verdict["description"]
+
             conn.execute(
                 "UPDATE entities SET description = ? WHERE id = ?",
                 (description, entity_id),
@@ -10698,14 +11026,30 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 "ok": True,
                 "entity_id": entity_id,
                 "description": description,
-                "model": model,
+                "judge": verdict.get("judge"),
+                "chosen_source": verdict.get("chosen_source"),
+                "reasoning": verdict.get("reasoning"),
+                "candidates": [
+                    {"source": c["source"], "description": c["description"],
+                     "url": c.get("url")}
+                    for c in candidates
+                ],
                 "samples_used": len(rows),
-                "wikipedia": (
-                    {"lang": wiki["lang"], "url": wiki["url"]} if wiki else None
-                ),
             }
         finally:
             conn.close()
+
+    def _wiki_to_candidate(wiki: dict | None) -> dict | None:
+        """Adapter so wiki helper fits the same {source, description, url}
+        shape as the other investigators."""
+        if not wiki:
+            return None
+        prefix = "（曖昧さ回避ページ — 複数候補あり）\n" if wiki.get("disambiguation") else ""
+        return {
+            "source": f"Wikipedia ({wiki['lang']})",
+            "description": prefix + wiki["extract"],
+            "url": wiki.get("url"),
+        }
 
     @app.get("/api/insights")
     def api_insights():

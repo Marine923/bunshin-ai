@@ -4,6 +4,38 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.17] - 2026-06-25
+
+### Changed — エンティティ説明を **マルチエージェント・マルチソース** 化
+- ユーザー指摘:「Wikipedia だけじゃ弱い。いろんな人がいろんな場所を
+  調べて最適解を出すイメージ」
+- 5 つのソースを **並列で同時調査** (ThreadPoolExecutor):
+  1. **Wikipedia (JA/EN)** — 既存。disambiguation も extract を渡す
+  2. **DuckDuckGo Instant Answer** — 無料・無認証
+  3. **公式サイト推測** — entity 名から `.com / .co.jp / .jp` を試行、
+     meta description + title を取得
+  4. **Anthropic Claude API** — 設定タブに API キー入力欄追加
+  5. **ローカル LLM (qwen2.5:14b 等)** — ユーザー記録のみ参照
+- 4-5 つの候補 description を集めて **judge agent** (Claude 優先、
+  なければローカル LLM) が JSON で最良を選定:
+  ```json
+  {"description": "...", "chosen_source": "Wikipedia (ja)", "reasoning": "..."}
+  ```
+- UI: 「4 つのソース (Wikipedia / DuckDuckGo / 公式サイト / Claude)
+  を並列調査中…」進捗 → 結果 + judge 名 + 採用ソース + 全候補
+  (折りたたみ表示で個別確認可)。
+
+### Added — Anthropic API キー設定
+- 設定タブに新セクション「外部 AI」 + `anthropic_api_key` (secret type)
+- `describe_enable_web` toggle (Web 参照を完全 OFF にできる)
+- secret 型の安全性:
+  - GET `/api/settings` は API キーを **`true/false`** に置き換えて返す
+    (生キーは HTTP に乗せない)
+  - UI は password input + 「保存済み」placeholder
+  - 空欄保存は無視 (既存キー上書きしない)
+- プライバシー: Wikipedia / DDG / 公式サイト / Claude には **entity
+  名のみ** 送信。記録本文は一切送らない。
+
 ## [0.8.16] - 2026-06-25
 
 ### Fixed — 🚨 AI 説明が幻覚 (note を「ユーザーが記録した記述」と説明)
