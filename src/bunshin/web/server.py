@@ -57,9 +57,10 @@ INDEX_HTML = """<!DOCTYPE html>
     --warn:         #f59e0b;
     --good:         #34d399;
     --shadow-1:     0 1px 2px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.02);
-    --radius-sm:    6px;
-    --radius-md:    10px;
-    --radius-lg:    14px;
+    /* 3-step radius scale: small chips/buttons / cards / large surfaces */
+    --radius-sm:    8px;
+    --radius-md:    12px;
+    --radius-lg:    16px;
     --radius-pill:  999px;
     color-scheme: dark;
   }
@@ -105,13 +106,13 @@ INDEX_HTML = """<!DOCTYPE html>
     background: transparent;
   }
   *::-webkit-scrollbar-thumb {
-    background: rgba(129,140,248,0.22);
+    background: var(--border-2);
     border-radius: 10px;
     border: 2px solid transparent;
     background-clip: padding-box;
   }
   *::-webkit-scrollbar-thumb:hover {
-    background: rgba(129,140,248,0.40);
+    background: var(--text-3);
     background-clip: padding-box;
   }
   *::-webkit-scrollbar-corner { background: transparent; }
@@ -261,7 +262,7 @@ INDEX_HTML = """<!DOCTYPE html>
     -webkit-text-size-adjust: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    font-feature-settings: "cv11", "ss01";
+    font-feature-settings: "ss01";
     display: flex;
   }
   /* ── Sidebar (Discord / Linear style) ── */
@@ -460,7 +461,7 @@ INDEX_HTML = """<!DOCTYPE html>
   .add-memory-modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
   .add-memory-modal .btn { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-1); background: var(--bg-2); color: var(--text-0); font-size: 13px; cursor: pointer; }
   .add-memory-modal .btn:hover { background: var(--bg-3); }
-  .add-memory-modal .btn.primary { background: linear-gradient(135deg, #4c4d8a, #3b3f7a); border-color: transparent; color: #fff; }
+  .add-memory-modal .btn.primary { background: var(--accent-1); border-color: transparent; color: #fff; }
   .add-memory-modal .btn.primary:hover { filter: brightness(1.1); }
   .add-memory-modal .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .add-memory-modal .status { margin-top: 10px; font-size: 12px; color: var(--text-3); min-height: 16px; }
@@ -491,7 +492,7 @@ INDEX_HTML = """<!DOCTYPE html>
     width: 48px; height: 48px;
     margin: 0 auto 14px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #4c4d8a 0%, #3b3f7a 100%);
+    background: var(--accent-1);
     color: #fff;
     display: flex; align-items: center; justify-content: center;
   }
@@ -510,7 +511,7 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   .tour-card .tour-skip:hover { color: var(--text-1); }
   .tour-card .tour-next {
-    background: linear-gradient(135deg, #4c4d8a 0%, #3b3f7a 100%);
+    background: var(--accent-1);
     color: #fff; border: none;
     padding: 10px 20px; border-radius: 8px;
     font-size: 13px; font-weight: 500; cursor: pointer;
@@ -1982,7 +1983,7 @@ INDEX_HTML = """<!DOCTYPE html>
     transform: translateX(-50%) translateY(20px);
     padding: 10px 18px;
     border-radius: 22px;
-    background: linear-gradient(135deg, #4c4d8a, #3b3f7a);
+    background: var(--accent-1);
     color: #fff;
     font-size: 13px;
     font-weight: 500;
@@ -2427,8 +2428,19 @@ INDEX_HTML = """<!DOCTYPE html>
   .chat-messages {
     flex: 1;
     overflow-y: auto;
-    padding: 20px 24px;
+    padding: 32px 24px 24px;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  /* Center the message column at a readable width — ChatGPT / Claude.ai
+     pattern. Children pick their own alignment via align-self. */
+  .chat-messages > * {
+    max-width: 768px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
   }
   .ollama-status-banner {
     margin: 16px 24px 0;
@@ -2475,7 +2487,7 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   .ollama-status-banner .btn:hover { background: var(--bg-2); }
   .ollama-status-banner .btn.primary {
-    background: linear-gradient(135deg, #4c4d8a 0%, #3b3f7a 100%);
+    background: var(--accent-1);
     border-color: transparent;
     color: #fff;
   }
@@ -2495,32 +2507,36 @@ INDEX_HTML = """<!DOCTYPE html>
   :root.theme-light .ollama-status-banner .pull-log { background: rgba(0,0,0,0.04); }
   .ollama-status-banner .hint { color: var(--text-3); font-size: 12px; margin-top: 8px; }
   .chat-msg {
-    margin-bottom: 14px;
-    padding: 14px 18px;
-    border-radius: 14px;
-    max-width: 82%;
     white-space: pre-wrap;
     word-wrap: break-word;
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: 15px;
+    line-height: 1.7;
     animation: chat-msg-in 0.18s ease;
+    /* No background, no border by default — assistant baseline. */
   }
   @keyframes chat-msg-in {
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  /* User: right-aligned soft pill. No tail (no asymmetric corner).
+     Width-fit so short replies stay small, long ones cap at 75%. */
   .chat-msg.user {
-    background: linear-gradient(135deg, #3b3f7a 0%, #4c4d8a 100%);
-    color: #fff;
+    align-self: flex-end;
     margin-left: auto;
-    border-bottom-right-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    width: fit-content;
+    max-width: min(75%, 720px);
+    background: var(--bg-2);
+    color: var(--text-1);
+    padding: 10px 16px;
+    border-radius: 18px;
   }
+  /* Assistant: full width of the column, no background, no border.
+     The message itself is the page (ChatGPT / Claude.ai pattern). */
   .chat-msg.assistant {
-    background: var(--bg-1);
-    border: 1px solid var(--border-1);
-    color: var(--text-2);
-    border-bottom-left-radius: 4px;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: var(--text-1);
   }
   /* Markdown rendered inside assistant chat messages.
      Use text-1 (theme-aware) — hardcoded white was invisible in light
@@ -2731,7 +2747,7 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   .chat-msg .ctx-item-numbered:target {
     background: rgba(74, 143, 239, 0.15);
-    outline: 1px solid #4a8fef;
+    outline: 1px solid var(--accent-1);
   }
   .chat-msg .ctx-num {
     flex: 0 0 24px;
@@ -2744,71 +2760,129 @@ INDEX_HTML = """<!DOCTYPE html>
     font-size: 11px;
     font-weight: 600;
   }
-  .chat-input-row {
+  /* Modern composer — single card with textarea + icon row inside.
+     Replaces the old 4-button-in-a-row form (reviewer 16 called it
+     out as the #1 "amateur-feeling" source). */
+  .composer {
+    margin: 12px 24px 18px;
+    flex-shrink: 0;
+    background: var(--bg-1);
+    border: 1px solid var(--border-2);
+    border-radius: 16px;
+    padding: 12px 14px 10px;
     display: flex;
+    flex-direction: column;
     gap: 8px;
-    padding: 14px 20px;
-    background: var(--bg-0);
-    flex-shrink: 0;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
-  .chat-input {
-    flex: 1;
-    padding: 14px 18px;
-    font-size: 15px;
-    background: var(--bg-0);
-    border: 1px solid var(--border-1);
-    border-radius: 10px;
-    color: var(--text-1);
-    outline: none;
-    font-family: inherit;
+  .composer:focus-within {
+    border-color: var(--accent-1);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-1) 18%, transparent);
   }
-  .chat-input:focus { border-color: var(--accent-1); }
-  .chat-send {
-    padding: 14px 28px;
-    background: #4a8fef;
-    border: none;
-    border-radius: 10px;
-    color: #fff;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: background 0.15s;
-  }
-  .chat-send:hover { background: #6aa5ff; }
-  .chat-send:disabled { background: #2a3a5a; cursor: not-allowed; }
-  /* Voice input button — Web Speech API.
-     The .recording class is toggled by JS while the mic is live. */
-  .chat-mic {
-    width: 44px;
-    height: 44px;
-    flex-shrink: 0;
+  .composer-input {
+    width: 100%;
     background: transparent;
-    border: 1px solid var(--border-1);
-    border-radius: 10px;
+    border: 0;
+    outline: 0;
+    resize: none;
+    color: var(--text-1);
+    font-family: inherit;
+    font-size: 15px;
+    line-height: 1.55;
+    max-height: 240px;
+    min-height: 24px;
+    padding: 4px 2px;
+    box-sizing: border-box;
+  }
+  .composer-input::placeholder { color: var(--text-3); opacity: 0.7; }
+  .composer-actions { display: flex; align-items: center; gap: 4px; }
+  .composer-spacer { flex: 1; }
+  .composer-icon {
+    width: 32px;
+    height: 32px;
+    border: 0;
+    background: transparent;
+    border-radius: 8px;
     color: var(--text-3);
-    cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+    cursor: pointer;
     padding: 0;
+    transition: background 0.12s ease, color 0.12s ease;
   }
-  .chat-mic svg { width: 18px; height: 18px; }
-  .chat-mic:hover { background: var(--bg-1); color: var(--text-1); }
-  .chat-mic.recording {
+  .composer-icon:hover { background: var(--bg-2); color: var(--text-1); }
+  .composer-icon.recording {
     background: #b91c1c;
     color: #fff;
-    border-color: #f87171;
-    animation: mic-pulse 1.2s ease-in-out infinite;
+    animation: mic-pulse 1.4s ease-in-out infinite;
   }
+  .composer-send {
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent-1);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: filter 0.15s ease, transform 0.1s ease;
+  }
+  .composer-send:hover { filter: brightness(1.1); }
+  .composer-send:active { transform: scale(0.94); }
+  .composer-send:disabled { background: var(--bg-3); color: var(--text-4, var(--text-3)); cursor: not-allowed; filter: none; }
+  /* Minimal empty state for new chat sessions. */
+  .chat-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    gap: 28px;
+    min-height: 60vh;
+  }
+  .chat-empty-title {
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--text-1);
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-align: center;
+  }
+  .chat-empty-suggestions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(180px, 240px));
+    gap: 8px;
+    max-width: 520px;
+    width: 100%;
+  }
+  .chat-suggestion {
+    padding: 14px 16px;
+    background: transparent;
+    border: 1px solid var(--border-1);
+    border-radius: 12px;
+    color: var(--text-2);
+    font: inherit;
+    font-size: 13.5px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, transform 0.12s;
+  }
+  .chat-suggestion:hover {
+    background: var(--bg-1);
+    border-color: var(--border-2);
+    transform: translateY(-1px);
+  }
+  /* Pulse keyframes shared by composer-icon.recording. */
   @keyframes mic-pulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.45); }
     50%      { box-shadow: 0 0 0 7px rgba(248, 113, 113, 0); }
   }
-  .chat-mic[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
+  .composer-icon[disabled] { opacity: 0.4; cursor: not-allowed; }
   .chat-status {
     font-size: 12px;
     color: var(--text-3);
@@ -3307,7 +3381,7 @@ INDEX_HTML = """<!DOCTYPE html>
     transition: transform 0.2s, background 0.2s;
   }
   .settings-toggle.on { background: var(--accent-soft); border-color: var(--accent-1); }
-  .settings-toggle.on .knob { transform: translateX(28px); background: #4a8fef; }
+  .settings-toggle.on .knob { transform: translateX(28px); background: var(--accent-1); }
 
   /* Floating save button — pinned to the bottom-right of the settings
      tab, no wrapper chrome (the button itself stands alone). */
@@ -3325,7 +3399,7 @@ INDEX_HTML = """<!DOCTYPE html>
     box-shadow: 0 6px 20px rgba(74, 143, 239, 0.45);
   }
   .settings-save-btn {
-    background: #4a8fef;
+    background: var(--accent-1);
     color: #fff;
     border: none;
     padding: 10px 24px;
@@ -3335,7 +3409,7 @@ INDEX_HTML = """<!DOCTYPE html>
     cursor: pointer;
     font-family: inherit;
   }
-  .settings-save-btn:hover { background: #6aa5ff; }
+  .settings-save-btn:hover { filter: brightness(1.1); }
   .settings-save-btn:disabled { background: #2a3a5a; cursor: not-allowed; }
   .settings-toast {
     color: #5fbf6f;
@@ -3345,17 +3419,18 @@ INDEX_HTML = """<!DOCTYPE html>
 
   /* ── Mobile responsive ── */
   @media (max-width: 640px) {
-    .search-box, .chat-input { padding: 14px 16px; font-size: 16px; }
-    .chat-send { padding: 14px 20px; }
+    .search-box, .composer-input { padding: 14px 16px; font-size: 16px; }
+    .composer { margin: 8px 12px 12px; }
     .chip { font-size: 13px; padding: 8px 14px; }
     .filter-chip { padding: 7px 13px; font-size: 13px; }
     .filter-row select { padding: 8px 12px; font-size: 13px; }
     .filter-row { gap: 10px; font-size: 12px; }
     .result { padding: 14px; }
     .result-content { font-size: 13px; }
-    .chat-msg { font-size: 14px; padding: 12px 14px; max-width: 92%; }
+    .chat-msg { font-size: 14px; }
+    .chat-msg.user { max-width: 88%; padding: 10px 14px; }
     .chat-container { height: calc(100vh - 220px); }
-    .chat-input-row { flex-direction: column; }
+    .composer-actions { flex-wrap: wrap; }
     .chat-send { width: 100%; padding: 12px; }
   }
 </style>
@@ -3574,16 +3649,24 @@ INDEX_HTML = """<!DOCTYPE html>
           </div>
         </div>
         <div class="chat-status" id="chat-status"></div>
-        <form class="chat-input-row" id="chat-form">
-          <button class="chat-mic" id="chat-attach" type="button" title="画像をアップロード (OCR して記憶に追加)" aria-label="画像アップロード">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-          </button>
-          <input type="file" id="chat-file-input" accept="image/*" style="display:none">
-          <button class="chat-mic" id="chat-mic" type="button" title="音声入力 (Web Speech API)" aria-label="音声入力">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-          </button>
-          <input class="chat-input" id="chat-input" type="text" placeholder="分身に聞く… / Ask your bunshin..." autocomplete="off">
-          <button class="chat-send" id="chat-send" type="submit">送信</button>
+        <form class="composer" id="chat-form">
+          <textarea class="composer-input" id="chat-input" rows="1"
+                    placeholder="分身に聞く…" autocomplete="off"></textarea>
+          <div class="composer-actions">
+            <button type="button" class="composer-icon" id="chat-attach"
+                    title="画像をアップロード (OCR して記憶に追加)" aria-label="画像アップロード">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <input type="file" id="chat-file-input" accept="image/*" style="display:none">
+            <button type="button" class="composer-icon" id="chat-mic"
+                    title="音声入力 (Web Speech API)" aria-label="音声入力">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            </button>
+            <div class="composer-spacer"></div>
+            <button type="submit" class="composer-send" id="chat-send" aria-label="送信">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+            </button>
+          </div>
         </form>
       </div>
     </div>
@@ -5969,7 +6052,7 @@ async function loadInsights() {
       html += `<div class="insights-section"><h2><span class="h2-icon">${icon('folder', 18)}</span> 最近変更されたファイル</h2>` + watchInfo;
       for (const f of j.recent_files) {
         html += `
-          <div class="insights-card" style="border-left:3px solid #4a8fef;">
+          <div class="insights-card" style="border-left:3px solid var(--accent-1);">
             <div class="title" style="font-family: ui-monospace, monospace; font-size: 12px;">${esc(f.name)}</div>
             <div class="meta">${esc(f.modified)} · <span style="color:#777;">${esc(f.path)}</span></div>
           </div>`;
@@ -7554,6 +7637,31 @@ chatModel.addEventListener('change', () => {
 });
 loadModelList();
 
+// ===== Composer: autosize textarea + Enter送信 / Shift+Enter改行 =====
+// IME-aware so 日本語変換中の Enter で誤送信しない (Reviewer 16 spec).
+(function () {
+  const ta = document.getElementById('chat-input');
+  const form = document.getElementById('chat-form');
+  if (!ta || !form) return;
+  const autosize = () => {
+    ta.style.height = '0px';
+    ta.style.height = Math.min(ta.scrollHeight, 240) + 'px';
+  };
+  ta.addEventListener('input', autosize);
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !e.repeat) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+  // Reset height after the form submits (chat handler clears value).
+  form.addEventListener('submit', () => {
+    requestAnimationFrame(() => { autosize(); });
+  });
+  // Initial sizing.
+  autosize();
+})();
+
 // ===== Ollama setup wizard (chat tab) =====
 const ollamaBanner = $('ollama-status-banner');
 let _ollamaPullInProgress = false;
@@ -7943,11 +8051,30 @@ async function loadSession(sid) {
 
 function startNewChat() {
   currentSessionId = null;
-  chatMessages.innerHTML = `<div class="empty">
-    新しい会話を始めましょう。<br><br>
-    <svg class="inline-tip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
-    「覚えといて: ...」「メモ: ...」で記憶への保存だけもできます。
-  </div>`;
+  // Minimal empty state: title + 4 suggestion chips. ChatGPT / Claude
+  // pattern. No "how-to" copy, no step list — straight into a prompt.
+  chatMessages.innerHTML = `
+    <div class="chat-empty">
+      <h1 class="chat-empty-title">今日は何を思い出しますか？</h1>
+      <div class="chat-empty-suggestions">
+        <button class="chat-suggestion" data-prompt="覚えといて：">覚えといて：…</button>
+        <button class="chat-suggestion" data-prompt="昨日何があったっけ？">昨日何があったっけ？</button>
+        <button class="chat-suggestion" data-prompt="先週話したこと教えて">先週話したこと教えて</button>
+        <button class="chat-suggestion" data-prompt="1年前の今日、何してた？">1年前の今日、何してた？</button>
+      </div>
+    </div>`;
+  // Wire the suggestions: clicking copies prompt into input + focuses.
+  chatMessages.querySelectorAll('.chat-suggestion').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ta = document.getElementById('chat-input');
+      if (!ta) return;
+      ta.value = btn.dataset.prompt || btn.textContent.trim();
+      ta.focus();
+      ta.dispatchEvent(new Event('input'));  // trigger autosize
+      // Place caret at end.
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    });
+  });
   loadSessionList();
 }
 

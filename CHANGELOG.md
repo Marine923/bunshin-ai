@@ -4,6 +4,56 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-26
+
+**「素人感」を 1 つずつ駆逐する UI minor バンプ**。プロ UI レビューで
+指摘された 6 つの病巣のうち 5 つを実装、サイドバー統合は次回。
+
+### Changed — チャット composer を **1 枚カード + textarea + autosize**
+- 旧: 4 ボタン横並びの古典 HTML フォーム (`<input type="text">` +
+  送信ボタン)。プロ UI レビューが「素人感の最大要因」と指摘。
+- 新: ChatGPT / Claude.ai 同型の **1 枚カード内に textarea + アイコン
+  内包**。
+  - `<textarea>` + autosize (max 240px)
+  - **Enter で送信 / Shift+Enter で改行**
+  - **`isComposing` チェック** で日本語 IME 変換中の Enter で誤送信しない
+  - focus 時は accent ring (`box-shadow color-mix`)
+
+### Changed — メッセージのバブル + 尻尾を撤廃
+- 旧: ユーザー = 紫グラデバブル + 右下尻尾、アシスタント = グレー
+  バブル + 左下尻尾 (LINE / iMessage 時代の遺産)
+- 新: **ユーザー = 右寄せの控えめ pill** (背景 `var(--bg-2)`, 尻尾なし、
+  `width: fit-content`)、**アシスタント = 全幅プレーンテキスト**
+  (背景なし、枠なし、padding なし)
+- メッセージ列を `max-width: 768px` で **中央寄せ** (ChatGPT/Claude
+  共通の読みやすい列幅)
+
+### Changed — 送信ボタンを **円形矢印 + accent 1 色**
+- 旧: `background: #4a8fef` (システム他全部 indigo なのにここだけ青)
+- 新: `border-radius: 50%` の **円形アイコンボタン** + `var(--accent-1)`
+- ChatGPT パターン (テキストラベルなし、上向き矢印 SVG のみ)
+
+### Changed — Welcome / 新規チャット画面をミニマル化
+- 旧: 3 ステップカード「ウィザード / チャット / 設定」+ Tips
+  + コマンドリスト (= SaaS 管理画面の初回オンボーディング)
+- 新: **タイトル「今日は何を思い出しますか？」 + 4 つの suggestion
+  chips** だけ。ChatGPT / Claude empty state パターン
+- chip クリックで入力欄に prompt が挿入される
+
+### Changed — デザイントークン整理
+- ハードコード色 `#4a8fef` / `linear-gradient(#4c4d8a, #3b3f7a)` を
+  全て `var(--accent-1)` に置換 (7 箇所)
+- font-feature-settings: `"cv11"` 削除 (Inter に存在しない feature)、
+  `"ss01"` のみ
+- スクロールバー藍色 (rgba 129,140,248) → 中立 `var(--border-2)` /
+  `var(--text-3)`
+- radius scale を 4 段 (6/10/14/999) → **3 段 (8/12/16/999)**
+
+### Pending (次回)
+- 二重サイドバー (60px + 260px) → 1 本 260px に集約 (大規模 CSS 変更
+  のため別 PR)
+- ホークす重複マージ UI / カレンダー GUI ボタン
+
 ## [0.8.19] - 2026-06-25
 
 第 15 回レビュー (両レビュアー 100+ 回触り) の致命 4 + 中度 3 を消化。
