@@ -4,6 +4,21 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-06-26
+
+第 18 回 UI レビューの残り 2 件 (token 駆動化の徹底)。
+
+### Fixed — `var(--text-0)` 未定義参照を `var(--text-1)` に統一
+- token 定義は `--text-1` 〜 `--text-4` のみ。`var(--text-0)` は 11
+  箇所で参照されていたが未定義 → CSS フォールバックで親色を継承して
+  いて、設計者意図と異なる色が混入していた。
+- 全 11 箇所を `var(--text-1)` に一括置換。
+
+### Fixed — Ollama 警告バナーの amber を token 駆動に
+- `rgba(255,193,7, …)` (Material Amber) → `color-mix(in srgb,
+  var(--warn) 8%/35%, transparent)` に。
+- システムの `--warn` (#f59e0b dark / #d97706 light) と色相が揃った。
+
 ## [0.9.1] - 2026-06-26
 
 第 17 回 UI レビュー: v0.9.0 のコア 4 点はちゃんと着地、ただし

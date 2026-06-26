@@ -422,7 +422,7 @@ INDEX_HTML = """<!DOCTYPE html>
     font-weight: 500;
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   }
-  .add-memory-btn:hover { background: var(--bg-3); color: var(--text-0); border-color: var(--border-2); }
+  .add-memory-btn:hover { background: var(--bg-3); color: var(--text-1); border-color: var(--border-2); }
   .add-memory-btn svg { width: 14px; height: 14px; stroke-width: 2.2; }
   @media (max-width: 640px) {
     .add-memory-btn .add-memory-label { display: none; }
@@ -437,7 +437,7 @@ INDEX_HTML = """<!DOCTYPE html>
     width: min(480px, calc(100vw - 40px));
     box-shadow: 0 20px 60px rgba(0,0,0,0.45);
   }
-  .add-memory-modal h3 { margin: 0 0 6px; font-size: 16px; color: var(--text-0); }
+  .add-memory-modal h3 { margin: 0 0 6px; font-size: 16px; color: var(--text-1); }
   .add-memory-modal .sub { margin: 0 0 14px; font-size: 12px; color: var(--text-3); }
   .add-memory-modal textarea {
     width: 100%;
@@ -446,7 +446,7 @@ INDEX_HTML = """<!DOCTYPE html>
     border: 1px solid var(--border-1);
     border-radius: 8px;
     background: var(--bg-0);
-    color: var(--text-0);
+    color: var(--text-1);
     font: inherit;
     font-size: 14px;
     line-height: 1.6;
@@ -459,7 +459,7 @@ INDEX_HTML = """<!DOCTYPE html>
     box-shadow: 0 0 0 3px rgba(106,109,255,0.12);
   }
   .add-memory-modal .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
-  .add-memory-modal .btn { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-1); background: var(--bg-2); color: var(--text-0); font-size: 13px; cursor: pointer; }
+  .add-memory-modal .btn { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-1); background: var(--bg-2); color: var(--text-1); font-size: 13px; cursor: pointer; }
   .add-memory-modal .btn:hover { background: var(--bg-3); }
   .add-memory-modal .btn.primary { background: var(--accent-1); border-color: transparent; color: #fff; }
   .add-memory-modal .btn.primary:hover { filter: brightness(1.1); }
@@ -497,7 +497,7 @@ INDEX_HTML = """<!DOCTYPE html>
     display: flex; align-items: center; justify-content: center;
   }
   .tour-card .tour-icon svg { width: 24px; height: 24px; stroke-width: 2; }
-  .tour-card h3 { margin: 0 0 10px; font-size: 18px; font-weight: 600; color: var(--text-0); }
+  .tour-card h3 { margin: 0 0 10px; font-size: 18px; font-weight: 600; color: var(--text-1); }
   .tour-card p { margin: 0 0 18px; font-size: 14px; line-height: 1.65; color: var(--text-2); }
   .tour-card .tour-dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; }
   .tour-card .tour-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-1); }
@@ -2020,7 +2020,7 @@ INDEX_HTML = """<!DOCTYPE html>
   .insights-hero-headline {
     font-size: 18px;
     font-weight: 600;
-    color: var(--text-0);
+    color: var(--text-1);
     line-height: 1.4;
     margin-bottom: 6px;
   }
@@ -2448,8 +2448,8 @@ INDEX_HTML = """<!DOCTYPE html>
     width: calc(100% - 48px);
     padding: 18px 20px;
     border-radius: 12px;
-    background: linear-gradient(180deg, rgba(255,193,7,0.08), rgba(255,193,7,0.03));
-    border: 1px solid rgba(255,193,7,0.35);
+    background: color-mix(in srgb, var(--warn) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
     color: var(--text-1);
     font-size: 13px;
     line-height: 1.6;
@@ -2463,7 +2463,7 @@ INDEX_HTML = """<!DOCTYPE html>
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--text-0);
+    color: var(--text-1);
   }
   .ollama-status-banner h3 svg { width: 18px; height: 18px; stroke-width: 2.2; }
   .ollama-status-banner p { margin: 6px 0; color: var(--text-2); }
@@ -2478,7 +2478,7 @@ INDEX_HTML = """<!DOCTYPE html>
     border-radius: 8px;
     border: 1px solid var(--border-1);
     background: var(--bg-1);
-    color: var(--text-0);
+    color: var(--text-1);
     font-size: 13px;
     cursor: pointer;
     text-decoration: none;
@@ -4157,7 +4157,7 @@ async function wireMemoryDiffPanel() {
       ? ` <span style="color:var(--text-3);font-size:12px;">（うち ${filtered} 件は自動フィルター中）</span>`
       : '';
     el.innerHTML = `
-      <div style="margin-bottom:12px;font-size:15px;color:var(--text-0);">
+      <div style="margin-bottom:12px;font-size:15px;color:var(--text-1);">
         合計 <b>${total}</b> 件のうち、この 30 日で <b style="color:#58cc6e;">+${newC}</b> 件 追加${filteredNote}
       </div>
       <div style="margin-bottom:14px;">${sources}</div>
@@ -4305,7 +4305,7 @@ function renderCalendarPanel() {
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
         <input id="cal-url-input" type="url"
           placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
-          style="flex:1;min-width:280px;padding:8px 12px;border:1px solid var(--border-1);border-radius:8px;background:var(--bg-0);color:var(--text-0);font:inherit;font-size:13px;">
+          style="flex:1;min-width:280px;padding:8px 12px;border:1px solid var(--border-1);border-radius:8px;background:var(--bg-0);color:var(--text-1);font:inherit;font-size:13px;">
         <button class="settings-save-btn" id="cal-save-btn" type="button">登録 &amp; 取り込み</button>
       </div>
       <div id="cal-status" style="font-size:12px;color:var(--text-3);min-height:18px;margin-bottom:8px;"></div>
@@ -4473,7 +4473,7 @@ function openUninstallModal() {
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;"><input type="radio" name="uninstall-reason" value="bug">バグ・エラーが多い</label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;"><input type="radio" name="uninstall-reason" value="other">その他</label>
       </div>
-      <textarea id="uninstall-comment" placeholder="補足があれば（任意）— 例: 「Gmail 取り込みが Apple Pass... のところでつまずいた」" style="width:100%;min-height:70px;padding:10px;border:1px solid var(--border-1);border-radius:8px;background:var(--bg-0);color:var(--text-0);font:inherit;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+      <textarea id="uninstall-comment" placeholder="補足があれば（任意）— 例: 「Gmail 取り込みが Apple Pass... のところでつまずいた」" style="width:100%;min-height:70px;padding:10px;border:1px solid var(--border-1);border-radius:8px;background:var(--bg-0);color:var(--text-1);font:inherit;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
       <div class="actions" style="margin-top:14px;">
         <button class="btn" type="button" id="uninstall-cancel">キャンセル</button>
         <button class="btn" type="button" id="uninstall-skip">送信しないで手順だけ見る</button>
