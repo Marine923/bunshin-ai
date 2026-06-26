@@ -79,7 +79,7 @@ INDEX_HTML = """<!DOCTYPE html>
     --text-4:       #8b95a9;
     --accent-1:     #4f46e5;
     --accent-2:     #6366f1;
-    --accent-soft:  #e7e9ff;
+    --accent-soft:  #eef0ff;  /* softer than #e7e9ff so light-mode chip tint matches dark-mode perceived weight */
     --warn:         #d97706;
     --good:         #059669;
     --shadow-1:     0 1px 2px rgba(15,17,23,0.06), 0 0 0 1px rgba(15,17,23,0.04);
@@ -285,7 +285,7 @@ INDEX_HTML = """<!DOCTYPE html>
     border-radius: 9px;
     overflow: hidden;
     margin-bottom: 22px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
+    box-shadow: var(--shadow-1);  /* theme-aware (was hardcoded black) */
     line-height: 0;
   }
   .sidebar-logo svg { width: 100%; height: 100%; display: block; }
@@ -2443,7 +2443,9 @@ INDEX_HTML = """<!DOCTYPE html>
     margin-right: auto;
   }
   .ollama-status-banner {
-    margin: 16px 24px 0;
+    margin: 16px auto 0;
+    max-width: 768px;
+    width: calc(100% - 48px);
     padding: 18px 20px;
     border-radius: 12px;
     background: linear-gradient(180deg, rgba(255,193,7,0.08), rgba(255,193,7,0.03));
@@ -2523,6 +2525,7 @@ INDEX_HTML = """<!DOCTYPE html>
   .chat-msg.user {
     align-self: flex-end;
     margin-left: auto;
+    margin-right: 0;  /* override parent's `> * { margin-right: auto }` */
     width: fit-content;
     max-width: min(75%, 720px);
     background: var(--bg-2);
@@ -2843,7 +2846,6 @@ INDEX_HTML = """<!DOCTYPE html>
     justify-content: center;
     padding: 24px;
     gap: 28px;
-    min-height: 60vh;
   }
   .chat-empty-title {
     font-size: 28px;
@@ -2886,7 +2888,8 @@ INDEX_HTML = """<!DOCTYPE html>
   .chat-status {
     font-size: 12px;
     color: var(--text-3);
-    padding: 8px 0;
+    padding: 4px 24px 0;
+    min-height: 22px;  /* reserve space — no layout shift when status appears */
     text-align: center;
   }
   .chat-status.error { color: #ff6666; }
@@ -3639,19 +3642,15 @@ INDEX_HTML = """<!DOCTYPE html>
       </aside>
       <div class="chat-container">
         <div class="ollama-status-banner" id="ollama-status-banner" hidden></div>
-        <div class="chat-messages" id="chat-messages">
-          <div class="empty">
-            分身（Bunshin）は、過去のあなたを全部読んでいます。<br>
-            気になることを聞いてみてください。<br><br>
-            <svg class="inline-tip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
-            「<b>覚えといて: 来週火曜10時に漁協ミーティング</b>」のように<br>
-            先頭に <code>覚えといて:</code> や <code>メモ:</code> を付けると、AI に聞かずに記憶に保存だけします。
-          </div>
-        </div>
+        <!-- Initial markup intentionally empty; JS calls startNewChat()
+             on load to render the minimal empty state with wired
+             suggestion chips (reviewer 17 noted the old verbose copy
+             was leaking through on first open). -->
+        <div class="chat-messages" id="chat-messages"></div>
         <div class="chat-status" id="chat-status"></div>
         <form class="composer" id="chat-form">
           <textarea class="composer-input" id="chat-input" rows="1"
-                    placeholder="分身に聞く…" autocomplete="off"></textarea>
+                    placeholder="分身に話す…" autocomplete="off"></textarea>
           <div class="composer-actions">
             <button type="button" class="composer-icon" id="chat-attach"
                     title="画像をアップロード (OCR して記憶に追加)" aria-label="画像アップロード">
@@ -8055,7 +8054,7 @@ function startNewChat() {
   // pattern. No "how-to" copy, no step list — straight into a prompt.
   chatMessages.innerHTML = `
     <div class="chat-empty">
-      <h1 class="chat-empty-title">今日は何を思い出しますか？</h1>
+      <h1 class="chat-empty-title">今日はどうしますか？</h1>
       <div class="chat-empty-suggestions">
         <button class="chat-suggestion" data-prompt="覚えといて：">覚えといて：…</button>
         <button class="chat-suggestion" data-prompt="昨日何があったっけ？">昨日何があったっけ？</button>
@@ -8080,6 +8079,9 @@ function startNewChat() {
 
 chatNewBtn.addEventListener('click', startNewChat);
 loadSessionList();
+// Render the minimal empty state on first paint (reviewer 17 noted
+// the verbose copy in static HTML was bypassing the new UI).
+startNewChat();
 
 // Chat session search — filter the sidebar list as the user types.
 (function setupChatSessionSearch() {

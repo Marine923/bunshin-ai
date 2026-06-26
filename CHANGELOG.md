@@ -4,6 +4,33 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-06-26
+
+第 17 回 UI レビュー: v0.9.0 のコア 4 点はちゃんと着地、ただし
+**🔴 初回起動時に旧 verbose copy が出る** + 仕上げの粗 7 点を消化。
+
+### Fixed — 🔴 初回起動時のチャット画面が旧 verbose copy のまま
+- `startNewChat()` の新 empty state は **+ 新規チャット** クリック
+  時のみ発動。起動直後にチャットタブを開くと HTML 直書きの旧
+  「分身（Bunshin）は、過去のあなたを全部読んでいます…」が見えていた。
+- 修正: HTML 側の `<div class="empty">` を空に → JS で
+  `startNewChat()` を初回ロード時に呼ぶ。
+- これで起動直後から **「今日はどうしますか？」 + 4 chips** のミニマル
+  状態に。
+
+### Changed — 仕上げの粗 7 件
+- `.chat-empty min-height: 60vh` 削除 (親 flex:1 で十分、composer 押し上げ防止)
+- `.chat-msg.user` に `margin-right: 0` (親の `> * margin-right: auto` 打ち消し)
+- `.chat-empty-title` を「今日は何を思い出しますか？」→ **「今日はどうしますか？」**
+- placeholder「分身に聞く…」→ **「分身に話す…」** (recall 専用に偏らない中立形)
+- `.chat-status` に `min-height: 22px` (layout shift 防止)
+- `.ollama-status-banner` を 中央寄せ + max-width 768px (メッセージ列に揃える)
+- `.sidebar-logo` の box-shadow 黒固定 → `var(--shadow-1)` (テーマ追従)
+- `--accent-soft` ライト #e7e9ff → **#eef0ff** (dark との知覚輝度を揃える)
+
+### Pending
+- 二重サイドバー (60px + 260px) → 1 本統合 (大規模 CSS 改修のため別 release)
+
 ## [0.9.0] - 2026-06-26
 
 **「素人感」を 1 つずつ駆逐する UI minor バンプ**。プロ UI レビューで
