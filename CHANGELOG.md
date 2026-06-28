@@ -52,6 +52,49 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.16] - 2026-06-29
+
+🔴 **松 (致命)**: MCP 経由で Bunshin が機能不全になる 4 件 + 不正確な
+ポジショニング表現の訂正。**β テスター招待前の必須修正**。
+
+### Fixed — MCP search_memory: 複数語クエリ 0 件問題 (#1)
+- 旧: 「壱岐黄金 じゃがいも」が MCP で 0 件、UI で 87% hit
+- 原因: MCP 側で `expand=False` (default)、UI 側だけ `expand=True`
+- 新: **MCP 強制 `expand=True`** に変更 (設定タブの「LLM クエリ拡張」
+  トグルは MCP には届かないため)
+- 実測: 「壱岐黄金 じゃがいも」→ 3 hit (file/notes), distance 13.87-13.99,
+  rerank 0.73-1.26, keyword_fallback=False
+
+### Fixed — MCP レスポンス肥大化 (#2)
+- 旧: limit=3 でも PDF 全文が混入し 137KB 超 → Claude の context 食い潰し
+- 新: 各 hit の `content` を **1500 字に自動 truncate**、
+  `content_truncated: true/false` を併記、続きは `recall_session(source_id)`
+  で取得できると明記
+
+### Fixed — MCP distance 全結果 1.0 固定 (#3)
+- 旧: MCP は raw `distance` を返すだけ → keyword_fallback 時 1.0 固定で
+  スコアソート無効
+- 新: **`relevance_percent` (0-100)** に変換、Web UI の `relevanceLabel()`
+  と同じ式: rerank があれば `rerank*100`、なければ `100 - (d-10)*6`。
+  keyword_fallback 時は `null` (誤解を避けるため fake スコアを返さない)
+
+### Fixed — get_today_hero タイムアウト (#4)
+- 旧: 毎回 `generate_insights()` 全計算 → 大型 DB で 5-30s、MCP は 30s
+  でタイムアウト
+- 新: **`~/.bunshin/hero_cache.json` に日付キーで永続キャッシュ**。
+  同じ日付なら sub-ms で返却、別日付なら計算 + 上書き
+- レスポンスに `from_cache: bool` を追加
+
+### Changed — ポジショニング訂正 (#5)
+- 旧 (内部メモリ): 「4 条件全部満たす **世界初** の個人記憶 AI」
+- 新: 「**写真・ブラウザ履歴・iMessage まで食べる、日本人のための**
+  **ローカル個人 AI**」
+- 理由: 本田さん指摘で **OpenJarvis (Stanford, Apache 2.0)** が同条件を
+  先行満足していることを確認 → 「世界初」「唯一」表現は使用禁止に変更
+- 差別化軸は (a) 写真/iMessage/ブラウザ履歴の深い食い込み (b) LINE
+  取り込み (OpenJarvis 未実装、最大の日本差別化) (c) 日本語 UX
+- メモリ `project_bunshin_personal_memory_ai.md` を更新済み
+
 ## [0.9.15] - 2026-06-28
 
 Phase 1 配布の致命的ブロッカー: Wizard が **`bunshin import-gmail`**

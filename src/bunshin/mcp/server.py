@@ -40,6 +40,30 @@ def _format_timestamp(ts: int | None) -> str | None:
 def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
     mcp = FastMCP("bunshin")
 
+    # v0.9.16: max chars of `content` to return per hit. Long records
+    # (PDF/Notes) used to blow the MCP response up to 100KB+, which
+    # ate the calling LLM's context budget. Truncated bodies suggest
+    # `recall_session(source_id=...)` for the full text.
+    _MCP_CONTENT_MAX = 1500
+
+    def _distance_to_percent(r: dict) -> int | None:
+        """Mirror the Web UI's relevance_label() so MCP hits show the
+        same 0-100 scale the user sees in the search tab.
+        Returns None when the distance is meaningless (keyword fallback
+        or missing vector)."""
+        sc = r.get("score_components") or {}
+        if "keyword_fallback" in sc:
+            return None  # fallback distances are fake (all 1.0)
+        rerank = sc.get("rerank")
+        if isinstance(rerank, (int, float)):
+            return max(0, min(100, round(rerank * 100)))
+        d = r.get("distance")
+        if d is None or d >= 999:
+            return None
+        # Same formula as web/server.py relevanceLabel():
+        # 13–15 ≈ great, 16–18 ≈ ok, 20+ ≈ weak.
+        return max(0, min(100, round(100 - (d - 10) * 6)))
+
     @mcp.tool()
     def search_memory(
         query: str,
@@ -51,6 +75,8 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         Use this whenever the user references something from the past — past
         conversations, projects, decisions, files, etc. The query can be in
         Japanese or English; matches are by meaning, not exact words.
+        Multi-word Japanese queries (e.g. "壱岐黄金 じゃがいも") are
+        automatically expanded via LLM paraphrasing for higher recall.
 
         Examples of when to use:
         - User mentions a project / organization / person name: search for it
@@ -64,8 +90,11 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
 
         Returns:
             JSON list of relevant past records, each with timestamp, role,
-            source, source_id (use with recall_session to expand), distance
-            (lower = closer match), and content.
+            source, source_id, relevance_percent (0-100, same as web UI;
+            null when only keyword-fallback matched), content_truncated
+            (bool — when true, fetch full text via recall_session), and
+            content (capped at 1500 chars to preserve calling LLM
+            context budget).
         """
         conn = init_db(db_path)
         try:
@@ -74,18 +103,35 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                 query,
                 limit=min(max(limit, 1), 50),
                 sort=sort if sort in ("relevance", "newest", "oldest") else "relevance",
+                # Fix 1: force LLM query expansion. Settings panel toggle
+                # doesn't help here — MCP callers don't read user settings.
+                expand=True,
+                # Cross-encoder rerank — turns the "all distance=1.0"
+                # keyword-fallback noise into a real similarity score.
+                rerank=True,
             )
-            formatted = [
-                {
+            formatted = []
+            for r in results:
+                content = r.get("content") or ""
+                truncated = len(content) > _MCP_CONTENT_MAX
+                if truncated:
+                    content = (
+                        content[:_MCP_CONTENT_MAX]
+                        + f"\n\n…[content truncated at {_MCP_CONTENT_MAX} chars — "
+                        f"call recall_session(source_id={r['source_id']!r}) for the full session]"
+                    )
+                formatted.append({
                     "timestamp": _format_timestamp(r["timestamp"]),
                     "role": (r["metadata"] or {}).get("role"),
                     "source": r["source"],
                     "source_id": r["source_id"],
-                    "distance": round(r["distance"], 3),
-                    "content": r["content"],
-                }
-                for r in results
-            ]
+                    # Fix 3: surface the same 0-100 score the web UI shows
+                    # so the calling LLM can sort/filter on actual quality
+                    # rather than the all-1.0 raw distance.
+                    "relevance_percent": _distance_to_percent(r),
+                    "content_truncated": truncated,  # Fix 2 transparency
+                    "content": content,
+                })
             return json.dumps(
                 {"query": query, "count": len(formatted), "results": formatted},
                 ensure_ascii=False,
@@ -240,6 +286,41 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         finally:
             conn.close()
 
+    # v0.9.16: generate_insights() can take 5-30s on large DBs because
+    # it joins records + entities + signal_score + dates. MCP clients
+    # time out around 30s — and Claude calling it for a morning
+    # briefing was hitting timeout. Cache today's hero to disk so 2nd+
+    # calls within the same day are sub-millisecond.
+    _HERO_CACHE_PATH = Path.home() / ".bunshin" / "hero_cache.json"
+
+    def _compute_today_hero(conn) -> dict:
+        from bunshin.insights import generate_insights
+        j = generate_insights(conn)
+        hero = None
+        if j.get("upcoming_events"):
+            e = j["upcoming_events"][0]
+            hero = {
+                "kind": "event",
+                "headline": f"次の予定: {e.get('summary', '?')}",
+                "detail": f"{e.get('start', '?')}"
+                          + (f" @ {e['location']}" if e.get('location') else ""),
+            }
+        elif j.get("inactive_projects"):
+            p = j["inactive_projects"][0]
+            hero = {
+                "kind": "stale_project",
+                "headline": f"「{p.get('name')}」が {p.get('days_ago')} 日動いてません",
+                "detail": p.get("description", ""),
+            }
+        elif j.get("recent_files"):
+            f = j["recent_files"][0]
+            hero = {
+                "kind": "recent_file",
+                "headline": f.get("name", "?"),
+                "detail": f.get("modified", ""),
+            }
+        return {"hero": hero, "generated_at": j.get("generated_at")}
+
     @mcp.tool()
     def get_today_hero() -> str:
         """Return the single most actionable insight for today.
@@ -249,9 +330,13 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         hero card. Use this for daily morning briefings or when the
         user asks "what should I focus on today?".
 
+        Cached to ~/.bunshin/hero_cache.json per-day for sub-millisecond
+        second calls. First call of the day takes 5-30s (computes from
+        scratch); subsequent calls serve the cached value.
+
         Returns:
-            JSON object: {"hero": {...}, "generated_at": "..."} where
-            `hero` is one of three shapes selected by priority:
+            JSON object: {"hero": {...}, "generated_at": "...", "from_cache": bool}
+            where `hero` is one of three shapes selected by priority:
 
             - kind="event":         {headline, detail}   — calendar event in next 14 days (BLUE/info)
             - kind="stale_project": {headline, detail}   — project no signal for >7 days (YELLOW/warn)
@@ -261,35 +346,36 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             The kind names are stable — callers can branch on them to
             choose an appropriate UI tone.
         """
-        from bunshin.insights import generate_insights
+        today = datetime.now().strftime("%Y-%m-%d")
+        # Cache hit path — sub-ms response.
+        try:
+            cached = json.loads(_HERO_CACHE_PATH.read_text())
+            if cached.get("date") == today:
+                return json.dumps(
+                    {
+                        "hero": cached.get("hero"),
+                        "generated_at": cached.get("generated_at"),
+                        "from_cache": True,
+                    },
+                    ensure_ascii=False, indent=2,
+                )
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            pass
+        # Cache miss — compute + persist.
         conn = init_db(db_path)
         try:
-            j = generate_insights(conn)
-            hero = None
-            if j.get("upcoming_events"):
-                e = j["upcoming_events"][0]
-                hero = {
-                    "kind": "event",
-                    "headline": f"次の予定: {e.get('summary', '?')}",
-                    "detail": f"{e.get('start', '?')}"
-                              + (f" @ {e['location']}" if e.get('location') else ""),
-                }
-            elif j.get("inactive_projects"):
-                p = j["inactive_projects"][0]
-                hero = {
-                    "kind": "stale_project",
-                    "headline": f"「{p.get('name')}」が {p.get('days_ago')} 日動いてません",
-                    "detail": p.get("description", ""),
-                }
-            elif j.get("recent_files"):
-                f = j["recent_files"][0]
-                hero = {
-                    "kind": "recent_file",
-                    "headline": f.get("name", "?"),
-                    "detail": f.get("modified", ""),
-                }
-            return json.dumps({"hero": hero, "generated_at": j.get("generated_at")},
-                              ensure_ascii=False, indent=2)
+            result = _compute_today_hero(conn)
+            try:
+                _HERO_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                _HERO_CACHE_PATH.write_text(json.dumps(
+                    {"date": today, **result}, ensure_ascii=False,
+                ))
+            except OSError:
+                pass  # cache write best-effort; still return the result
+            return json.dumps(
+                {**result, "from_cache": False},
+                ensure_ascii=False, indent=2,
+            )
         finally:
             conn.close()
 
