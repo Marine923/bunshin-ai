@@ -52,6 +52,30 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.11] - 2026-06-28
+
+reviewer 21 Phase 3 polish + 差別化機能 2 件。
+
+### Changed — Phase 3 polish
+- スクロールバー幅 **10px → 8px** (中立化)
+- サイドバー幅 **60px → 64px**
+- アクティブタブに **左 indicator bar** (3px, accent-1) 追加 (Notion /
+  Linear パターン)
+
+### Added — メッセージ hover アクション (G-3)
+- アシスタント応答の下に hover で **コピー / 再生成 / TTS** の 3 ボタン
+- コピー: ctx-list / msg-actions を除いたプレーンテキスト
+- 再生成: 直前のユーザー発話を自動 re-submit
+- TTS: 既存の `speakText()` 経由
+
+### Added — タイムライン GitHub 風 ヒートマップ (G-1)
+- タイムラインタブに **「リスト / ヒートマップ」トグル** 追加
+- 365 日 × 7 曜日のヒートマップ (5 段階強度: bg-3 → accent-1)
+- 月ラベル + 各セルにツールチップ「YYYY-MM-DD — N 件」
+- セルクリックで `/api/timeline/day` を fetch して **その日の上位 20
+  件をインライン展開**
+- 未来日は透明セル (cursor: default)
+
 ## [0.9.10] - 2026-06-28
 
 reviewer 21 取りこぼし X1〜X3 = **ハードコード ゼロ達成**。

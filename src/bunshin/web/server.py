@@ -99,8 +99,8 @@ INDEX_HTML = """<!DOCTYPE html>
     scrollbar-color: rgba(129,140,248,0.28) transparent;
   }
   *::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
   }
   *::-webkit-scrollbar-track {
     background: transparent;
@@ -267,7 +267,7 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   /* ── Sidebar (Discord / Linear style) ── */
   aside.sidebar {
-    width: 60px;
+    width: 64px;
     flex-shrink: 0;
     background: var(--bg-1);
     border-right: 1px solid var(--border-1);
@@ -322,6 +322,19 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   .sidebar-tab:hover svg {
     transform: scale(1.08);
+  }
+  /* Active tab gets a thin accent bar on the left edge — Notion /
+     Linear pattern. Cheap way to add hierarchy without changing the
+     icon's color too aggressively. */
+  .sidebar-tab.active::before {
+    content: "";
+    position: absolute;
+    left: -8px;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--accent-1);
   }
   .sidebar-tab.active {
     color: var(--accent-2);
@@ -1477,6 +1490,88 @@ INDEX_HTML = """<!DOCTYPE html>
     gap: 12px;
     margin-bottom: 16px;
     flex-wrap: wrap;
+  }
+  /* List ↔ Heatmap toggle in the timeline controls bar. */
+  .timeline-view-toggle {
+    display: inline-flex;
+    margin-left: auto;
+    gap: 2px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-pill);
+    padding: 2px;
+  }
+  .timeline-view-btn {
+    padding: 4px 12px;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-pill);
+    color: var(--text-3);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    transition: background 0.12s, color 0.12s;
+  }
+  .timeline-view-btn:hover { color: var(--text-1); }
+  .timeline-view-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent-2);
+  }
+  /* GitHub-style 365-day activity heatmap (reviewer 21 G-1). */
+  .heatmap-wrap {
+    background: var(--bg-1);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
+    margin-bottom: 14px;
+  }
+  .heatmap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    color: var(--text-2);
+    font-size: 13px;
+  }
+  .heatmap-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-3);
+    font-size: 11px;
+  }
+  .heatmap-legend .hm-cell {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  .heatmap-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    font-family: inherit;
+  }
+  .heatmap-svg .hm-month-labels text {
+    font-size: 9px;
+    fill: var(--text-3);
+  }
+  .hm-cell { cursor: pointer; transition: stroke 0.12s; }
+  .hm-cell:hover { stroke: var(--accent-1); stroke-width: 1.5; }
+  .hm-0 { fill: var(--bg-3); }
+  .hm-1 { fill: color-mix(in srgb, var(--accent-1) 18%, var(--bg-3)); }
+  .hm-2 { fill: color-mix(in srgb, var(--accent-1) 38%, var(--bg-3)); }
+  .hm-3 { fill: color-mix(in srgb, var(--accent-1) 62%, var(--bg-3)); }
+  .hm-4 { fill: var(--accent-1); }
+  .hm-cell.future { fill: transparent; cursor: default; }
+  .hm-cell.future:hover { stroke: none; }
+  .heatmap-detail {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-1);
+    color: var(--text-3);
+    font-size: 12px;
+    min-height: 60px;
   }
   .timeline-day {
     background: var(--bg-1);
@@ -2721,6 +2816,33 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   /* TTS button on assistant messages. */
   .chat-msg.assistant { position: relative; }
+  /* Hover-only action bar (copy / regen / TTS) — Reviewer 21 G-3. */
+  .msg-actions {
+    display: inline-flex;
+    gap: 2px;
+    margin-top: 8px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .chat-msg.assistant:hover .msg-actions,
+  .chat-msg.assistant:focus-within .msg-actions { opacity: 1; }
+  .msg-action-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-3);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .msg-action-btn svg { width: 14px; height: 14px; }
+  .msg-action-btn:hover { background: var(--bg-2); color: var(--text-1); }
+  .msg-action-btn.done { color: #58cc6e; }
   .tts-btn {
     position: absolute;
     top: 8px;
@@ -3733,6 +3855,10 @@ INDEX_HTML = """<!DOCTYPE html>
         <span class="filter-chip active" data-days="30">直近1ヶ月</span>
         <span class="filter-chip" data-days="90">直近3ヶ月</span>
         <span class="filter-chip" data-days="365">直近1年</span>
+      </div>
+      <div class="timeline-view-toggle" id="timeline-view-toggle" role="tablist" aria-label="表示モード">
+        <button class="timeline-view-btn active" data-view="list" type="button">リスト</button>
+        <button class="timeline-view-btn" data-view="heatmap" type="button">ヒートマップ</button>
       </div>
     </div>
     <div id="timeline-content">
@@ -5948,21 +6074,149 @@ const TIMELINE_SOURCE_ICONS = {
   notes: '📓', imessage: '💌', photo: '📷', photos_app: '📸'
 };
 let _timelineDays = 30;
+let _timelineView = 'list';  // 'list' | 'heatmap'
 async function loadTimeline(days) {
   if (typeof days === 'number') _timelineDays = days;
   const c = $('timeline-content');
   c.innerHTML = '<div class="loading">読み込み中…</div>';
   try {
-    const r = await fetch(`/api/timeline?days=${_timelineDays}`);
+    // Heatmap always needs 365 days of data regardless of the period chip
+    const fetchDays = _timelineView === 'heatmap' ? 365 : _timelineDays;
+    const r = await fetch(`/api/timeline?days=${fetchDays}`);
     const j = await r.json();
     if (!j.days || !j.days.length) {
       c.innerHTML = '<div class="empty">この期間はまだ静かです</div>';
       return;
     }
-    c.innerHTML = j.days.map(renderTimelineDay).join('');
+    if (_timelineView === 'heatmap') {
+      c.innerHTML = renderTimelineHeatmap(j.days);
+      wireTimelineHeatmap(c);
+    } else {
+      c.innerHTML = j.days.map(renderTimelineDay).join('');
+    }
   } catch (e) {
     c.innerHTML = `<div class="empty">エラー: ${esc(String(e))}</div>`;
   }
+}
+
+// GitHub-style 365-day heatmap. Reviewer 21 G-1.
+function renderTimelineHeatmap(days) {
+  const dayMap = new Map();
+  let max = 0;
+  for (const d of days) {
+    const t = d.total || 0;
+    dayMap.set(d.date, t);
+    if (t > max) max = t;
+  }
+  // Build a 53-week grid ending today.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(today);
+  // Start 52 weeks back, then align to Sunday of that week.
+  const start = new Date(today);
+  start.setDate(start.getDate() - 364);
+  start.setDate(start.getDate() - start.getDay());
+  const fmt = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const weeks = [];
+  let cur = new Date(start);
+  while (cur <= end) {
+    const week = [];
+    for (let i = 0; i < 7; i++) {
+      const key = fmt(cur);
+      const count = dayMap.get(key) || 0;
+      // 5 intensity buckets (0-4) like GitHub
+      let bucket = 0;
+      if (count > 0) {
+        const ratio = count / (max || 1);
+        if      (ratio > 0.66) bucket = 4;
+        else if (ratio > 0.33) bucket = 3;
+        else if (ratio > 0.11) bucket = 2;
+        else                   bucket = 1;
+      }
+      week.push({ date: key, count, bucket, future: cur > today });
+      cur.setDate(cur.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+  // Month labels — one label at each week where the month flips.
+  const monthLabels = weeks.map((w, i) => {
+    const firstOfWeek = new Date(w[0].date);
+    const prevMonth = i > 0 ? new Date(weeks[i - 1][0].date).getMonth() : -1;
+    if (firstOfWeek.getMonth() !== prevMonth) {
+      return `<text x="${i * 14}" y="10">${firstOfWeek.getMonth() + 1}月</text>`;
+    }
+    return '';
+  }).join('');
+  const cells = weeks.map((w, wi) => w.map((c, di) => {
+    const x = wi * 14;
+    const y = 16 + di * 14;
+    const cls = c.future ? 'hm-cell future' : `hm-cell hm-${c.bucket}`;
+    const title = c.future
+      ? ''
+      : `${c.date} — ${c.count.toLocaleString()} 件`;
+    return `<rect class="${cls}" x="${x}" y="${y}" width="11" height="11" rx="2" ry="2" data-date="${c.date}" data-count="${c.count}"><title>${title}</title></rect>`;
+  }).join('')).join('');
+  const width = weeks.length * 14;
+  const height = 16 + 7 * 14;
+  return `
+    <div class="heatmap-wrap">
+      <div class="heatmap-header">
+        <span>365 日の活動量</span>
+        <div class="heatmap-legend">
+          <span>少</span>
+          <span class="hm-cell hm-0"></span>
+          <span class="hm-cell hm-1"></span>
+          <span class="hm-cell hm-2"></span>
+          <span class="hm-cell hm-3"></span>
+          <span class="hm-cell hm-4"></span>
+          <span>多</span>
+        </div>
+      </div>
+      <svg class="heatmap-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+        <g class="hm-month-labels">${monthLabels}</g>
+        <g class="hm-cells">${cells}</g>
+      </svg>
+      <div class="heatmap-detail" id="heatmap-detail">日付をクリックすると詳細を表示します</div>
+    </div>`;
+}
+
+function wireTimelineHeatmap(container) {
+  const detail = container.querySelector('#heatmap-detail');
+  container.querySelectorAll('.hm-cell[data-date]').forEach(cell => {
+    cell.addEventListener('click', async () => {
+      const date = cell.dataset.date;
+      const count = parseInt(cell.dataset.count, 10) || 0;
+      if (!count) {
+        detail.innerHTML = `<span style="color:var(--text-3);">${esc(date)} はこの日活動なし</span>`;
+        return;
+      }
+      detail.innerHTML = `<span style="color:var(--text-3);">${esc(date)} (${count.toLocaleString()} 件) を読み込み中…</span>`;
+      try {
+        const r = await fetch(`/api/timeline/day?date=${encodeURIComponent(date)}`);
+        const j = await r.json();
+        const rows = (j.results || j.records || []).slice(0, 20);
+        if (!rows.length) {
+          detail.innerHTML = `<span style="color:var(--text-3);">${esc(date)} の詳細が取得できませんでした</span>`;
+          return;
+        }
+        detail.innerHTML = `
+          <div style="font-size:13px;color:var(--text-2);margin-bottom:8px;">
+            <b>${esc(date)}</b> ・ ${count.toLocaleString()} 件 ・ 上位 ${rows.length} 件:
+          </div>` + rows.map(r => `
+            <div style="padding:6px 0;border-bottom:1px solid var(--border-1);font-size:12px;">
+              <span style="color:var(--text-3);">[${esc(r.source || '?')}]</span>
+              ${esc((r.content || '').slice(0, 200))}
+            </div>`).join('');
+      } catch (e) {
+        detail.textContent = 'エラー: ' + e;
+      }
+    });
+  });
 }
 function renderTimelineDay(d) {
   const sources = Object.entries(d.sources)
@@ -6046,6 +6300,17 @@ document.querySelectorAll('#timeline-periods .filter-chip').forEach(chip => {
     document.querySelectorAll('#timeline-periods .filter-chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     loadTimeline(parseInt(chip.dataset.days));
+  });
+});
+// View toggle (list / heatmap)
+document.querySelectorAll('#timeline-view-toggle .timeline-view-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#timeline-view-toggle .timeline-view-btn')
+      .forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _timelineView = btn.dataset.view || 'list';
+    // Heatmap ignores period chip (always 365d) but reuses _timelineDays for list.
+    loadTimeline();
   });
 });
 
@@ -8082,21 +8347,76 @@ function speakText(text, btn) {
 }
 
 function addTTSButton(msg) {
-  if (!window.speechSynthesis) return;
-  const btn = document.createElement('button');
-  btn.className = 'tts-btn';
-  btn.type = 'button';
-  btn.title = '読み上げ';
-  btn.setAttribute('aria-label', '読み上げ');
-  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
-  btn.addEventListener('click', (e) => {
+  // Backwards-compat shim — now we mount a whole action bar
+  // (copy / regenerate / TTS) instead of just the speaker icon.
+  addMsgActions(msg);
+}
+
+function addMsgActions(msg) {
+  // Hover-only bar of assistant-message actions (ChatGPT/Claude pattern).
+  // Reviewer 21 G-3: "今は TTS のみ" — add コピー / 再生成 / TTS.
+  if (msg.querySelector('.msg-actions')) return;  // idempotent
+  const bar = document.createElement('div');
+  bar.className = 'msg-actions';
+
+  // Copy — clipboard the plain-text content of the message.
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'msg-action-btn';
+  copyBtn.type = 'button';
+  copyBtn.title = 'コピー';
+  copyBtn.setAttribute('aria-label', 'コピー');
+  copyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+  copyBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    // The text we read is the rendered text content of the message,
-    // excluding any context list rendered later.
-    const txt = msg.textContent || '';
-    speakText(txt, btn);
+    // Strip the context list (ctx-list) from the copy — we only want
+    // the assistant's actual answer text.
+    const clone = msg.cloneNode(true);
+    clone.querySelectorAll('.ctx-list, .ctx-toggle, .msg-actions').forEach(n => n.remove());
+    navigator.clipboard.writeText(clone.textContent || '').then(() => {
+      copyBtn.classList.add('done');
+      setTimeout(() => copyBtn.classList.remove('done'), 1200);
+    });
   });
-  msg.appendChild(btn);
+  bar.appendChild(copyBtn);
+
+  // Regenerate — re-send the most recent user message.
+  const regenBtn = document.createElement('button');
+  regenBtn.className = 'msg-action-btn';
+  regenBtn.type = 'button';
+  regenBtn.title = '再生成';
+  regenBtn.setAttribute('aria-label', '再生成');
+  regenBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>`;
+  regenBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // Find the immediately preceding user message in the DOM and re-submit it.
+    let prev = msg.previousElementSibling;
+    while (prev && !prev.classList.contains('user')) prev = prev.previousElementSibling;
+    if (!prev) return;
+    const text = (prev.textContent || '').trim();
+    if (!text) return;
+    chatInput.value = text;
+    chatInput.dispatchEvent(new Event('input'));
+    chatForm.requestSubmit();
+  });
+  bar.appendChild(regenBtn);
+
+  // TTS — read aloud via Web Speech API.
+  if (window.speechSynthesis) {
+    const ttsBtn = document.createElement('button');
+    ttsBtn.className = 'msg-action-btn';
+    ttsBtn.type = 'button';
+    ttsBtn.title = '読み上げ';
+    ttsBtn.setAttribute('aria-label', '読み上げ');
+    ttsBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
+    ttsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const clone = msg.cloneNode(true);
+      clone.querySelectorAll('.ctx-list, .ctx-toggle, .msg-actions').forEach(n => n.remove());
+      speakText(clone.textContent || '', ttsBtn);
+    });
+    bar.appendChild(ttsBtn);
+  }
+  msg.appendChild(bar);
 }
 
 // Preload voices (Chromium fires getVoices async).
