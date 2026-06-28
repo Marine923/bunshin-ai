@@ -11420,20 +11420,52 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
     # technically-correct sentences that were unreadable for non-experts
     # ("参考書執筆に使える形で…研究するためのツール"). Reviewer-Honda:
     # "ツールって書かれても何なのか分からない".
-    _DESCRIBE_STYLE_GUIDE = (
-        "■ 書き方ルール (厳守):\n"
-        "1 行目: 「これは○○です」の形で、具体的なカテゴリで言い切る。\n"
-        "    ✗ ダメな書き方: 「〜のためのツール」「〜できる仕組み」「〜するシステム」\n"
-        "    ✓ 良い書き方: 「アプリ」「会社」「日本のレコード協会」「ユーザーが書いた指示文 (プロンプト)」「Python ライブラリ」「都市」など、正体の分かるカテゴリ名\n"
-        "2 行目: 何のため / 誰が / どう使うか を動詞で書く。\n"
-        "3 行目 (任意): ユーザーの記録の中ではどう登場しているか 1 文。\n\n"
-        "■ 守ること:\n"
-        "- IT/専門知識ゼロの読者を想定 (中学生に説明する気持ちで)\n"
-        "- 「ツール」「仕組み」「サービス」のような抽象語だけで終わらせない\n"
-        "- 出典前置きは不要 (淡々と)\n"
-        "- 推測で固有名詞を捏造しない\n"
-        "- 抜粋 / Wikipedia から判断できない場合は「詳細不明」と正直に書く"
+    # v0.9.13: v0.9.12 の style guide では llama3.2:3b 等の小さい LLM が
+    # 「○○のための仕組みです」で平気で終わらせていた。禁止語リストを
+    # 明示 + 例を 5 件 vs 5 件で対比 + 違反した場合の retry まで仕込む。
+    _BANNED_TAIL_WORDS = (
+        "ツール", "仕組み", "システム", "サービス", "ソリューション",
+        "方法", "手段", "アプローチ", "メカニズム", "概念", "もの",
     )
+    _DESCRIBE_STYLE_GUIDE = (
+        "■ 絶対ルール (違反したら書き直し):\n"
+        "1 行目は **「これは○○です」** で始め、○○には **具体カテゴリ名** が入る。\n\n"
+        "■ ✗ 絶対に使ってはいけないカテゴリ語 (これだけで終わったら失格):\n"
+        "  ツール / 仕組み / システム / サービス / ソリューション / 方法 / 手段\n"
+        "  アプローチ / メカニズム / 概念 / もの / 書き物 / 取り組み\n"
+        "  → これらは「結局なんなのか」読者に伝わらない\n\n"
+        "■ ✓ 使うべき具体カテゴリ名の例:\n"
+        "  - 人物: 「日本の小説家」「Anthropic 社の CEO」\n"
+        "  - 場所: 「長崎県の離島」「東京都港区の駅」\n"
+        "  - 会社: 「米国の AI 研究企業」「ドイツの音楽機材メーカー」\n"
+        "  - ソフトウェア: 「Mac 用のアプリ」「Python ライブラリ」「VS Code 拡張機能」\n"
+        "  - 自作物: 「ユーザーが Claude に書いた指示文 (プロンプト)」\n"
+        "             「ユーザーが Excel で作った計算シート」\n"
+        "  - イベント: 「2026 年 6 月のオンライン勉強会」\n"
+        "  - 概念: 「○○大学が提唱する経済理論」(「概念」で終わらせない)\n\n"
+        "■ 構成:\n"
+        "  1 行目: 「これは○○です」(上記の具体カテゴリで言い切る)\n"
+        "  2 行目: 何のため / 誰が / どう使うか (動詞で)\n"
+        "  3 行目: (任意) ユーザーの記録の中ではどう登場しているか\n\n"
+        "■ その他守ること:\n"
+        "  - 中学生に説明する気持ちで\n"
+        "  - 出典前置きは不要 (淡々と)\n"
+        "  - 推測で固有名詞を捏造しない\n"
+        "  - 抜粋 / Wikipedia から判断できない場合は「詳細不明」と書く\n\n"
+        "■ もう一度だけ強調: **1 行目の文末が「ツール」「仕組み」「システム」"
+        "「サービス」「ソリューション」「方法」「手段」「アプローチ」「メカニズム」"
+        "「概念」「もの」「書き物」「取り組み」で終わったら、そのまま却下されます。**"
+    )
+
+    def _violates_banned_tail(text: str) -> bool:
+        """Heuristic: did the LLM end its 1st sentence with a banned word?
+        Used to retry the prompt once before accepting the output."""
+        if not text:
+            return False
+        first_sentence = text.split("。")[0]
+        # Last 12 chars cover patterns like "〜の仕組み" / "〜するツール"
+        tail = first_sentence[-12:]
+        return any(w in tail for w in _BANNED_TAIL_WORDS)
 
     def _describe_via_claude(name: str, entity_type: str | None,
                               user_context: str, api_key: str) -> dict | None:
@@ -11492,25 +11524,46 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             "抜粋から判断できない場合は「ユーザー記録からは詳細不明」と正直に書く。\n\n"
             f"=== 抜粋 ===\n{samples}\n=== ここまで ==="
         )
-        model = pick_light_model(available)
-        try:
-            r = _httpx.post(
+        # v0.9.13: switched from pick_light_model (llama3.2:3b 等) to
+        # pick_model (qwen2.5:14b 等). 3B では style guide を守れず
+        # 「○○のための仕組み」で平気で終わらせていた。describe は
+        # 1 entity につき 1 回しか走らないので速度より品質を取る。
+        from bunshin.chat import pick_model
+        model = pick_model(available) or pick_light_model(available)
+        if not model:
+            return None
+        from typing import Any as _Any
+        def _call(p: str) -> _Any:
+            r2 = _httpx.post(
                 f"{OLLAMA_HOST}/api/chat",
                 json={
                     "model": model,
                     "messages": [
-                        {"role": "system", "content": "あなたは IT/専門知識ゼロの一般読者にも分かる日本語で書く説明者です。曖昧な抽象語 (「ツール」「仕組み」「サービス」のみ) で終わらせず、必ず具体的なカテゴリ名で言い切ります。事実を捏造しません。"},
-                        {"role": "user", "content": prompt},
+                        {"role": "system", "content": "あなたは IT/専門知識ゼロの一般読者向けの日本語説明者です。1 文目を「これは○○です」の形で書き、○○には『ツール』『仕組み』『システム』『サービス』『ソリューション』『方法』『手段』『アプローチ』『メカニズム』『概念』『もの』『書き物』『取り組み』のような抽象語ではなく、必ず具体的なカテゴリ名 (「Mac 用アプリ」「米国の AI 企業」「ユーザーが書いたプロンプト」など) を使います。事実を捏造しません。"},
+                        {"role": "user", "content": p},
                     ],
                     "stream": False,
                 },
-                timeout=60.0,
+                timeout=120.0,
             )
-            if r.status_code != 200:
+            if r2.status_code != 200:
                 return None
-            text = (r.json().get("message", {}).get("content") or "").strip()
+            return (r2.json().get("message", {}).get("content") or "").strip()
+        try:
+            text = _call(prompt)
             if not text:
                 return None
+            # Banned-tail retry: one extra attempt with a stricter reminder.
+            if _violates_banned_tail(text):
+                retry_prompt = (
+                    prompt
+                    + "\n\n■ 直前の出力は禁止語 (ツール/仕組み/システム/サービス…) で 1 文目が終わっていました。"
+                      "もう一度、必ず具体的なカテゴリ名 (例: 「Mac 用アプリ」「米国の AI 企業」「ユーザーが書いたプロンプト」"
+                      "「Python ライブラリ」「日本の小説家」) で 1 文目を書き直してください。"
+                )
+                text2 = _call(retry_prompt)
+                if text2 and not _violates_banned_tail(text2):
+                    text = text2
             return {"source": f"ローカル LLM ({model})", "description": text}
         except Exception:
             return None
@@ -11591,11 +11644,13 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             except Exception:
                 pass
         # Local fallback.
-        from bunshin.chat import OLLAMA_HOST, check_ollama, pick_light_model
+        from bunshin.chat import OLLAMA_HOST, check_ollama, pick_light_model, pick_model
         ok, available = check_ollama()
         if ok and available:
             try:
-                model = pick_light_model(available)
+                # v0.9.13: judge も full-quality モデルで。light だと
+                # 複数候補を比較する判断力が足りない。
+                model = pick_model(available) or pick_light_model(available)
                 r = _httpx.post(
                     f"{OLLAMA_HOST}/api/chat",
                     json={
