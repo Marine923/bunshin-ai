@@ -682,8 +682,9 @@ INDEX_HTML = """<!DOCTYPE html>
   :root.theme-light .filter-chip.active { color: #fff; }
   :root.theme-light .filter-chip.active svg { color: #fff; }
   /* Dim source chips that have zero records in the current DB. */
-  .filter-chip.chip-empty { opacity: 0.4; }
-  .filter-chip.chip-empty:hover { opacity: 0.7; }
+  /* 件数 0 のソース chip は表示しない (LINE / 予定 / iMessage 等が
+     現状未対応ならその chip ごと消す)。reviewer 19 spec A。 */
+  .filter-chip.chip-empty { display: none; }
 
   /* ── Inline SVG icon layout helpers (used everywhere) ── */
   /* Settings section headers: "<icon> Backup" etc. */
@@ -3124,8 +3125,11 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   .web-node:hover circle { stroke: var(--accent-2); }
   .web-node.center circle {
-    fill: var(--accent-1);
-    stroke: var(--accent-2);
+    /* Center node: tone down the solid indigo so satellites no longer
+       look pastel by comparison. Stroke carries the "this is the
+       center" signal instead of fill weight. */
+    fill: var(--accent-soft);
+    stroke: var(--accent-1);
     stroke-width: 2.5;
   }
   .web-node.neighbor circle {
@@ -3193,13 +3197,21 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   .entity-pill .name { font-weight: 600; }
   .entity-pill .meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
-  .entity-pill .type-org { color: #ef8f4a; }
-  .entity-pill .type-project { color: #4aef8f; }
-  .entity-pill .type-place { color: #8f4aef; }
-  .entity-pill .type-person { color: #ef4a8f; }
-  .entity-pill .type-concept { color: #8fef4a; }
-  .entity-pill .type-tool { color: #4aefef; }
-  .entity-pill .type-topic { color: var(--text-3); }
+  /* Entity-type labels were 7 different rainbow colors; the type name
+     is supporting info, not the headline, so all sit on a muted gray.
+     Reviewer 19 spec B-2. */
+  .entity-pill .type-org,
+  .entity-pill .type-project,
+  .entity-pill .type-place,
+  .entity-pill .type-person,
+  .entity-pill .type-concept,
+  .entity-pill .type-tool,
+  .entity-pill .type-topic {
+    color: var(--text-3);
+    font-weight: 500;
+    text-transform: lowercase;
+    letter-spacing: 0.02em;
+  }
 
   .entity-detail {
     flex: 1;

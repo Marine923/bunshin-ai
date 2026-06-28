@@ -4,6 +4,25 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2026-06-28
+
+Phase 2 UI 仕上げ (reviewer 19 必須 2 件)。
+
+### Changed — 検索タブ: 件数 0 の source chip を非表示
+- 旧: LINE / 予定 / iMessage 等の未対応 source が opacity 0.4 で
+  並んでいた (chip-empty クラス)
+- 新: `display: none` に変更。空 chip が消えて残った chip が 1 行に
+  自然に収まる。
+
+### Changed — 関係性タブ: 中央ノードとラベル色を抑える
+- **中央ノード**: 純 indigo (`var(--accent-1)`) → **`var(--accent-soft)`**
+  に変更。stroke が「中央」のシグナルを担当 (`var(--accent-1)` で
+  縁取り)。satellite の pastel と馴染む。
+- **エンティティタイプラベル** 7 色レインボー
+  (`#ef8f4a`/`#4aef8f`/`#8f4aef`/…) を **`var(--text-3)` 1 色に統一**
+  + `text-transform: lowercase` + `letter-spacing: 0.02em`。
+  「タイプ名」は補助情報なので沈める。
+
 ## [0.9.3] - 2026-06-28
 
 別 AI ビジュアル担当が `server.py` に入れた 3 改修を build / release。
