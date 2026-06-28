@@ -11415,6 +11415,26 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 continue
         return None
 
+    # Shared style guide for ALL describe + judge prompts.
+    # The previous prompts said "concise factual Japanese" and got back
+    # technically-correct sentences that were unreadable for non-experts
+    # ("参考書執筆に使える形で…研究するためのツール"). Reviewer-Honda:
+    # "ツールって書かれても何なのか分からない".
+    _DESCRIBE_STYLE_GUIDE = (
+        "■ 書き方ルール (厳守):\n"
+        "1 行目: 「これは○○です」の形で、具体的なカテゴリで言い切る。\n"
+        "    ✗ ダメな書き方: 「〜のためのツール」「〜できる仕組み」「〜するシステム」\n"
+        "    ✓ 良い書き方: 「アプリ」「会社」「日本のレコード協会」「ユーザーが書いた指示文 (プロンプト)」「Python ライブラリ」「都市」など、正体の分かるカテゴリ名\n"
+        "2 行目: 何のため / 誰が / どう使うか を動詞で書く。\n"
+        "3 行目 (任意): ユーザーの記録の中ではどう登場しているか 1 文。\n\n"
+        "■ 守ること:\n"
+        "- IT/専門知識ゼロの読者を想定 (中学生に説明する気持ちで)\n"
+        "- 「ツール」「仕組み」「サービス」のような抽象語だけで終わらせない\n"
+        "- 出典前置きは不要 (淡々と)\n"
+        "- 推測で固有名詞を捏造しない\n"
+        "- 抜粋 / Wikipedia から判断できない場合は「詳細不明」と正直に書く"
+    )
+
     def _describe_via_claude(name: str, entity_type: str | None,
                               user_context: str, api_key: str) -> dict | None:
         """Ask Anthropic Claude API directly for a definition.
@@ -11424,10 +11444,9 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             return None
         import httpx as _httpx
         prompt = (
-            f"「{name}」（種別: {entity_type or '不明'}）について、"
-            "2〜4 行の日本語で「これは何か」を客観的に説明してください。"
-            "知らない / 確信が持てない場合は「該当する有名な対象が見当たりません」と書いてください。"
-            "推測で固有名詞を捏造しないこと。\n\n"
+            f"「{name}」（種別: {entity_type or '不明'}）について、3 行程度の日本語で書いてください。\n\n"
+            f"{_DESCRIBE_STYLE_GUIDE}\n\n"
+            "知らない / 確信が持てない場合は「該当する有名な対象が見当たりません」と書いてください。\n\n"
             f"参考: ユーザーの記録カテゴリ: {user_context}"
         )
         try:
@@ -11468,7 +11487,8 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             return None
         prompt = (
             f"以下はユーザーの記録に登場した「{name}」関連の抜粋です。\n"
-            f"これだけを根拠に、「{name}」がユーザーにとって何かを 2〜3 行で書いてください。\n"
+            f"これだけを根拠に、「{name}」がユーザーにとって何かを書いてください。\n\n"
+            f"{_DESCRIBE_STYLE_GUIDE}\n\n"
             "抜粋から判断できない場合は「ユーザー記録からは詳細不明」と正直に書く。\n\n"
             f"=== 抜粋 ===\n{samples}\n=== ここまで ==="
         )
@@ -11479,7 +11499,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 json={
                     "model": model,
                     "messages": [
-                        {"role": "system", "content": "You write concise, factual Japanese descriptions. Never invent facts."},
+                        {"role": "system", "content": "あなたは IT/専門知識ゼロの一般読者にも分かる日本語で書く説明者です。曖昧な抽象語 (「ツール」「仕組み」「サービス」のみ) で終わらせず、必ず具体的なカテゴリ名で言い切ります。事実を捏造しません。"},
                         {"role": "user", "content": prompt},
                     ],
                     "stream": False,
@@ -11516,17 +11536,15 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         )
         judge_prompt = (
             f"あなたは「{name}」（種別: {entity_type or '不明'}）について、複数のソースから集めた説明候補を比較し、"
-            "**最も正確で、ユーザーの文脈に最も合致する説明** を 1 つ選んで日本語で書き直す judge です。\n\n"
-            "ルール:\n"
-            "- 客観的な定義 (1 文) → ユーザーとの関係 (1〜2 文) の構成\n"
-            "- 候補が食い違う場合は、より具体的・検証可能な内容を優先\n"
-            "- どの候補も「不明」「該当なし」なら正直に「詳細不明」と書く\n"
-            "- 推測で固有名詞を補わない\n"
-            "- 出典の前置きは不要（淡々と事実だけ）\n\n"
+            "**最も正確で、IT/専門知識ゼロの一般読者にも分かる説明** を 1 つ選んで日本語で書き直す judge です。\n\n"
+            f"{_DESCRIBE_STYLE_GUIDE}\n\n"
+            "■ 候補の選び方:\n"
+            "- 食い違う場合は、より具体的・検証可能な内容を優先\n"
+            "- どの候補も「不明」「該当なし」なら正直に「詳細不明」と書く\n\n"
             f"ユーザーのこの entity への接触: {user_context}\n\n"
             f"=== 候補 ===\n{listed}\n=== ここまで ===\n\n"
             "出力 (JSON):\n"
-            '{"description": "<書き直した日本語説明>", "chosen_source": "<採用した候補のソース名>", "reasoning": "<選択理由 1 文>"}'
+            '{"description": "<書き直した日本語説明 (3 行構成、上記ルール厳守)>", "chosen_source": "<採用した候補のソース名>", "reasoning": "<選択理由 1 文>"}'
         )
         import json as _json
         import httpx as _httpx
@@ -11583,7 +11601,7 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     json={
                         "model": model,
                         "messages": [
-                            {"role": "system", "content": "You output JSON only. Never invent facts."},
+                            {"role": "system", "content": "あなたは IT/専門知識ゼロの一般読者にも分かる日本語で説明する judge です。「ツール」「仕組み」「サービス」のような抽象語だけで終わらせず、必ず具体的なカテゴリ名で言い切ります。事実を捏造しません。出力は JSON のみ。"},
                             {"role": "user", "content": judge_prompt},
                         ],
                         "stream": False,
