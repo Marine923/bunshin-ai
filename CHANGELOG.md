@@ -52,6 +52,30 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.9] - 2026-06-28
+
+reviewer 21 🟡 4 件 (中優先度 polish)。
+
+### Changed — N-5: 気づきタブのロード状態を skeleton に
+- 旧: 真っ白なページに「読み込み中…」テキストのみ (4-5 秒間)
+- 新: 既存の `.skeleton` / `.skeleton-card` token を使った 3 枚の
+  プレースホルダーカード。pulse アニメーションで「これからカードが
+  来る」を視覚的に伝える。
+
+### Changed — N-7: 検索ページのフッター重複削除
+- 旧: フラッシュバック下に「2015 年から今日まで、20,778 件の記憶が
+  あります。過去の自分に聞いてみてください。」(ヘッダー stats と
+  入力欄 placeholder の重複)
+- 新: 非表示 (200 件以上のユーザーには情報量ゼロ)
+
+### Changed — N-8: 検索結果カードの PDF サムネを 160px → 80px
+- カードの大半をサムネが占めて本文が圧迫されていた問題を解消。
+
+### Changed — M-1: composer max-width 800px + 中央寄せ
+- 旧: chat-container 全幅 (~1042px) でだらしなく広がっていた
+- 新: `max-width: 800px; margin: 12px auto 18px;` で ChatGPT / Claude
+  パターンに揃える。送信ボタンの位置も画面右端寄りから自然な位置に。
+
 ## [0.9.8] - 2026-06-28
 
 reviewer 21 実機検証で見つかった 🔴 4 点の token 化 + density 修正。

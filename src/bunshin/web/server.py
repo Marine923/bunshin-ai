@@ -1882,10 +1882,10 @@ INDEX_HTML = """<!DOCTYPE html>
     align-items: flex-start;
   }
   .result-media .thumb {
-    width: 160px;
-    height: 160px;
+    width: 80px;  /* halved from 160px — was crowding the result body */
+    height: 80px;
     flex-shrink: 0;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--bg-2);
     border: 1px solid var(--border-1);
@@ -2851,7 +2851,12 @@ INDEX_HTML = """<!DOCTYPE html>
      Replaces the old 4-button-in-a-row form (reviewer 16 called it
      out as the #1 "amateur-feeling" source). */
   .composer {
-    margin: 12px 24px 18px;
+    /* Center the input within the same 768-wide column the messages
+       use. Reviewer 21 noted Bunshin's 1042px-wide composer felt
+       sprawling vs ChatGPT's ~768 / Claude's ~720. */
+    margin: 12px auto 18px;
+    max-width: 800px;
+    width: calc(100% - 48px);
     flex-shrink: 0;
     background: var(--bg-1);
     border: 1px solid var(--border-2);
@@ -6088,6 +6093,23 @@ async function loadInsights() {
   if (insightsLoaded) return;
   const content = $('insights-content');
   const genEl = $('insights-generated');
+  // Show skeleton placeholders during fetch — the network round-trip
+  // can take 4-5 s, and a blank "読み込み中…" line read as broken.
+  content.innerHTML = `
+    <div class="skeleton-card">
+      <div class="skeleton skeleton-line long"></div>
+      <div class="skeleton skeleton-line medium"></div>
+      <div class="skeleton skeleton-line short"></div>
+    </div>
+    <div class="skeleton-card">
+      <div class="skeleton skeleton-line medium"></div>
+      <div class="skeleton skeleton-line long"></div>
+      <div class="skeleton skeleton-line short"></div>
+    </div>
+    <div class="skeleton-card">
+      <div class="skeleton skeleton-line long"></div>
+      <div class="skeleton skeleton-line short"></div>
+    </div>`;
   try {
     const j = await (await fetch('/api/insights')).json();
     genEl.textContent = `生成: ${j.generated_at}`;
@@ -6450,12 +6472,10 @@ function renderEmptyState(stats) {
       });
     }, 30);
   } else {
-    const year = (stats && stats.oldest_ts) ? new Date(stats.oldest_ts * 1000).getFullYear() : null;
-    el.outerHTML = `
-      <div class="empty" id="search-empty-state">
-        ${year ? `${year}年から今日まで、` : ''}${(totalRecords || 0).toLocaleString()}件の記憶があります。<br>
-        過去の自分に聞いてみてください。
-      </div>`;
+    // Reviewer 21 N-7: the previous footer duplicated the header stats
+    // chip ("20,778 件の記憶 …") + a recall prompt that's already the
+    // input placeholder. Just disappear when there's nothing to add.
+    el.outerHTML = `<div class="empty" id="search-empty-state" style="display:none;"></div>`;
   }
 }
 
