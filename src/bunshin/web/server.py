@@ -8131,6 +8131,10 @@ if (window.speechSynthesis) {
 })();
 const chatSessions = $('chat-sessions'), chatNewBtn = $('chat-new-btn');
 let currentSessionId = null;
+// In-flight streaming guards — loadSession() checks these to avoid
+// nuking the live respMsg DOM when the user clicks around mid-answer.
+let _chatStreaming = false;
+let _chatStreamingSession = null;
 
 async function loadSessionList(searchQuery) {
   try {
@@ -8193,6 +8197,19 @@ async function loadSessionList(searchQuery) {
 }
 
 async function loadSession(sid) {
+  // While a streaming response is in flight, never overwrite the chat
+  // area — that would detach the live respMsg DOM and lose the answer.
+  // Reviewer-Honda screenshot: questioned mid-stream, switched session,
+  // came back to an empty bubble. Stream itself runs to completion and
+  // saves to DB, but the user has lost the rendered answer.
+  if (_chatStreaming) {
+    if (sid === _chatStreamingSession) return;  // same session — keep in-flight DOM
+    // Switching away from a streaming session: warn but allow it.
+    // Stream keeps running in the background and the answer will be
+    // there in the DB when the user comes back.
+    const ok = confirm('応答を生成中です。別の会話を開くと、生成中の応答は完了後にこの会話に保存されます。切り替えますか？');
+    if (!ok) return;
+  }
   try {
     const r = await fetch(`/api/chat/sessions/${sid}`);
     const j = await r.json();
@@ -8617,6 +8634,8 @@ chatForm.addEventListener('submit', async (e) => {
   chatStatus.innerHTML = '<span class="thinking-dots"><span></span><span></span><span></span></span> 過去のあなたを読み込み中…';
 
   const respMsg = appendMsg('assistant', '');
+  _chatStreaming = true;
+  _chatStreamingSession = currentSessionId;  // may be null for fresh sessions
   try {
     const params = new URLSearchParams({ q: query });
     if (currentSessionId) params.set('session_id', currentSessionId);
@@ -8659,6 +8678,9 @@ chatForm.addEventListener('submit', async (e) => {
           const j = JSON.parse(line);
           if (j.session_id) {
             currentSessionId = j.session_id;
+            // Lock the streaming guard to this server-assigned id so
+            // loadSession() recognizes "same session" on a return click.
+            _chatStreamingSession = j.session_id;
           } else if (j.context) {
             contextList = j.context;
             const n = contextList.length;
@@ -8713,6 +8735,8 @@ chatForm.addEventListener('submit', async (e) => {
   } finally {
     chatSend.disabled = false;
     chatInput.focus();
+    _chatStreaming = false;
+    _chatStreamingSession = null;
   }
 });
 </script>

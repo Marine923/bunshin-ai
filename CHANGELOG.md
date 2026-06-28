@@ -52,6 +52,21 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.7] - 2026-06-28
+
+### Fixed — 🚨 ストリーミング応答中に session 切替で回答が消える
+- 症状: 質問送信 → 「参照した過去記憶 5 件」chip は出る → 別 session
+  クリック → 戻ったら回答本文が空白のまま (DB には保存されている)。
+- 原因: `loadSession()` が `chatMessages.innerHTML = ''` で in-flight
+  の respMsg DOM を detach → ストリーミングは続行するが書き込み先が
+  画面外 → 同 session に戻ると DB 再 load 時点でまだ assistant
+  message が DB 確定してないので空表示。
+- 修正: ストリーミング中フラグ `_chatStreaming` + `_chatStreamingSession`
+  を導入:
+  - **同 session に戻ったときは再 load しない** (in-flight DOM 維持)
+  - **別 session への切替は confirm() で警告** + 切替後も裏で生成
+    完了し DB 保存 (戻れば見える)
+
 ## [0.9.6] - 2026-06-28
 
 第20回 UI 監査の取りこぼし 3 件を消化。
