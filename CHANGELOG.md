@@ -52,6 +52,20 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.10] - 2026-06-28
+
+reviewer 21 取りこぼし X1〜X3 = **ハードコード ゼロ達成**。
+
+### Fixed — X1: `.more-chunks:hover` の amber rgba
+- `rgba(239, 175, 74, 0.25)` → `color-mix(in srgb, var(--warn) 25%, transparent)`
+
+### Fixed — X2: `.privacy-warn` の amber hex
+- `color: #efaf4a` → `color: var(--warn)`
+
+### Fixed — X3: insights セットアップカードの inline border-left
+- `style="border-left:3px solid #efaf4a"` → 専用クラス
+  `.insights-card-setup { border-left: 3px solid var(--warn); }`
+
 ## [0.9.9] - 2026-06-28
 
 reviewer 21 🟡 4 件 (中優先度 polish)。

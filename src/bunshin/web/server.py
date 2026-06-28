@@ -798,7 +798,7 @@ INDEX_HTML = """<!DOCTYPE html>
     margin-left: 8px;
   }
   .privacy-ok { color: #5fbf6f; }
-  .privacy-warn { color: #efaf4a; }
+  .privacy-warn { color: var(--warn); }
   .privacy-section-title {
     margin: 18px 0 8px;
     font-size: 13px;
@@ -1794,7 +1794,7 @@ INDEX_HTML = """<!DOCTYPE html>
     transition: background 0.15s;
   }
   .result-meta .more-chunks:hover {
-    background: rgba(239, 175, 74, 0.25);
+    background: color-mix(in srgb, var(--warn) 25%, transparent);
   }
   .siblings-panel {
     margin-top: 12px;
@@ -3049,6 +3049,7 @@ INDEX_HTML = """<!DOCTYPE html>
     margin-bottom: 8px;
     transition: border-color 0.15s ease, background 0.15s ease;
   }
+  .insights-card-setup { border-left: 3px solid var(--warn); }
   .insights-card:hover {
     border-color: var(--border-2);
     background: var(--bg-2);
@@ -6178,7 +6179,7 @@ async function loadInsights() {
       html += `<div class="insights-section"><h2><span class="h2-icon">${icon('tool', 18)}</span> セットアップ案内</h2>`;
       for (const h of j.setup_hints) {
         html += `
-          <div class="insights-card" style="border-left:3px solid #efaf4a;">
+          <div class="insights-card insights-card-setup">
             <div class="body">${esc(h.message)}</div>
           </div>`;
       }
