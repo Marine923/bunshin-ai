@@ -52,6 +52,26 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.14] - 2026-06-28
+
+v0.9.13 の網羅検証で見つけた取りこぼし 2 件。
+
+### Fixed — 複合具体形の false-positive retry を抑制
+- 旧: Spotify が「これはスウェーデンの**音楽配信サービス**です」と
+  返しても末尾「サービス」検出で retry → 結果が悪化する場合あり
+- 新: `_COMPOUND_WHITELIST` を導入し、「配信サービス」「共有サービス」
+  「決済システム」「プラットフォーム」など 14 種の **修飾語付き具体形**
+  は banned-word チェックをパス
+- tail 範囲を 12 → 16 文字に拡大
+
+### Changed — 「やり直し」ボタンの待機 UX
+- 旧: 単一行のテキスト「並列調査中…（10〜40 秒）」のみ → 30 秒の
+  待ち時間が長く感じる
+- 新: **4 つのソースチップ** (Wikipedia / DuckDuckGo / 公式サイト /
+  Claude or ローカル LLM) を pulse animation 付きで表示
+- その下に既存の `.skeleton-card` (3 行 placeholder) を配置
+- 待ち時間の体感を「無音」から「進んでる感」に
+
 ## [0.9.13] - 2026-06-28
 
 v0.9.12 の style guide が小さい LLM (llama3.2:3b) では効かず、まだ

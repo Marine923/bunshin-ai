@@ -253,6 +253,28 @@ INDEX_HTML = """<!DOCTYPE html>
     border-radius: var(--radius-md);
     margin-bottom: 8px;
   }
+  /* Describe loading: source-status chips while parallel investigators run. */
+  .describe-skeleton-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .describe-source-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-pill);
+    color: var(--text-3);
+    font-size: 11px;
+    animation: skeleton-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes skeleton-pulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+  }
   body {
     background: var(--bg-0);
     color: var(--text-2);
@@ -5710,7 +5732,25 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
       const slot = document.getElementById('entity-describe-slot');
       const id = describeBtn.dataset.id;
       describeBtn.disabled = true;
-      slot.innerHTML = `<span style="color:var(--text-3);font-size:13px;">${icon('sparkles', 12)} 4 つのソース (Wikipedia / DuckDuckGo / 公式サイト / Claude) を並列調査中…（10〜40 秒）</span>`;
+      // Skeleton + per-source status chips. The 4 web/Claude lookups
+      // start in parallel; we can't know real timings from the client,
+      // so we just show all sources as "調査中" and let the final
+      // response replace this block with the real candidate badges.
+      slot.innerHTML = `
+        <div style="font-size:12px;color:var(--text-3);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+          ${icon('sparkles', 13)} 複数ソースを並列調査中…<span style="opacity:0.6;">(通常 30〜60 秒)</span>
+        </div>
+        <div class="describe-skeleton-sources">
+          <span class="describe-source-chip">⏳ Wikipedia</span>
+          <span class="describe-source-chip">⏳ DuckDuckGo</span>
+          <span class="describe-source-chip">⏳ 公式サイト</span>
+          <span class="describe-source-chip">⏳ Claude / ローカル LLM</span>
+        </div>
+        <div class="skeleton-card" style="margin-top:14px;">
+          <div class="skeleton skeleton-line long"></div>
+          <div class="skeleton skeleton-line medium"></div>
+          <div class="skeleton skeleton-line short"></div>
+        </div>`;
       try {
         const r = await fetch(`/api/entities/${encodeURIComponent(id)}/describe`, {method: 'POST'});
         const j = await r.json();
@@ -11457,14 +11497,30 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         "「概念」「もの」「書き物」「取り組み」で終わったら、そのまま却下されます。**"
     )
 
+    # Compound noun whitelist — "音楽配信サービス" / "動画共有サイト" /
+    # "クラウドストレージサービス" などは banned-word が末尾に含まれる
+    # が、修飾語付きで十分具体的なので false-positive を防ぐ。
+    # v0.9.13 で Spotify が「これはスウェーデンの音楽配信サービスです」
+    # を返したのに validator が retry させてしまった反省。
+    _COMPOUND_WHITELIST = (
+        "配信サービス", "共有サービス", "決済サービス", "金融サービス",
+        "クラウドサービス", "ストリーミングサービス", "サブスクリプションサービス",
+        "決済システム", "予約システム", "管理システム", "OS",
+        "プラットフォーム", "フレームワーク",  # these are concrete-enough on their own
+    )
+
     def _violates_banned_tail(text: str) -> bool:
         """Heuristic: did the LLM end its 1st sentence with a banned word?
         Used to retry the prompt once before accepting the output."""
         if not text:
             return False
         first_sentence = text.split("。")[0]
-        # Last 12 chars cover patterns like "〜の仕組み" / "〜するツール"
-        tail = first_sentence[-12:]
+        # Last 16 chars to cover slightly longer compounds.
+        tail = first_sentence[-16:]
+        # Whitelist first — accept compound nouns that happen to contain
+        # a banned word but are concrete-enough.
+        if any(w in tail for w in _COMPOUND_WHITELIST):
+            return False
         return any(w in tail for w in _BANNED_TAIL_WORDS)
 
     def _describe_via_claude(name: str, entity_type: str | None,
