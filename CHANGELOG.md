@@ -52,6 +52,31 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.8] - 2026-06-28
+
+reviewer 21 実機検証で見つかった 🔴 4 点の token 化 + density 修正。
+
+### Fixed — N-1: 検索結果メタの amber が token 外
+- `.result-meta .relevance.rerank` (`#fcd34d`) と `.result-meta
+  .more-chunks` (`#efaf4a`) を `var(--warn)` + `color-mix` 経由に。
+- ライトモード時に黄色テキスト on 白で読みにくかった問題を解消。
+
+### Fixed — N-2: 「AI でサマリを作成」ボタンの inline blue hardcode
+- 旧: `style="background:#3a5a8a;…"` (indigo accent と色相不一致)
+- 新: 専用クラス `#digest-btn`、`var(--accent-1)` で統一。disabled
+  状態も追加。
+
+### Changed — N-3: チャット履歴の 1 行高 77.7px → ~32px (hover-only meta)
+- `.chat-session-item` の `.preview` (italic snippet) と `.meta`
+  (model/count/date) を **デフォルト `display: none`** に。
+- hover 時 + active 時のみ展開。1080px viewport で 9 件しか入らな
+  かったのが ~20 件に。Claude/ChatGPT 同等の密度。
+
+### Fixed — N-4: 検索ハイライト `<mark>` がブラウザデフォルト黄色
+- ハードコード `#ffd400` + light-mode override を全部撤廃。
+- `color-mix(in srgb, var(--accent-1) 22%, transparent)` 一発で
+  両テーマ対応。font-weight 600 + box-shadow も削除でフラットに。
+
 ## [0.9.7] - 2026-06-28
 
 ### Fixed — 🚨 ストリーミング応答中に session 切替で回答が消える

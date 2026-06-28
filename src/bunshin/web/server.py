@@ -1729,9 +1729,9 @@ INDEX_HTML = """<!DOCTYPE html>
     cursor: help;
   }
   .result-meta .relevance.rerank {
-    background: rgba(245,158,11,0.14);
-    color: #fcd34d;
-    border-color: rgba(245,158,11,0.30);
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 30%, transparent);
   }
   /* Why-this-record-matched chips (vector / keyword / rerank / signal) */
   .why-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
@@ -1785,10 +1785,10 @@ INDEX_HTML = """<!DOCTYPE html>
   .results-toolbar .copy-bundle-btn svg { width: 13px; height: 13px; }
   .results-toolbar .copy-bundle-btn.copied { color: #58cc6e; border-color: rgba(88,204,110,0.4); }
   .result-meta .more-chunks {
-    color: #efaf4a;
-    background: rgba(239, 175, 74, 0.1);
+    color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-pill);
     font-size: 11px;
     cursor: pointer;
     transition: background 0.15s;
@@ -2031,18 +2031,12 @@ INDEX_HTML = """<!DOCTYPE html>
      Strong contrast for both dark + light themes so the match is the
      thing the eye lands on, not just a tinted nuance. */
   mark {
-    background: #ffd400;
-    color: #1a1100;
-    border-radius: 3px;
-    padding: 1px 4px;
-    font-weight: 600;
-    box-shadow: 0 0 0 1px rgba(255,212,0,0.35);
+    background: color-mix(in srgb, var(--accent-1) 22%, transparent);
+    color: var(--text-1);
+    padding: 0 2px;
+    border-radius: 2px;
   }
-  :root.theme-light mark {
-    background: #ffeb3b;
-    color: #1a1100;
-    box-shadow: 0 0 0 1px rgba(255,193,7,0.5);
-  }
+  /* (no light-mode override — color-mix is theme-aware via var(--accent-1)) */
   /* Growth toast — "+N 件 記憶しました" on first stats load each day */
   .growth-toast {
     position: fixed;
@@ -2466,6 +2460,8 @@ INDEX_HTML = """<!DOCTYPE html>
     padding-right: 18px;
     color: var(--text-1);
   }
+  /* Reviewer 21: each history row was 77.7px tall (vs Claude 36 / GPT 32).
+     Title only by default; preview + meta only on hover or active row. */
   .chat-session-item .preview {
     font-size: 11px;
     color: var(--text-3);
@@ -2474,15 +2470,20 @@ INDEX_HTML = """<!DOCTYPE html>
     text-overflow: ellipsis;
     white-space: nowrap;
     font-style: italic;
+    display: none;
   }
   .chat-session-item .meta {
     font-size: 10.5px;
     color: var(--text-4);
     margin-top: 4px;
-    display: flex;
     gap: 6px;
     font-variant-numeric: tabular-nums;
+    display: none;
   }
+  .chat-session-item:hover .preview,
+  .chat-session-item.active .preview { display: block; }
+  .chat-session-item:hover .meta,
+  .chat-session-item.active .meta { display: flex; }
   .chat-session-item .meta .sep { opacity: 0.4; }
   .chat-session-item .delete-btn {
     position: absolute;
@@ -2962,6 +2963,21 @@ INDEX_HTML = """<!DOCTYPE html>
     border-color: var(--border-2);
     transform: translateY(-1px);
   }
+  /* "AI でサマリを作成" button on the insights tab. Used to be a hard
+     #3a5a8a blue inline-style that clashed with the indigo accent. */
+  #digest-btn {
+    background: var(--accent-1);
+    color: #fff;
+    padding: 8px 18px;
+    font-size: 13px;
+    border-radius: var(--radius-sm);
+    border: 0;
+    cursor: pointer;
+    font-family: inherit;
+    transition: filter 0.12s ease;
+  }
+  #digest-btn:hover { filter: brightness(1.08); }
+  #digest-btn:disabled { background: var(--bg-3); color: var(--text-3); cursor: not-allowed; filter: none; }
   /* Pulse keyframes shared by composer-icon.recording. */
   @keyframes mic-pulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.45); }
@@ -6129,7 +6145,7 @@ async function loadInsights() {
       <div class="insights-section">
         <h2><span class="h2-icon">${icon('newspaper', 18)}</span> 過去7日間のサマリ（AI 生成）</h2>
         <div id="digest-area">
-          <button id="digest-btn" class="settings-save-btn" style="background:#3a5a8a;padding:8px 18px;font-size:13px;">
+          <button id="digest-btn" type="button">
             AI でサマリを作成（30 秒〜2 分）
           </button>
         </div>
