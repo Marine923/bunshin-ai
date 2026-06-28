@@ -1401,6 +1401,29 @@ INDEX_HTML = """<!DOCTYPE html>
     color: var(--accent-2);
     border-color: var(--accent-1);
   }
+  /* v0.9.15: prominent "▶ Terminal で実行" button so non-CLI users
+     don't have to know what Terminal.app is. Coloured to stand out
+     vs the muted "コピー" button. */
+  .onboarding-content .step-cmd .run-terminal-btn {
+    background: var(--accent-1);
+    border: 0;
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: inherit;
+    transition: background 0.15s, transform 0.08s;
+    margin-left: 4px;
+  }
+  .onboarding-content .step-cmd .run-terminal-btn:hover {
+    background: color-mix(in srgb, var(--accent-1) 80%, black);
+  }
+  .onboarding-content .step-cmd .run-terminal-btn:active { transform: scale(0.96); }
+  .onboarding-content .step-cmd .run-terminal-btn.launched {
+    background: #58cc6e;
+  }
   .onboarding-content .step-warn {
     background: rgba(234, 179, 8, 0.08);
     border-left: 3px solid #facc15;
@@ -7193,6 +7216,34 @@ function renderOnboarding() {
       });
     });
   });
+  // v0.9.15: friend-distribution fix — Wizard told users to run
+  // `bunshin import-gmail` etc, but the CLI isn't on $PATH for users
+  // who only installed the .app. For each .step-cmd, inject a
+  // "Terminal で実行" button that uses preload.js bunshin.runInTerminal()
+  // to open Terminal.app pre-filled with the bundled binary's full path.
+  // Only shown when running inside the Electron app.
+  if (window.bunshin && window.bunshin.runInTerminal) {
+    contentEl.querySelectorAll('.step-cmd').forEach(cmdEl => {
+      if (cmdEl.querySelector('.run-terminal-btn')) return;  // idempotent
+      const cpy = cmdEl.querySelector('.copy-btn');
+      if (!cpy) return;
+      const run = document.createElement('button');
+      run.className = 'run-terminal-btn';
+      run.type = 'button';
+      run.textContent = '▶ Terminal で実行';
+      run.title = 'Terminal.app を開いてこのコマンドを自動入力します。Enter キーを押すだけで実行できます。';
+      run.addEventListener('click', () => {
+        window.bunshin.runInTerminal(cpy.dataset.copy);
+        run.classList.add('launched');
+        run.textContent = '✓ Terminal を開きました';
+        setTimeout(() => {
+          run.classList.remove('launched');
+          run.textContent = '▶ Terminal で実行';
+        }, 2400);
+      });
+      cmdEl.appendChild(run);
+    });
+  }
 
   $('onboarding-back').style.display = _onboardingIdx === 0 ? 'none' : '';
   $('onboarding-next').textContent =

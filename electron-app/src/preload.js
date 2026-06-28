@@ -12,4 +12,8 @@ contextBridge.exposeInMainWorld('bunshin', {
   platform: process.platform,
   version: process.versions.electron,
   notify: (title, body) => ipcRenderer.send('bunshin:notify', { title, body }),
+  // Open Terminal.app with the bundled `bunshin` CLI pre-typed so the
+  // user just hits Enter. Used by the Wizard step copy buttons —
+  // ターミナルを知らない友人でも CLI が叩ける.
+  runInTerminal: (command) => ipcRenderer.send('bunshin:run-in-terminal', { command }),
 });

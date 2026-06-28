@@ -52,6 +52,27 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.15] - 2026-06-28
+
+Phase 1 配布の致命的ブロッカー: Wizard が **`bunshin import-gmail`**
+等を「コピーして Terminal で実行」と言ってたが、Mac.app だけ
+インストールしたユーザーは `bunshin` が `$PATH` になく、そもそも
+Terminal を開く文化がない可能性。
+
+### Added — Wizard に「▶ Terminal で実行」ボタン
+- Electron 環境のとき、Wizard の各 `step-cmd` の隣に **緑の Terminal
+  起動ボタン** を表示
+- クリック → preload.js `bunshin.runInTerminal()` → main.js が
+  `osascript` 経由で **Terminal.app を開いて、同梱バイナリの
+  フルパス** (`/Applications/Bunshin.app/Contents/Resources/bunshin/bunshin`)
+  と引数を入力 → ユーザーは **Enter キーを押すだけで実行**
+- 「コピー」ボタンは上級者向けに残す (alias 設定済みなら短い形が使える)
+- IPC: `bunshin:run-in-terminal` チャネル新設
+
+### Impact
+壱岐の友人 (CLI を知らない) でもオンボーディング 5 ステップを完走できる
+ように。**Phase 1 配布の最後のブロッカーが外れた。**
+
 ## [0.9.14] - 2026-06-28
 
 v0.9.13 の網羅検証で見つけた取りこぼし 2 件。

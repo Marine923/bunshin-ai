@@ -413,6 +413,37 @@ ipcMain.on('bunshin:notify', (_event, payload) => {
 });
 
 // ────────────────────────────────────────────────────────────
+// IPC: open the bundled CLI in Terminal.app, pre-filled
+// ────────────────────────────────────────────────────────────
+// The Wizard tells users to run `bunshin import-gmail` etc, but
+// `bunshin` isn't on $PATH when only the .app is installed. This
+// handler takes the short command (e.g. "import-gmail --full"),
+// rewrites it to the bundled binary's full path, opens Terminal.app
+// and pastes the command — user just hits Enter.
+ipcMain.on('bunshin:run-in-terminal', (_event, payload) => {
+  const { command } = payload || {};
+  if (!command || typeof command !== 'string') return;
+  // command examples: "import-gmail --full" / "setup-gmail --email a@b.c"
+  // Strip a leading "bunshin " if the caller included it.
+  const args = command.replace(/^\s*bunshin\s+/, '').trim();
+  if (!args) return;
+  // Locate the bundled binary inside the .app (or fall back to the
+  // dev resourcesPath layout when running unpacked).
+  const binPath = path.join(process.resourcesPath, 'bunshin', 'bunshin');
+  // AppleScript injects the command into a fresh Terminal window.
+  // Escape backslashes and double-quotes for AppleScript string.
+  const fullCmd = `${binPath} ${args}`;
+  const escaped = fullCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const script = `tell application "Terminal"
+    activate
+    do script "${escaped}"
+  end tell`;
+  const { spawn } = require('child_process');
+  const p = spawn('osascript', ['-e', script]);
+  p.on('error', (err) => console.error('[bunshin] osascript failed:', err));
+});
+
+// ────────────────────────────────────────────────────────────
 // Periodic Insights → macOS / Linux native notification
 // ────────────────────────────────────────────────────────────
 const INSIGHTS_INTERVAL_MS = 6 * 60 * 60 * 1000;  // every 6 hours
