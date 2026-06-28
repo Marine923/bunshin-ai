@@ -52,6 +52,21 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.18] - 2026-06-29
+
+### Fixed — 起動直後の loadStats タイムアウト → 「loading…」が永続化する hotfix
+- 旧: アプリ起動 → embed モデル (3 GB) のメモリロードで FastAPI thread
+  pool が一時的に詰まり、`/api/status` が ~8s でタイムアウト → UI 側
+  `loadStats()` が catch → 「loading…」が画面に残る → ユーザーが手動
+  リロードしないと回復しない (Honda 報告)
+- 新: `_fetchStatsWithRetry(maxAttempts=4)` を新設。0s → 2s → 4s → 8s
+  の exponential backoff で最大 4 回再試行。途中の試行間は
+  「データ準備中… (再試行 N/4)」を表示
+- AbortSignal.timeout(8000) で各試行を 8 秒で打ち切り、合計 ~14s の壁
+  時計で初回成功までカバー
+- 失敗時の文言を「error」→「接続エラー」に変更、`console.error` に
+  詳細出力
+
 ## [0.9.17] - 2026-06-29
 
 🟡 **竹 (1〜2 週間)**: 本田さんレビュー指摘の 5 件を一括解消。

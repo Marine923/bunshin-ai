@@ -6668,9 +6668,36 @@ function showGrowthToast(total) {
   setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 400); }, 4500);
 }
 
+async function _fetchStatsWithRetry(maxAttempts = 4) {
+  // v0.9.18: app launch loads a 3GB embed model into memory; during
+  // those first 5-20 seconds the FastAPI thread pool is starved and
+  // /api/status can time out. The previous loadStats() failed once
+  // and left "loading..." on screen until the user manually reloaded
+  // — Honda watched this happen and thought the app was broken.
+  // Retry up to 4 times with backoff: 0s → 2s → 4s → 8s. ~14s total
+  // wall-clock to first successful refresh.
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const r = await fetch('/api/status', { signal: AbortSignal.timeout(8000) });
+      if (r.ok) return await r.json();
+    } catch (_e) { /* fall through to retry */ }
+    if (i < maxAttempts - 1) {
+      const wait = 2000 * Math.pow(2, i);
+      $('stats').textContent = `データ準備中… (再試行 ${i + 2}/${maxAttempts})`;
+      await new Promise(resolve => setTimeout(resolve, wait));
+    }
+  }
+  return null;
+}
+
 async function loadStats() {
   try {
-    const j = await (await fetch('/api/status')).json();
+    const j = await _fetchStatsWithRetry();
+    if (!j) {
+      $('stats').textContent = '接続できません';
+      renderEmptyState(null);
+      return;
+    }
     showGrowthToast(j.total_records);
     _latestStats = j;
     const sourceCount = j.sources ? Object.keys(j.sources).length : 0;
@@ -6698,9 +6725,10 @@ async function loadStats() {
     $('stats').innerHTML = html;
     renderEmptyState(j);
     updateSourceChipCounts(j.sources || {});
-  } catch {
-    $('stats').textContent = 'error';
+  } catch (e) {
+    $('stats').textContent = '接続エラー';
     renderEmptyState(null);
+    console.error('loadStats failed:', e);
   }
 }
 
