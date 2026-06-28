@@ -9766,7 +9766,19 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def index():
-        return INDEX_HTML
+        # v0.9.19 — never cache the index. The Electron BrowserWindow
+        # was serving the v0.9.16-era HTML to a v0.9.18 backend, and
+        # the stale JS froze the renderer (Honda 2026-06-29 01:14 hang).
+        # With no-store the user always sees the bundle that matches
+        # the version of the .app they just launched.
+        return HTMLResponse(
+            INDEX_HTML,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     _FILE_MIME = {
         # Images

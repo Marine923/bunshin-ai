@@ -272,7 +272,16 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  mainWindow.loadURL(SERVER_URL);
+  // v0.9.19: hard-clear renderer cache on every launch. Honda's
+  // v0.9.18 BrowserWindow was serving v0.9.16-era HTML/JS to the new
+  // backend and the stale renderer froze. Sub-second op; renderer
+  // resources stream from localhost anyway, so there's no cold cache
+  // penalty.
+  mainWindow.webContents.session.clearCache()
+    .catch((err) => console.error('[bunshin] clearCache failed:', err))
+    .finally(() => {
+      mainWindow.loadURL(SERVER_URL);
+    });
 }
 
 // ────────────────────────────────────────────────────────────

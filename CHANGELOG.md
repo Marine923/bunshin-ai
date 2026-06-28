@@ -52,6 +52,22 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.19] - 2026-06-29
+
+### Fixed — Electron renderer の stale cache で UI 完全フリーズ (致命)
+- 旧: v0.9.18 を起動しても Electron BrowserWindow が **v0.9.16-era の
+  HTML/JS をキャッシュから配信** → 古い JS が新しい backend と不整合
+  で例外 → renderer メインスレッド凍結 → クリックも効かない
+  (Honda 01:14 報告、再現確認)
+- 新 (2 重対策):
+  1. **サーバ側**: `/` (HTML) の response に `Cache-Control: no-store,
+     no-cache, must-revalidate, max-age=0` + `Pragma: no-cache` +
+     `Expires: 0` を強制付与 → 今後のリリースで古い HTML 配信ゼロ
+  2. **Electron 側**: 起動時に `mainWindow.webContents.session.clearCache()`
+     を呼んでから `loadURL()` → ローカル接続なので体感ゼロ、確実に
+     最新を fetch
+- ヘッダ実測: `cache-control: no-store, no-cache, must-revalidate, max-age=0` ✅
+
 ## [0.9.18] - 2026-06-29
 
 ### Fixed — 起動直後の loadStats タイムアウト → 「loading…」が永続化する hotfix

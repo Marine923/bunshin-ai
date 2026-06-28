@@ -1,6 +1,6 @@
 {
   "name": "bunshin-desktop",
-  "version": "0.9.18",
+  "version": "0.9.19",
   "description": "Bunshin — 4-condition personal memory AI (desktop wrapper)",
   "main": "src/main.js",
   "author": {
