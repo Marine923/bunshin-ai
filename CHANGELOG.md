@@ -52,6 +52,18 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.21] - 2026-06-29
+
+### Fixed — 関係性タブのノード半径が膨張してラベル重なる
+- 原因: v0.9.17 で `entity_relations()` の specificity を
+  `weight/e2_total` (0-1) から `weight/sqrt(e2_total)` (0-5+) に変更
+  → drawWeb 内で `r = 14 + weight*10` がそのまま使われ、「ドローン
+  548%」のような entity で半径 68px → ノード重なり
+- 修正: drawWeb で `Math.min(1, specificity)` で clamp → 半径
+  14〜24px の旧来サイズに復元
+- specificity 値自体 (relations 1 位ソート用) はそのまま、表示用の
+  ビジュアル半径だけが clamp 対象
+
 ## [0.9.20] - 2026-06-29
 
 ### Fixed — v0.9.17 で混入した JS SyntaxError で UI 全凍結 (真因解明)

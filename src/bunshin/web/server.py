@@ -5841,14 +5841,19 @@ function drawWeb(center, neighbors) {
   const radius = Math.min(W, H) * 0.36;
   neighbors.forEach((r, i) => {
     const angle = (i / Math.max(n, 1)) * Math.PI * 2;
+    // v0.9.21: clamp to 0-1 because v0.9.17 changed entity_relations()
+    // specificity from weight/e2_total (0-1) to weight/sqrt(e2_total)
+    // (0-5+). Without the clamp, "ドローン 特異性548%" pushed the
+    // neighbor radius to 14 + 5.48*10 = 68px, so every node overlapped.
+    const sp = Math.min(1, (r.specificity || 0.5));
     nodes.push({
       id: r.id, name: r.name, type: r.type, role: 'neighbor',
-      weight: r.specificity || 0.5,
+      weight: sp,
       x: W / 2 + Math.cos(angle) * radius,
       y: H / 2 + Math.sin(angle) * radius,
       vx: 0, vy: 0,
     });
-    edges.push({ source: center.id, target: r.id, weight: r.specificity || 0.5 });
+    edges.push({ source: center.id, target: r.id, weight: sp });
   });
 
   // Build SVG (clear first).
