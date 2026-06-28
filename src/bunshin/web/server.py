@@ -981,7 +981,7 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   .flashback-card {
     padding: 13px 14px 12px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border-1);
     background: var(--bg-0);
     display: flex;
@@ -993,7 +993,7 @@ INDEX_HTML = """<!DOCTYPE html>
   .flashback-card:hover {
     border-color: var(--accent-1);
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    box-shadow: var(--shadow-1);
     cursor: pointer;
   }
   .flashback-card .fb-when {
@@ -1073,7 +1073,7 @@ INDEX_HTML = """<!DOCTYPE html>
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.55);
-    backdrop-filter: blur(2px);
+    backdrop-filter: blur(4px);  /* matched to help-modal */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1491,7 +1491,7 @@ INDEX_HTML = """<!DOCTYPE html>
     border-color: var(--border-2);
     border-left-color: var(--accent-1);
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(0,0,0,0.25), 0 1px 0 rgba(255,255,255,0.02);
+    box-shadow: var(--shadow-1);  /* theme-aware (was dark-only) */
   }
   .timeline-day-header {
     display: flex;
@@ -1560,11 +1560,11 @@ INDEX_HTML = """<!DOCTYPE html>
     left: 0;
     min-width: 220px;
     max-width: 360px;
-    background: #1c2030;
+    background: var(--bg-3);  /* theme-aware (was hardcoded dark purple) */
     border: 1px solid var(--border-2);
     border-radius: var(--radius-md);
     padding: 10px 12px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+    box-shadow: var(--shadow-1);
     font-size: 12px;
     color: var(--text-2);
     line-height: 1.45;
@@ -1687,24 +1687,35 @@ INDEX_HTML = """<!DOCTYPE html>
     font-variant-numeric: tabular-nums;
   }
   .result-meta .role { color: var(--accent-2); }
+  /* Source badges used to be a 10-color rainbow with dark-only hex bg
+     (white-page eye sores in light mode). One neutral surface for all
+     of them; the source-type accent is now a 2px border-left, grouped
+     into four semantic families. Reviewer 19 spec L-1. */
   .result-meta .source-badge {
-    padding: 2px 7px;
+    padding: 2px 8px;
     border-radius: var(--radius-pill);
     font-size: 10.5px;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 0.01em;
+    background: var(--bg-2);
+    color: var(--text-2);
+    border: 1px solid var(--border-1);
   }
-  .source-badge.claude { background: #1f2540; color: #a5b4fc; }
-  .source-badge.file { background: #1f3528; color: #6ee7b7; }
-  .source-badge.gmail { background: #3b1f1f; color: #fca5a5; }
-  .source-badge.notes { background: #2a1f3b; color: #c4b5fd; }
-  .source-badge.imessage { background: #3b1f33; color: #f9a8d4; }
+  /* テキスト系 (Claude会話・メモ・手書き) */
+  .source-badge.claude,
+  .source-badge.notes,
+  .source-badge.manual { border-left: 2px solid var(--accent-1); }
+  /* ファイル */
+  .source-badge.file { border-left: 2px solid var(--good); }
+  /* メッセージ系 (メール・SMS・LINE) */
+  .source-badge.gmail,
+  .source-badge.imessage,
+  .source-badge.line { border-left: 2px solid var(--warn); }
+  /* メディア・予定 (写真・ブラウザ・カレンダー) */
   .source-badge.photo,
-  .source-badge.photos_app { background: #1f2f3b; color: #93c5fd; }
-  .source-badge.browser { background: #1f3b3b; color: #67e8f9; }
-  .source-badge.calendar { background: #3b2f1f; color: #fcd34d; }
-  .source-badge.line { background: #1f3b29; color: #86efac; }
-  .source-badge.manual { background: #2a2a3b; color: #cbd5e1; }
+  .source-badge.photos_app,
+  .source-badge.browser,
+  .source-badge.calendar { border-left: 2px solid var(--accent-2); }
   .result-meta .distance { color: var(--text-4); }
   .result-meta .relevance {
     padding: 1px 8px;
@@ -1735,11 +1746,23 @@ INDEX_HTML = """<!DOCTYPE html>
     cursor: help;
     line-height: 16px;
   }
-  .why-chip.why-rerank { color: #a8aaff; border-color: rgba(168,170,255,0.35); background: rgba(168,170,255,0.10); }
-  .why-chip.why-vector { color: #6dd47c; border-color: rgba(88,204,110,0.35); background: rgba(88,204,110,0.08); }
-  .why-chip.why-keyword { color: #f6b73c; border-color: rgba(246,183,60,0.35); background: rgba(246,183,60,0.08); }
-  .why-chip.why-signal { color: #efaf4a; border-color: rgba(239,175,74,0.35); background: rgba(239,175,74,0.08); }
-  .why-chip.why-kwfb { color: #ff9b6b; border-color: rgba(255,155,107,0.35); background: rgba(255,155,107,0.10); }
+  /* Why-chips were a 5-color rainbow; they're supporting metadata
+     ("why did this match?"), not headline content. All quiet gray;
+     only the AI reranker keeps an accent because it's the highest-
+     value signal. Reviewer 19 spec L-2. */
+  .why-chip.why-vector,
+  .why-chip.why-keyword,
+  .why-chip.why-signal,
+  .why-chip.why-kwfb {
+    color: var(--text-3);
+    background: var(--bg-2);
+    border-color: var(--border-1);
+  }
+  .why-chip.why-rerank {
+    color: var(--accent-2);
+    background: color-mix(in srgb, var(--accent-1) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent-1) 35%, transparent);
+  }
   /* Results toolbar: "copy all to Claude/ChatGPT" */
   .results-toolbar {
     display: flex; justify-content: flex-end; align-items: center;
@@ -1776,14 +1799,14 @@ INDEX_HTML = """<!DOCTYPE html>
   .siblings-panel {
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px dashed #2a2a2a;
+    border-top: 1px dashed var(--border-1);
   }
   .sibling-item {
     padding: 10px 14px;
     margin: 6px 0;
     background: var(--bg-1);
-    border-left: 3px solid #efaf4a;
-    border-radius: 4px;
+    border-left: 3px solid var(--warn);
+    border-radius: var(--radius-sm);
     font-size: 13px;
   }
   .sibling-item .meta {
@@ -1839,7 +1862,7 @@ INDEX_HTML = """<!DOCTYPE html>
   .result-content:not(.expanded)::after {
     content: "";
     position: absolute; left: 0; right: 0; bottom: 0; height: 36px;
-    background: linear-gradient(180deg, transparent, var(--bg-0));
+    background: linear-gradient(180deg, transparent, var(--bg-1));  /* match parent .result bg */
     pointer-events: none;
   }
   .result-expand-btn {
@@ -2595,9 +2618,9 @@ INDEX_HTML = """<!DOCTYPE html>
     line-height: 1.55;
   }
   .chat-msg .md-pre {
-    background: #0a0d14;
+    background: var(--bg-3);  /* theme-aware: dark #1d2230 / light #e5e8ee */
     border: 1px solid var(--border-1);
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     padding: 12px 14px;
     overflow-x: auto;
     margin: 10px 0;
@@ -2607,12 +2630,12 @@ INDEX_HTML = """<!DOCTYPE html>
     position: absolute;
     top: 6px;
     right: 8px;
-    background: rgba(255,255,255,0.04);
+    background: var(--bg-2);
     border: 1px solid var(--border-1);
     color: var(--text-3);
     width: 28px;
     height: 26px;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     font-size: 12px;
     line-height: 1;
@@ -2640,16 +2663,16 @@ INDEX_HTML = """<!DOCTYPE html>
   .chat-msg .md-code {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 12.5px;
-    color: #cdd5e0;
+    color: var(--text-1);
     line-height: 1.5;
     display: block;
     white-space: pre;
   }
   .chat-msg .md-inline {
-    background: rgba(129, 140, 248, 0.12);
+    background: color-mix(in srgb, var(--accent-1) 12%, transparent);
     border: 1px solid var(--border-2);
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 12.5px;
     color: #c4b5fd;
@@ -2747,11 +2770,11 @@ INDEX_HTML = """<!DOCTYPE html>
   .citation-preview {
     position: fixed;
     z-index: 1500;
-    background: #1c2030;
+    background: var(--bg-3);  /* theme-aware (was hardcoded dark purple) */
     border: 1px solid var(--border-2);
     border-radius: var(--radius-md);
     padding: 10px 12px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+    box-shadow: var(--shadow-1);
     font-size: 12px;
     color: var(--text-2);
     line-height: 1.5;
@@ -7319,7 +7342,7 @@ document.addEventListener('click', (e) => {
   const btn = e.target.closest && e.target.closest('[data-expand-toggle]');
   if (!btn) return;
   e.stopPropagation();
-  const card = btn.closest('.result-card');
+  const card = btn.closest('.result');  // reviewer 19 spec B-1: actual class is `.result`, not `.result-card`
   const body = card && card.querySelector('[data-result-content]');
   if (!body) return;
   const expanded = body.classList.toggle('expanded');
