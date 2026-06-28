@@ -1955,6 +1955,35 @@ INDEX_HTML = """<!DOCTYPE html>
     z-index: 1001;
     pointer-events: none;
   }
+  /* Fallback panel inside the lightbox (shown for formats the browser
+     can't preview: .docx, .xlsx, .zip, etc.). The lightbox itself is a
+     dark overlay, so the panel keeps a dark surface + light text in
+     both themes — reviewer 19 spec: pulled out of inline styles to a
+     dedicated class for maintenance. */
+  .lightbox-fallback {
+    color: #fff;
+    text-align: center;
+    background: #1c2030;
+    padding: 32px;
+    border-radius: var(--radius-md);
+    max-width: 420px;
+    font-size: 14px;
+    line-height: 1.6;
+    border: 1px solid var(--border-2);
+  }
+  .lightbox-fallback-icon { margin-bottom: 12px; color: var(--text-3); }
+  .lightbox-fallback-name { font-weight: 600; margin-bottom: 4px; }
+  .lightbox-fallback-hint { color: var(--text-3); font-size: 12px; margin-bottom: 18px; }
+  .lightbox-fallback-btn {
+    display: inline-block;
+    padding: 8px 18px;
+    background: var(--accent-1);
+    color: #fff;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .lightbox-fallback-btn:hover { filter: brightness(1.1); }
   .lightbox-body {
     max-width: 100%;
     max-height: 100%;
@@ -2249,7 +2278,7 @@ INDEX_HTML = """<!DOCTYPE html>
   .session-panel {
     margin-top: 16px;
     padding-top: 16px;
-    border-top: 1px solid #2a2a2a;
+    border-top: 1px solid var(--border-1);
   }
   .session-header { font-size: 12px; color: var(--text-3); margin-bottom: 12px; }
   .session-msg {
@@ -2675,7 +2704,7 @@ INDEX_HTML = """<!DOCTYPE html>
     border-radius: var(--radius-sm);
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 12.5px;
-    color: #c4b5fd;
+    color: var(--accent-2);
   }
   .chat-msg .md-bq {
     border-left: 3px solid var(--accent-1);
@@ -7445,13 +7474,12 @@ function showLightboxByExt(lb, fname, ext, url) {
   } else if (['.md','.markdown','.txt'].includes(ext)) {
     body = `<div class="lightbox-body"><iframe src="${url}"></iframe></div>`;
   } else {
-    const panelStyle = "color:#fff;text-align:center;background:#1c2030;padding:32px;border-radius:12px;max-width:420px;font-size:14px;line-height:1.6;";
     body = `
-      <div class="lightbox-body"><div style="${panelStyle}">
-        <div style="margin-bottom:12px;color:var(--text-3);">${icon('file-text', 48)}</div>
-        <div style="font-weight:600;margin-bottom:4px;">${esc(fname)}</div>
-        <div style="color:#9aa;font-size:12px;margin-bottom:18px;">${esc(ext)} はブラウザで直接表示できません</div>
-        <a href="${url}" target="_blank" style="display:inline-block;padding:8px 18px;background:#818cf8;color:#fff;border-radius:6px;text-decoration:none;font-weight:500;">ダウンロード / 開く</a>
+      <div class="lightbox-body"><div class="lightbox-fallback">
+        <div class="lightbox-fallback-icon">${icon('file-text', 48)}</div>
+        <div class="lightbox-fallback-name">${esc(fname)}</div>
+        <div class="lightbox-fallback-hint">${esc(ext)} はブラウザで直接表示できません</div>
+        <a href="${url}" target="_blank" class="lightbox-fallback-btn">ダウンロード / 開く</a>
       </div></div>`;
   }
   lb.innerHTML = lightboxChrome() + body;

@@ -52,6 +52,23 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.6] - 2026-06-28
+
+第20回 UI 監査の取りこぼし 3 件を消化。
+
+### Fixed — `.session-panel` の border 色ハードコード
+- `#2a2a2a` → `var(--border-1)` (テーマ追従)
+
+### Fixed — `.md-inline` 文字色ハードコード
+- `#c4b5fd` → `var(--accent-2)` (ライトモードで読める)
+
+### Changed — Lightbox フォールバックパネルを CSS クラス化
+- 動的 panelStyle 文字列 (`color:#fff; background:#1c2030; …`) を全部
+  `.lightbox-fallback` クラスに移植。ボタンも `#818cf8` →
+  `var(--accent-1)` でハードコード排除。
+- lightbox 自体は dark overlay なのでパネル内テキストは白固定維持
+  (両モードで暗背景に乗るため)、ただし CSS クラス経由で保守性向上。
+
 ## [0.9.4] - 2026-06-28
 
 Phase 2 UI 仕上げ (reviewer 19 必須 2 件)。
