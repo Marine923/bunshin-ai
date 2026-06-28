@@ -383,6 +383,21 @@ INDEX_HTML = """<!DOCTYPE html>
     font-size: 12px;
     color: var(--text-3);
     font-variant-numeric: tabular-nums;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .stats-primary {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-1);
+  }
+  .stats-secondary { color: var(--text-3); }
+  @media (max-width: 960px) {
+    /* Hide secondary on narrow viewports — the tooltip on hidden-chip
+       still surfaces the detail counts if needed. */
+    .stats-secondary { display: none; }
   }
   .header-right {
     display: flex;
@@ -2304,21 +2319,36 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   .chat-new-btn:hover { background: var(--bg-2); border-color: var(--accent-1); }
   .chat-new-btn svg { width: 14px; height: 14px; }
-  .model-row { padding: 0; }
   .model-select {
-    width: 100%;
     background: transparent;
     border: 1px solid var(--border-1);
     color: var(--text-1);
     border-radius: 8px;
-    padding: 7px 10px;
+    padding: 5px 28px 5px 10px;
     font-size: 12px;
     font-family: inherit;
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
+    max-width: 220px;
   }
   .model-select:hover { background: var(--bg-2); }
   .model-select:focus { outline: none; border-color: var(--accent-1); }
+  /* Per-session model picker — top-right of the chat pane, ChatGPT/Claude
+     pattern. Replaces the awkward "設定 / チャット (5:14b)" section that
+     used to live in the sidebar (reviewer 17 flagged the broken hierarchy). */
+  .chat-toolbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 24px 0;
+  }
+  .chat-toolbar-label {
+    font-size: 11px;
+    color: var(--text-3);
+    letter-spacing: 0.02em;
+  }
   /* Search field with embedded icon */
   .chat-search-wrap {
     position: relative;
@@ -2971,7 +3001,42 @@ INDEX_HTML = """<!DOCTYPE html>
     white-space: pre-wrap;
     word-wrap: break-word;
     line-height: 1.55;
+    position: relative;
+    max-height: 5.5em;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
   }
+  /* Fade-out the bottom of clipped bodies so the cutoff doesn't look
+     like a parse error — reviewer 17 noted long English AI-generated
+     snippets were dominating the layout. */
+  .insights-card .body::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 1.8em;
+    background: linear-gradient(to bottom, transparent, var(--bg-1));
+    pointer-events: none;
+  }
+  .insights-card:hover .body::after { background: linear-gradient(to bottom, transparent, var(--bg-2)); }
+  .insights-card.expanded .body { max-height: 2000px; }
+  .insights-card.expanded .body::after { display: none; }
+  /* Heuristic: bodies that are mostly ASCII (English) get italic + smaller
+     mono — visually marks them as raw AI output, not curated content. */
+  .insights-card .body.raw-output {
+    font-style: italic;
+    color: var(--text-3);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+  }
+  .insights-card .body-toggle {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 11.5px;
+    color: var(--accent-2);
+    cursor: pointer;
+    user-select: none;
+  }
+  .insights-card .body-toggle:hover { color: var(--text-1); }
   .insights-generated {
     font-size: 11px;
     color: var(--text-4);
@@ -3627,10 +3692,6 @@ INDEX_HTML = """<!DOCTYPE html>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>新規チャット</span>
         </button>
-        <div class="sidebar-section">設定</div>
-        <div class="model-row">
-          <select id="chat-model" class="model-select" aria-label="モデル"></select>
-        </div>
         <div class="sidebar-section">履歴</div>
         <div class="chat-search-wrap">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -3641,6 +3702,10 @@ INDEX_HTML = """<!DOCTYPE html>
         </div>
       </aside>
       <div class="chat-container">
+        <div class="chat-toolbar">
+          <span class="chat-toolbar-label">モデル</span>
+          <select id="chat-model" class="model-select" aria-label="モデル"></select>
+        </div>
         <div class="ollama-status-banner" id="ollama-status-banner" hidden></div>
         <!-- Initial markup intentionally empty; JS calls startNewChat()
              on load to render the minimal empty state with wired
@@ -6087,6 +6152,33 @@ async function loadInsights() {
     content.innerHTML = html;
     insightsLoaded = true;
 
+    // Post-process insight cards — flag English-heavy bodies as raw AI
+    // output (italic mono) and add an expand toggle to bodies that
+    // overflow the 5.5em cap. Reviewer 17 noted untreated English
+    // markdown was dominating the layout.
+    content.querySelectorAll('.insights-card').forEach(card => {
+      const body = card.querySelector('.body');
+      if (!body) return;
+      const text = body.textContent || '';
+      const stripped = text.replace(/\\s/g, '');
+      if (stripped.length > 20) {
+        const ascii = (stripped.match(/[\\x21-\\x7e]/g) || []).length;
+        if (ascii / stripped.length > 0.6) body.classList.add('raw-output');
+      }
+      // Only show toggle when content overflows the clamp.
+      if (body.scrollHeight > body.clientHeight + 2) {
+        const toggle = document.createElement('span');
+        toggle.className = 'body-toggle';
+        toggle.textContent = 'もっと見る';
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const expanded = card.classList.toggle('expanded');
+          toggle.textContent = expanded ? '折りたたむ' : 'もっと見る';
+        });
+        body.after(toggle);
+      }
+    });
+
     // Wire the digest button (lazy because LLM call is slow).
     const digestBtn = document.getElementById('digest-btn');
     if (digestBtn) {
@@ -6151,18 +6243,23 @@ async function loadStats() {
     showGrowthToast(j.total_records);
     _latestStats = j;
     const sourceCount = j.sources ? Object.keys(j.sources).length : 0;
-    const parts = [
-      `${(j.total_records || 0).toLocaleString()} records`,
-    ];
-    if (j.total_entities) parts.push(`${j.total_entities.toLocaleString()} entities`);
-    if (sourceCount) parts.push(`${sourceCount} sources`);
+    // Two-tier stats: primary count is loud, secondary details muted —
+    // reviewer 17 called out the 5-fact run-on line as the noisiest part
+    // of the header. Secondary collapses on narrow viewports.
+    const primary = `<span class="stats-primary">${(j.total_records || 0).toLocaleString()} 件の記憶</span>`;
+    const secondary = [];
+    if (j.total_entities) secondary.push(`${j.total_entities.toLocaleString()} エンティティ`);
+    if (sourceCount) secondary.push(`${sourceCount} ソース`);
     if (j.oldest_ts) {
       const d = new Date(j.oldest_ts * 1000);
-      parts.push(`${d.getFullYear()}年から`);
+      secondary.push(`${d.getFullYear()}年から`);
     }
-    let html = parts.join(' · ');
+    let html = primary;
+    if (secondary.length) {
+      html += ` <span class="stats-secondary">${secondary.join(' · ')}</span>`;
+    }
     if (j.auto_filtered_count && j.auto_filtered_count > 0) {
-      html += ` <span class="hidden-chip" title="シグナルスコア ${j.min_signal_score} 以下を自動非表示中。設定タブで調整可能">${j.auto_filtered_count.toLocaleString()}件自動フィルター中</span>`;
+      html += ` <span class="hidden-chip" title="シグナルスコア ${j.min_signal_score} 以下を自動非表示中。設定タブで調整可能">${j.auto_filtered_count.toLocaleString()}件フィルター中</span>`;
     }
     if (j.hidden_count && j.hidden_count > 0) {
       html += ` <span class="hidden-chip" title="あなたの学習で非表示にした記録">${j.hidden_count.toLocaleString()}件非表示</span>`;

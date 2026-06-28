@@ -4,6 +4,30 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-06-28
+
+別 AI ビジュアル担当が `server.py` に入れた 3 改修を build / release。
+
+### Changed — モデルピッカーをチャット右上ツールバーへ
+- 旧: チャットサイドバーに「設定」セクション + ドロップダウン
+- 新: ChatGPT / Claude.ai 同型の **チャットペイン右上ツールバー**
+  に「モデル ▼」。`max-width: 220px` で長い名前 (qwen2.5:14b) もクリップ
+  せず収まる。
+
+### Changed — Insights カード本文を **クランプ + 折りたたみ**
+- `.body` に `max-height: 5.5em` + 下端フェードアウト
+- 内容が clamp を超えるカードだけ「もっと見る / 折りたたむ」トグル表示
+- **English-heavy (ASCII > 60%) 本文** に `raw-output` クラスを自動付与
+  → italic + mono フォント + text-3 で「これは AI 生の出力」と視覚的に
+  示す。Insights タブが英語 markdown に支配される現象を解消。
+
+### Changed — ヘッダー stats を 2 段化 + 日本語化
+- 旧: `20,466 records · 137 entities · 8 sources · 2015年から` (英語混在、
+  全部同じ強度)
+- 新: **primary** 「20,466 件の記憶」(text-1, weight 500) + **secondary**
+  「137 エンティティ · 8 ソース · 2015年から」(text-3, muted)
+- 狭ビューポート (`< 960px`) では secondary を非表示
+
 ## [0.9.2] - 2026-06-26
 
 第 18 回 UI レビューの残り 2 件 (token 駆動化の徹底)。
