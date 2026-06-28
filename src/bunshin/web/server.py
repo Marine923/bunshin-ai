@@ -8896,8 +8896,9 @@ function renderMarkdown(text) {
     if (olM) {
       if (inUl) { out.push('</ul>'); inUl = false; }
       if (!inOl) { out.push('<ol class="md-ol">'); inOl = true; }
-      // No value="..." — let <ol> auto-number, so LLM output like
-      // "1. foo\n1. bar\n1. baz" renders as 1, 2, 3 (not 1, 1, 1).
+      // No value="..." — let <ol> auto-number. So LLM output that
+      // repeats "1." on every item (a common Claude/GPT habit) still
+      // renders as 1, 2, 3 — not 1, 1, 1.
       out.push('<li>' + olM[2] + '</li>');
       continue;
     }

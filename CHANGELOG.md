@@ -52,6 +52,52 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.20] - 2026-06-29
+
+### Fixed — v0.9.17 で混入した JS SyntaxError で UI 全凍結 (真因解明)
+
+v0.9.17 / v0.9.18 / v0.9.19 全部の凍結報告の **本当の原因** を実機
+DevTools で特定 → 修正。
+
+#### 症状
+- `loadStats` retry 拡張も Electron clearCache も効かない
+- ヘッダー「loading…」、中央「読み込み中…」のまま
+- どのタブをクリックしても画面遷移しない (ホバー反応はある)
+- API は `/api/health` `/api/status` ともに即応答 (=サーバ無罪)
+
+#### 真因
+v0.9.17 で追加した JS コメント:
+```js
+// No value="..." — let <ol> auto-number, so LLM output like
+// "1. foo\n1. bar\n1. baz" renders as 1, 2, 3 (not 1, 1, 1).
+```
+が、`INDEX_HTML = """..."""` (Python triple-quoted string) 内に
+書かれていたため、**Python が `\n` をエスケープシーケンスとして実改行に
+展開** → 配信 HTML では:
+```js
+// "1. foo
+1. bar
+1. baz" renders as 1, 2, 3 (not 1, 1, 1).
+```
+となり、`//` コメントが 1 行目で終了 → 2 行目の `1. bar` を JS パーサが
+コードとして読み取って **Uncaught SyntaxError: Unexpected identifier 'bar'**
+→ JS 全体が parse 失敗 → 全イベントハンドラ未登録 → クリック効かず
+画面更新も止まる。
+
+v0.9.18/v0.9.19 の loadStats retry / Cache-Control no-store / Electron
+clearCache はどれも **症状の緩和や再発防止策**であり、真因 (SyntaxError)
+を直してなかったので結局凍結が再現していた。
+
+#### 修正
+問題のコメントから `\n` を削除し、説明文を 1 行で書き直し。Python
+の文字列リテラル解釈で改行に化ける文字列を JS コメント / 文字列に
+書かないルール (ベスト：INDEX_HTML を `r"""..."""` raw string に
+する) は別途整理。
+
+実機 DevTools で確認: SyntaxError ゼロ、全タブ動作、関係性タブの蜘蛛
+の巣ビューに「ドローン (155 回共起 / 特異性 548%)」が壱岐島の関連
+1 位として正しく表示 (=v0.9.17 の共起改善も実は最初から効いてた)。
+
 ## [0.9.19] - 2026-06-29
 
 ### Fixed — Electron renderer の stale cache で UI 完全フリーズ (致命)
