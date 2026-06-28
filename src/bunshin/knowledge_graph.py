@@ -175,7 +175,38 @@ ENTITY_TYPE_OVERRIDES = {
     "ホークす(海外帰りの模索日記)": "project",
     "MARINE FLIGHT": "organization",
     "AIR Flight": "organization",
+    "reefballjapan": "organization",
+    "リーフボールジャパン": "organization",
+    "Reefball Japan": "organization",
 }
+
+# 🟡 竹 #6: pattern-based type inference for names the override dict
+# doesn't list. LLM extractors often label company/handle names like
+# "reefballjapan" or "marine_flight" as person; these patterns catch
+# the obvious cases. Order matters — first match wins.
+import re as _re
+
+_TYPE_PATTERNS = [
+    # Japanese corporate suffixes → organization
+    (_re.compile(r"(株式会社|有限会社|合同会社|\(株\)|（株）)"), "organization"),
+    # English corporate suffixes → organization
+    (_re.compile(r"\b(Inc\.?|Corp\.?|LLC|Ltd\.?|Co\.?|GmbH|S\.A\.|N\.V\.)\b"), "organization"),
+    # "-japan" / "-jp" / "japan-" handle/brand suffix → organization
+    (_re.compile(r"(?i)(japan|jp)$"), "organization"),
+    # Underscore_handles ('marine_flight', 'air_flight') → organization
+    # (almost always a brand/account, never a person name)
+    (_re.compile(r"^[a-z][a-z0-9_]+[a-z0-9]$"), "organization"),
+]
+
+
+def _pattern_type(name: str) -> str | None:
+    """Return inferred type from name pattern, or None to leave to LLM."""
+    if not name:
+        return None
+    for rx, t in _TYPE_PATTERNS:
+        if rx.search(name):
+            return t
+    return None
 
 # Entity names that are pure noise — single characters, very generic
 # stop-words, fragments that the LLM extractor occasionally promotes.
@@ -192,23 +223,40 @@ NOISE_ENTITY_NAMES = {
 
 def normalize_entity_type(name: str, default_type: str) -> str:
     """Return the canonical entity type for `name`, overriding the LLM's
-    guess if we have a known-good mapping."""
-    return ENTITY_TYPE_OVERRIDES.get(name, default_type)
+    guess if we have a known-good mapping or a regex pattern hit."""
+    if name in ENTITY_TYPE_OVERRIDES:
+        return ENTITY_TYPE_OVERRIDES[name]
+    pattern_t = _pattern_type(name)
+    if pattern_t:
+        return pattern_t
+    return default_type
 
 
 def apply_entity_type_overrides(conn: sqlite3.Connection) -> int:
     """Patch existing entities whose `type` disagrees with the override
-    dict. Returns the number of rows updated.
+    dict or matches a type-inference pattern. Returns rows updated.
 
     Called from app startup so old DBs heal themselves on the next launch.
     """
     fixed = 0
+    # 1) Exact-match dictionary overrides.
     for name, canonical_type in ENTITY_TYPE_OVERRIDES.items():
         cur = conn.execute(
             "UPDATE entities SET type = ? WHERE name = ? AND type != ?",
             (canonical_type, name, canonical_type),
         )
         fixed += cur.rowcount
+    # 2) Pattern-based inference for everything else.
+    # Pull all entities once and check in Python — regex in SQL is
+    # painful and the entity table is small (137 rows in Honda's DB).
+    rows = conn.execute("SELECT id, name, type FROM entities").fetchall()
+    for ent_id, name, current_type in rows:
+        if name in ENTITY_TYPE_OVERRIDES:
+            continue  # already handled above
+        inferred = _pattern_type(name)
+        if inferred and inferred != current_type:
+            conn.execute("UPDATE entities SET type = ? WHERE id = ?", (inferred, ent_id))
+            fixed += 1
     if fixed:
         conn.commit()
     return fixed
@@ -444,55 +492,91 @@ def entity_relations(
     entity_id: int,
     limit: int = 20,
 ) -> list[dict]:
-    """Find related entities with both co-occurrence and specificity scores.
+    """Find related entities with co-occurrence + specificity + density scores.
 
     Returns each relation with:
-      - weight: SESSION-level co-occurrence count (DISTINCT r.source_id)
-        — a single Claude conversation that mentions both entities
-        across 117 chunks counts as 1, not 117. Without this normalization
-        a single long dj-engine chat session was pushing entities like
-        "Sequoia"/"X/Twitter"/"a16z" to the top of 壱岐島's relations
-        (specificity=1.0) just because they happened to ride along in
-        the same session's records. Reviewer-Honda 14 caught this.
+      - weight: density-weighted co-occurrence over distinct sessions.
+        Each session contributes 1 / sqrt(N) where N is the number of
+        DISTINCT entities in that session — so a deep-research session
+        that name-drops 50 different AI orgs contributes ~0.14 per pair,
+        while a small focused session with just 2-3 entities contributes
+        ~0.7. Without this, a single dj-engine deep-research session
+        was pushing "Sequoia" / "X/Twitter" / "a16z" to the top of
+        壱岐島's relations (Reviewer-Honda 14 + reviewer 22).
+      - sessions: raw count of DISTINCT sessions where they co-occur
+        (kept for display — "5 sessions together")
       - e2_total: total SESSIONS where the related entity appears
-      - specificity: weight / e2_total (0..1)
-      - score: hybrid score for ranking = weight * sqrt(specificity)
-
-    Sorted by score DESC so we get strong AND specific relations first,
-    avoiding the "everything-co-occurs-with-globally-frequent-entity" problem.
+      - specificity: weight / sqrt(e2_total) — log-style decay so a
+        globally-popular entity doesn't dominate just by being popular,
+        but isn't punished as harshly as the prior linear divisor
+      - type_match_bonus: 1.0 if both entities are same type, 0.85 if
+        different. Soft penalty for cross-domain noise (壱岐島=place,
+        a16z=organization) without zeroing it out (sometimes cross-
+        domain IS the interesting story).
+      - score: weight × specificity × type_match_bonus, sorted DESC.
     """
+    # Pre-compute the center entity's type so we can apply the
+    # cross-type penalty in the SELECT.
+    cur_type = conn.execute(
+        "SELECT type FROM entities WHERE id = ?", (entity_id,)
+    ).fetchone()
+    center_type = (cur_type[0] if cur_type else None) or ""
+
     cursor = conn.execute(
-        """SELECT e2.id, e2.name, e2.type,
-                  COUNT(DISTINCT r1.source_id) AS weight,
-                  (SELECT COUNT(DISTINCT r.source_id)
-                     FROM record_entities re_x
-                     JOIN records r ON r.id = re_x.record_id
-                    WHERE re_x.entity_id = e2.id
-                      AND r.source_id IS NOT NULL) AS e2_total
-           FROM record_entities re1
-           JOIN records r1 ON r1.id = re1.record_id
-           JOIN record_entities re2
-             ON re2.record_id = re1.record_id
-             AND re2.entity_id != re1.entity_id
-           JOIN entities e2 ON e2.id = re2.entity_id
-           WHERE re1.entity_id = ?
-             AND r1.source_id IS NOT NULL
-           GROUP BY e2.id""",
+        """WITH session_density AS (
+              SELECT r.source_id, COUNT(DISTINCT re.entity_id) AS n
+                FROM records r
+                JOIN record_entities re ON re.record_id = r.id
+               WHERE r.source_id IS NOT NULL
+               GROUP BY r.source_id
+           ),
+           e2_totals AS (
+              SELECT re_x.entity_id, COUNT(DISTINCT r.source_id) AS total
+                FROM record_entities re_x
+                JOIN records r ON r.id = re_x.record_id
+               WHERE r.source_id IS NOT NULL
+               GROUP BY re_x.entity_id
+           )
+           SELECT e2.id, e2.name, e2.type,
+                  SUM(1.0 / SQRT(MAX(sd.n, 1))) AS weighted,
+                  COUNT(DISTINCT r1.source_id) AS sessions,
+                  COALESCE(e2t.total, 1) AS e2_total
+             FROM record_entities re1
+             JOIN records r1 ON r1.id = re1.record_id
+             JOIN record_entities re2
+               ON re2.record_id = re1.record_id
+               AND re2.entity_id != re1.entity_id
+             JOIN entities e2 ON e2.id = re2.entity_id
+             JOIN session_density sd ON sd.source_id = r1.source_id
+             LEFT JOIN e2_totals e2t ON e2t.entity_id = e2.id
+            WHERE re1.entity_id = ?
+              AND r1.source_id IS NOT NULL
+            GROUP BY e2.id""",
         (entity_id,),
     )
     relations = []
     for r in cursor.fetchall():
-        weight = r[3]
-        e2_total = max(r[4] or 1, 1)
-        specificity = weight / e2_total
-        score = weight * (specificity ** 0.5)
+        weighted = float(r[3] or 0)
+        sessions = int(r[4] or 0)
+        e2_total = max(int(r[5] or 1), 1)
+        # sqrt-decay specificity — less harsh than weight/e2_total,
+        # so "壱岐島 ↔ ドローン" (mid e2_total) isn't drowned by ultra-
+        # rare niche pairs.
+        specificity = weighted / (e2_total ** 0.5)
+        e2_type = r[2] or ""
+        type_match_bonus = 1.0 if (center_type and e2_type == center_type) else 0.85
+        score = weighted * specificity * type_match_bonus
         relations.append({
             "id": r[0],
             "name": r[1],
-            "type": r[2],
-            "weight": weight,
+            "type": e2_type,
+            # `weight` kept as session count for backwards-compat
+            # rendering; downstream UI shows "5 回共起" or similar.
+            "weight": sessions,
+            "weighted_density": round(weighted, 3),
             "e2_total": e2_total,
             "specificity": round(specificity, 3),
+            "type_match_bonus": type_match_bonus,
             "score": round(score, 3),
         })
     relations.sort(key=lambda x: -x["score"])

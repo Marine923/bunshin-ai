@@ -57,7 +57,39 @@ def _html_to_text(html: str) -> str:
     text = re.sub(r"&#39;", "'", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
+    text = _strip_tracking_junk(text)
     return text.strip()
+
+
+# 🟡 竹 #8: Gmail トラッキングピクセル除去.
+# Marketing-email senders (Mailchimp, SendGrid, HubSpot…) embed long
+# opaque tokens — tracking pixel URLs, unsubscribe hashes, ESP IDs —
+# that survive `<img>` / `<a>` strip-out as bare strings. They look
+# like `1jJv5KZTbCi3-...kAg83Gp4tg7Q==` (40+ chars, no spaces).
+# These eat embedding budget, dominate FTS, and turn into ghost
+# "entities" in the KG. Filter any contiguous non-whitespace run ≥40
+# chars that's mostly non-alphanumeric (≥30% punct/digit ratio).
+_TRACKING_TOKEN_RE = re.compile(r"\S{40,}")
+
+
+def _strip_tracking_junk(text: str) -> str:
+    def _is_tracking(token: str) -> bool:
+        # Real Japanese / English text never makes a 40-char unbroken
+        # run. The exception is URLs — keep them; embedders need them
+        # for citation/recall context.
+        if token.startswith(("http://", "https://", "www.")):
+            return False
+        # Drop runs that are mostly digits/punct — entropy signature
+        # of an ID/hash, not natural text.
+        alnum = sum(1 for c in token if c.isalnum())
+        if alnum < len(token) * 0.4:  # >60% punct → almost certainly junk
+            return True
+        # Catch base64-ish IDs (mostly letters+digits but no vowels).
+        vowels = sum(1 for c in token.lower() if c in "aeiouあいうえお")
+        if vowels < len(token) * 0.1:  # <10% vowels → opaque token
+            return True
+        return False
+    return _TRACKING_TOKEN_RE.sub(lambda m: "" if _is_tracking(m.group(0)) else m.group(0), text)
 
 
 def _extract_body(msg) -> str:

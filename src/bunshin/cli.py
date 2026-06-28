@@ -17,6 +17,7 @@ from rich.progress import (
 from rich.table import Table
 
 from bunshin.ingestion.claude_history import import_claude_history
+from bunshin.ingestion.claude_memory import import_claude_memory
 from bunshin.ingestion.files import DEFAULT_EXTENSIONS, import_files
 from bunshin.storage import (
     DEFAULT_DB_PATH,
@@ -78,12 +79,45 @@ def import_claude_cmd(path: Path, db: Path, verbose: bool):
     table.add_column("Metric", style="cyan")
     table.add_column("Count", justify="right")
     table.add_row("Files scanned", str(stats["files_scanned"]))
-    table.add_row("Lines parsed", str(stats["lines_parsed"]))
+    table.add_row("Lines parsed", str(stats.get("lines_parsed", 0)))
     table.add_row("Records inserted", str(stats["records_inserted"]))
-    table.add_row("Records skipped (dup)", str(stats["records_skipped"]))
+    table.add_row("Records skipped (dup)", str(stats.get("records_skipped", 0)))
     table.add_row("Files failed to read", str(stats["files_failed"]))
     console.print(table)
 
+    conn.close()
+
+
+@main.command("import-claude-memory")
+@click.argument(
+    "path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=Path.home() / ".claude" / "projects",
+)
+@click.option("--db", type=click.Path(path_type=Path), default=DEFAULT_DB_PATH,
+              help="Database file path")
+@click.option("--force", is_flag=True, help="Reimport all files regardless of mtime")
+@click.option("--verbose", "-v", is_flag=True, help="Print each file as it is processed")
+def import_claude_memory_cmd(path: Path, db: Path, force: bool, verbose: bool):
+    """Import Claude Code's auto-memory notes (~/.claude/projects/*/memory/*.md).
+
+    These are the long-lived observations Claude writes about your projects,
+    preferences, and feedback — the same notes that appear in the system
+    prompt as "auto-memory". Importing them lets Bunshin find them via
+    search / chat / MCP.
+    """
+    conn = init_db(db)
+    console.print(f"Scanning [cyan]{path}[/cyan] for memory/*.md notes...")
+    stats = import_claude_memory(conn, path, force=force, verbose=verbose)
+    table = Table(title="Claude memory import results")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    table.add_row("Files scanned", str(stats["files_scanned"]))
+    table.add_row("Files unchanged", str(stats["files_unchanged"]))
+    table.add_row("Files reimported", str(stats["files_reimported"]))
+    table.add_row("Records inserted", str(stats["records_inserted"]))
+    table.add_row("Files skipped (empty)", str(stats["files_skipped_empty"]))
+    console.print(table)
     conn.close()
 
 

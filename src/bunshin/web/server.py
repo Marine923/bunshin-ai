@@ -7036,6 +7036,10 @@ const ONBOARDING_STEPS = [
         <code>bunshin import-browser --full</code>
         <button class="copy-btn" data-copy="bunshin import-browser --full">コピー</button>
       </div>
+      <div class="step-cmd">
+        <code>bunshin import-claude-memory</code>
+        <button class="copy-btn" data-copy="bunshin import-claude-memory">コピー</button>
+      </div>
       <div class="step-warn">
         <span class="warn-icon">${icon('alert-triangle', 16)}</span>
         <span>
@@ -8864,7 +8868,17 @@ function renderMarkdown(text) {
     if (olM) {
       if (inUl) { out.push('</ul>'); inUl = false; }
       if (!inOl) { out.push('<ol class="md-ol">'); inOl = true; }
+      // No value="..." — let <ol> auto-number, so LLM output like
+      // "1. foo\n1. bar\n1. baz" renders as 1, 2, 3 (not 1, 1, 1).
       out.push('<li>' + olM[2] + '</li>');
+      continue;
+    }
+    // 🟡 竹 #9 fix: a blank line inside a numbered list used to call
+    // closeLists(), which split each "1." into its own <ol> → each ol
+    // restarted at 1 → user saw "1. 1. 1.". Markdown spec allows blank
+    // lines inside lists, so swallow them without closing.
+    if (raw.trim() === '' && (inUl || inOl)) {
+      out.push('');
       continue;
     }
     closeLists();

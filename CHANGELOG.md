@@ -52,6 +52,51 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.9.17] - 2026-06-29
+
+🟡 **竹 (1〜2 週間)**: 本田さんレビュー指摘の 5 件を一括解消。
+
+### Fixed — エンティティ型分類強化 (#6)
+- `reefballjapan` / `リーフボールジャパン` / `Reefball Japan` を
+  ENTITY_TYPE_OVERRIDES に追加 (person 誤分類 → organization)
+- パターンベースの type 推論 `_pattern_type()` を新設:
+  - 「株式会社」「(株)」「Inc.」「Corp.」「LLC」等のサフィックス → organization
+  - 「-japan」「-jp」サフィックス → organization
+  - `marine_flight` / `air_flight` のような underscore_handle → organization
+- `apply_entity_type_overrides()` 起動時マイグレーションも pattern を適用
+  → 既存 137 件の誤分類が起動だけで自動修正
+
+### Fixed — 共起→関連性ロジック改善 (#7)
+- 旧: session-distinct count を使っていたが、deep-research session
+  (50 entities 共起) が「壱岐島 ↔ a16z / Sequoia / DeepSeek」を上位押し上げ
+- 新: **session 内 entity 密度で重み減衰**
+  - 各 session の共起寄与 = `1 / sqrt(N entities in session)`
+  - → 50-entity セッション ≈ 0.14、2-entity セッション ≈ 0.71
+- specificity を `weight / e2_total` (linear) → `weight / sqrt(e2_total)`
+  に変更 (mid e2_total な良ペアが drowned されない sqrt 減衰)
+- **異 type の penalty** (`type_match_bonus`): 同 type=1.0 / 異 type=0.85
+
+### Fixed — Gmail トラッキングピクセル/トークン除去 (#8)
+- `_TRACKING_TOKEN_RE = r"\S{40,}"` で 40 字以上の連続トークン検出
+- URL (http/https/www) は keep、それ以外で:
+  - 英数字率 < 40% (=パンクト/数字多) → 除去
+  - 母音率 < 10% (=base64 ID 風) → 除去
+- Mailchimp / SendGrid / HubSpot の追跡 ID がノイズ entity 化する問題を解消
+
+### Fixed — チャットの番号付きリスト「1. 1. 1.」レンダリング (#9)
+- 原因: ol の途中に空行が来ると `closeLists()` で `<ol>` が閉じ、
+  次の `1.` で新しい `<ol>` が始まり、各 ol が 1 から再採番
+- 修正: ol/ul 継続中の空行は閉じずに swallow (markdown 仕様準拠)
+
+### Added — Claude memory 取り込み (#10)
+- 新 importer `bunshin.ingestion.claude_memory`
+- `~/.claude/projects/<slug>/memory/*.md` を読み取り → `claude_memory`
+  source として storage に保存
+- `MEMORY.md` (index) は skip、各 .md のフロントマターをメタデータに
+- mtime 比較で incremental 更新
+- 新 CLI `bunshin import-claude-memory [--force] [--verbose]`
+- Wizard ステップ 4 に Terminal 起動コマンドを追加
+
 ## [0.9.16] - 2026-06-29
 
 🔴 **松 (致命)**: MCP 経由で Bunshin が機能不全になる 4 件 + 不正確な
