@@ -52,6 +52,17 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.17] - 2026-06-29
+
+### Added — Wizard 最終 step に Anthropic API キー案内
+- 配布時にユーザーが「Claude 経由 describe で精度大幅向上」できる手段を
+  知らないままだったので Wizard tip に明示
+- 「Anthropic API キー（任意）を設定タブに入れると、関係性タブの
+  『AI に説明させる』が Claude 経由になり、entity description の精度が
+  大幅に上がります」+ console.anthropic.com へのリンク + 「未設定でも
+  ローカル LLM で動きます」と明示
+- β テスター配布前の手当て
+
 ## [0.10.16] - 2026-06-29
 
 ### Changed — 全 7 MCP ツールの引数に Pydantic Field description / 範囲制限を公開
