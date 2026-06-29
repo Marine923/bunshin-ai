@@ -7081,6 +7081,15 @@ const ONBOARDING_STEPS = [
           データはこの Mac 内のみで処理されます。
         </span>
       </div>
+      <h3 style="margin:18px 0 4px;font-size:14px;">${icon('message', 14)} LINE のトークも入れる</h3>
+      <p class="step-body" style="margin:0 0 8px;">
+        LINE アプリで「<b>トーク履歴を送信</b>」→ メールで自分宛に送る →
+        添付の .txt を保存 → 下記コマンドで取り込み。一つのトークごとに 1 ファイル。
+      </p>
+      <div class="step-cmd">
+        <code>bunshin import-line ~/Downloads/[LINE]トーク履歴.txt</code>
+        <button class="copy-btn" data-copy="bunshin import-line ~/Downloads/[LINE]トーク履歴.txt">コピー</button>
+      </div>
     `,
   },
   {

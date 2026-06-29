@@ -52,6 +52,29 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.0] - 2026-06-29
+
+### Added — `bunshin re-describe-all` CLI (本田レビュー A2)
+- 全 entity の AI description を新しい prompt (v0.9.13 style guide
+  + 禁止語 retry + qwen2.5:14b) で一括再生成
+- `--limit N` `--min-mentions N` `--timeout 秒` `--server URL` 引数
+- mentions 降順で処理、進捗バー + 失敗/タイムアウトを集計
+- 起動中の `bunshin web` または Bunshin.app を経由 (`POST /api/entities/{id}/describe`)
+- 137 entity を一晩で全 refresh 可能
+
+### Added — Wizard ステップ 4 に LINE 取り込み案内 (本田レビュー #11)
+- 既に実装済みの `bunshin import-line` を Wizard で初めて周知
+- 「LINE で『トーク履歴を送信』→ メールで自分宛 → .txt を取り込み」
+  という具体的フロー
+- 「▶ Terminal で実行」ボタンで友人 (CLI 経験ゼロ) でも操作可能
+
+### Changed — `search_expand` のデフォルトを ON (本田レビュー #16)
+- 旧: opt-in (`False`)、Wizard では言及なし
+- 新: **デフォルト ON**、「壱岐黄金 じゃがいも」のような複数語クエリ
+  でも取りこぼし大幅減少
+- label を「LLM クエリ拡張 (推奨ON)」に変更
+- MCP 側は既に v0.9.16 で強制 ON 済み → Web UI と挙動が揃った
+
 ## [0.9.21] - 2026-06-29
 
 ### Fixed — 関係性タブのノード半径が膨張してラベル重なる

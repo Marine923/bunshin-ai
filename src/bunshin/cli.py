@@ -121,6 +121,85 @@ def import_claude_memory_cmd(path: Path, db: Path, force: bool, verbose: bool):
     conn.close()
 
 
+@main.command("re-describe-all")
+@click.option("--host", default="127.0.0.1", help="Bunshin web host")
+@click.option("--port", default=8000, type=int, help="Bunshin web port")
+@click.option("--limit", default=0, type=int,
+              help="Cap how many entities to refresh (0 = all)")
+@click.option("--min-mentions", default=2, type=int,
+              help="Skip entities with fewer than N mentions (1-mention noise)")
+@click.option("--skip-existing", is_flag=True,
+              help="Skip entities that already have a description")
+def re_describe_all_cmd(host: str, port: int, limit: int,
+                         min_mentions: int, skip_existing: bool):
+    """Refresh AI descriptions for all entities (top-N by mentions).
+
+    Bunshin web (or the desktop app) must be running on the given
+    host:port. Each entity takes 30-60s; 137 entities ≈ 1-2 hours.
+    Safe to leave overnight — progress is printed line by line so
+    you can ^C and resume by re-running with --skip-existing.
+    """
+    import time as _time
+    import urllib.request
+    import urllib.parse
+    base = f"http://{host}:{port}"
+    try:
+        with urllib.request.urlopen(f"{base}/api/health", timeout=5) as r:
+            health = json.loads(r.read())
+        console.print(f"[green]✓[/green] Connected to Bunshin v{health.get('version','?')}")
+    except Exception as e:
+        console.print(f"[red]✗ Bunshin web is not reachable at {base}[/red]: {e}")
+        console.print("  → Open Bunshin.app or run [cyan]bunshin web[/cyan] first.")
+        return
+    qs = urllib.parse.urlencode({"limit": 500})
+    with urllib.request.urlopen(f"{base}/api/entities?{qs}", timeout=15) as r:
+        data = json.loads(r.read())
+    entities = data.get("entities", [])
+    entities.sort(key=lambda e: -(e.get("mentions") or 0))
+    eligible = [
+        e for e in entities
+        if (e.get("mentions") or 0) >= min_mentions
+        and not (skip_existing and (e.get("description") or "").strip())
+    ]
+    if limit > 0:
+        eligible = eligible[:limit]
+    console.print(
+        f"[cyan]Refreshing {len(eligible)} entities[/cyan] "
+        f"(skipped: {len(entities) - len(eligible)}, "
+        f"avg ~45s each, total ~{len(eligible) * 45 // 60} min)"
+    )
+    ok = err = 0
+    started = _time.time()
+    for i, ent in enumerate(eligible, 1):
+        eid = ent["id"]
+        name = ent.get("name", "?")
+        t0 = _time.time()
+        try:
+            req = urllib.request.Request(
+                f"{base}/api/entities/{eid}/describe",
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                body = json.loads(resp.read())
+            elapsed = _time.time() - t0
+            judge = body.get("judge", "?")
+            desc_preview = (body.get("description") or "")[:60].replace("\n", " ")
+            console.print(
+                f"  [green]✓[/green] [{i:3d}/{len(eligible)}] "
+                f"[bold]{name}[/bold] ({elapsed:.0f}s · {judge}) — {desc_preview}…"
+            )
+            ok += 1
+        except Exception as e:
+            console.print(
+                f"  [red]✗[/red] [{i:3d}/{len(eligible)}] {name}: {e}"
+            )
+            err += 1
+    total = _time.time() - started
+    console.print(
+        f"\n[bold]Done[/bold]: {ok} OK / {err} failed in {total/60:.1f} min"
+    )
+
+
 @main.command("status")
 @click.option(
     "--db",
@@ -1572,6 +1651,91 @@ def web_cmd(host: str, port: int, db: Path):
 
     app = create_app(db)
     uvicorn.run(app, host=host, port=port, log_level="warning")
+
+
+@main.command("re-describe-all")
+@click.option("--limit", type=int, default=200,
+              help="Max entities to refresh (default 200, ≥ current 137).")
+@click.option("--server", default="http://127.0.0.1:8000",
+              help="Bunshin web server URL (must be running).")
+@click.option("--timeout", type=int, default=180,
+              help="Per-entity timeout (seconds).")
+@click.option("--min-mentions", type=int, default=1,
+              help="Skip entities with fewer mentions than this.")
+def re_describe_all_cmd(limit: int, server: str, timeout: int, min_mentions: int):
+    """Refresh every entity's AI description via the running web server.
+
+    Uses the /api/entities/{id}/describe POST endpoint so this CLI inherits
+    the latest describe prompt (v0.9.13 style guide + retry) without
+    re-importing the multi-source pipeline. Entities are processed in
+    descending mentions order. Bunshin.app or `bunshin web` must already
+    be running.
+    """
+    import httpx
+    import time
+
+    try:
+        r = httpx.get(f"{server}/api/entities", params={"limit": limit}, timeout=15)
+        r.raise_for_status()
+        entities = r.json().get("entities", [])
+    except Exception as e:
+        console.print(f"[red]Failed to reach {server}/api/entities:[/red] {e}")
+        console.print("[yellow]Hint:[/yellow] Start Bunshin.app or run `bunshin web` first.")
+        return
+
+    entities = [e for e in entities if e.get("mentions", 0) >= min_mentions]
+    entities.sort(key=lambda e: -e.get("mentions", 0))
+
+    if not entities:
+        console.print("[yellow]No entities to refresh.[/yellow]")
+        return
+
+    console.print(f"Refreshing [cyan]{len(entities)}[/cyan] entities (timeout {timeout}s each)…")
+
+    ok = 0
+    fail = 0
+    skipped = 0
+    started = time.monotonic()
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("re-describe", total=len(entities))
+        for ent in entities:
+            eid = ent.get("id")
+            name = ent.get("name", "?")
+            try:
+                r = httpx.post(
+                    f"{server}/api/entities/{eid}/describe",
+                    timeout=timeout,
+                )
+                if r.status_code == 200 and (r.json() or {}).get("description"):
+                    ok += 1
+                else:
+                    fail += 1
+                    console.print(f"  [red]✗[/red] {name} (id={eid}) status={r.status_code}")
+            except httpx.TimeoutException:
+                skipped += 1
+                console.print(f"  [yellow]⏱[/yellow] {name} (id={eid}) timeout")
+            except Exception as e:
+                fail += 1
+                console.print(f"  [red]✗[/red] {name} (id={eid}) {type(e).__name__}: {e}")
+            progress.update(task, advance=1, description=f"[{ok}✓ {fail}✗ {skipped}⏱] {name[:24]}")
+
+    elapsed = time.monotonic() - started
+    console.print()
+    table = Table(title="Re-describe complete")
+    table.add_column("Metric"); table.add_column("Count", justify="right")
+    table.add_row("Refreshed OK", str(ok))
+    table.add_row("Failed", str(fail))
+    table.add_row("Timed out", str(skipped))
+    table.add_row("Elapsed", f"{elapsed/60:.1f} min ({elapsed:.0f}s)")
+    table.add_row("Avg per entity", f"{elapsed/max(1,len(entities)):.1f}s")
+    console.print(table)
 
 
 @main.command("update")

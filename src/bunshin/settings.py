@@ -96,12 +96,17 @@ SCHEMA: dict[str, dict[str, Any]] = {
         "section": "search",
     },
     "search_expand": {
-        "default": False,
+        # v0.10.0 default ON (Honda review #16): MCP forces expand=True
+        # for multi-word queries already, but Web UI was opt-in. The
+        # +1-2s latency on first query is hidden by the rerank wait
+        # anyway, and users routinely missed hits like "壱岐黄金 じゃがいも"
+        # without it.
+        "default": True,
         "type": "bool",
-        "label_ja": "LLM クエリ拡張",
-        "label_en": "LLM query expansion",
-        "help_ja": "クエリの言い換えを Ollama に生成させて検索。取りこぼし↓ 初回 1-2 秒↑。",
-        "help_en": "Use Ollama to generate query variants. Better recall, +1-2s on first hit.",
+        "label_ja": "LLM クエリ拡張 (推奨ON)",
+        "label_en": "LLM query expansion (recommended ON)",
+        "help_ja": "クエリの言い換えを Ollama に生成させて検索。「壱岐黄金 じゃがいも」のような複数語でも取りこぼしを大幅に減らします。初回 +1〜2 秒。",
+        "help_en": "Use Ollama to generate query variants. Catches multi-word phrases that exact match would miss. +1-2s on first hit.",
         "section": "search",
     },
     "watch_dir": {
