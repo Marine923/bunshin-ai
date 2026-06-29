@@ -52,6 +52,27 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.15] - 2026-06-29
+
+### Changed — describe prompt に top_relations を注入 (Honda D)
+- 旧: describe は record 抜粋 6 件のみから生成 → サンプリングが
+  偏ると description も偏る (壱岐島 → 「ドローン会社のウェブサイト
+  制作事業」が dominant に)
+- 新: 対象 entity の **top 6 co-occurring entities を user_context に
+  追加**
+  - Claude branch / judge prompt: user_context_label に「主要関連: X / Y / Z」
+  - ローカル LLM prompt: 「最も頻繁に同時に出てくる関連 entity」明示
+- 「ただし無理矢理含めない」と注記して hallucination 防止
+
+### 実測 (壱岐島, id=22)
+- 旧: 「ドローン会社が新規ウェブサイト制作サブスク事業を立ち上げる
+  際の調査レポートを作成」
+- 新: 「ドローン関連のビジネス環境や市場分析のために、この島に関する
+  情報を調べています」 (より広いコンテキスト)
+- ただし top relations が AI 業界 dominant (Google/Meta/OpenAI/a16z等)
+  なのは本田さん DB のデータ実態を反映している = describe の正しい
+  挙動
+
 ## [0.10.14] - 2026-06-29
 
 本田 v0.10.13 レビューの残課題 3 件:

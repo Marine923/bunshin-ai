@@ -11730,19 +11730,35 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             return None
 
     def _describe_via_local_llm(name: str, entity_type: str | None,
-                                 samples: str) -> dict | None:
+                                 samples: str,
+                                 top_relations: str = "") -> dict | None:
         """Local LLM (qwen2.5:*) reading only the user's records.
-        Honest about being grounded in the user's notes only."""
+        Honest about being grounded in the user's notes only.
+
+        v0.10.15 (Honda D): also receives the top co-occurring entities
+        so 壱岐島 isn't described purely from whichever 6 long records
+        happen to be in the sample — those skewed to "ドローン会社の
+        ウェブサイト制作事業" when the real top relations are
+        ドローン / 壱岐黄金プロジェクト / MARINE FLIGHT / ホークす.
+        """
         from bunshin.chat import OLLAMA_HOST, check_ollama, pick_light_model
         import httpx as _httpx
         ok, available = check_ollama()
         if not ok or not available:
             return None
+        relations_hint = ""
+        if top_relations:
+            relations_hint = (
+                f"\n\nなお、ユーザーの記録中で「{name}」と最も頻繁に同時に出てくる "
+                f"関連 entity は以下です (具体例として活用してください、ただし無理矢理"
+                f"含めない):\n  {top_relations}\n"
+            )
         prompt = (
             f"以下はユーザーの記録に登場した「{name}」関連の抜粋です。\n"
             f"これだけを根拠に、「{name}」がユーザーにとって何かを書いてください。\n\n"
             f"{_DESCRIBE_STYLE_GUIDE}\n\n"
-            "抜粋から判断できない場合は「ユーザー記録からは詳細不明」と正直に書く。\n\n"
+            "抜粋から判断できない場合は「ユーザー記録からは詳細不明」と正直に書く。\n"
+            f"{relations_hint}\n"
             f"=== 抜粋 ===\n{samples}\n=== ここまで ==="
         )
         # v0.9.13: switched from pick_light_model (llama3.2:3b 等) to
@@ -12028,6 +12044,23 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 f"[{src}] {(content or '')[:600]}" for src, content in rows
             )[:5000] if rows else "（十分な長さの記録なし）"
 
+            # v0.10.15 (Honda D): pull the top relations of this entity so the
+            # describe prompt can mention them as "main co-occurring entities".
+            # Without this, 壱岐島's body only reflected whichever 6 long
+            # records happened to be in the sample (the recent web-site
+            # business batch dominated). With it, the prompt sees that 壱岐島
+            # is mostly mentioned alongside ドローン / 壱岐黄金プロジェクト /
+            # MARINE FLIGHT / ホークす — the user's actual operations on
+            # the island — and the resulting one-liner is broader.
+            try:
+                top_rel_rows = entity_relations(conn, entity_id, limit=6)
+            except Exception:
+                top_rel_rows = []
+            top_relations_label = (
+                " / ".join(r.get("name", "") for r in top_rel_rows if r.get("name"))
+                or ""
+            )
+
             # Short, non-quoting context label sent to web-touching sources.
             source_counts = {}
             for src, _ in rows:
@@ -12036,6 +12069,10 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 ", ".join(f"{s} {n}件" for s, n in source_counts.items())
                 or "記録少数"
             )
+            if top_relations_label:
+                user_context_label = (
+                    f"{user_context_label} | 主要関連: {top_relations_label}"
+                )
 
             ename = entity["name"]
             etype = entity.get("type")
@@ -12052,7 +12089,9 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     tasks.append(("claude", lambda: _describe_via_claude(
                         ename, etype, user_context_label, api_key
                     )))
-            tasks.append(("local", lambda: _describe_via_local_llm(ename, etype, samples)))
+            tasks.append(("local", lambda: _describe_via_local_llm(
+                ename, etype, samples, top_relations=top_relations_label,
+            )))
 
             candidates: list[dict] = []
             failed_sources: list[dict] = []
