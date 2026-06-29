@@ -4,53 +4,6 @@ All notable changes to Bunshin are documented in this file. The format is
 roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.5] - 2026-06-28
-
-ビジュアル監査 (reviewer 19) の Tier 1〜3 + R-1 を全部消化。
-
-### Fixed — 🚨 検索結果「もっと見る」が動いていなかった
-- `btn.closest('.result-card')` だったが実クラスは `.result` → 修正。
-  280 文字超の検索結果カードが展開できなかったバグを解消。
-
-### Fixed — 🚨 検索結果フェードアウト色が背景とズレていた
-- `.result-content::after` のフェード先が `var(--bg-0)` だったが、
-  親 `.result` の bg は `var(--bg-1)` → 修正。継ぎ目の段差消失。
-
-### Fixed — 🚨 ライトモードでチャット コードブロックが真っ黒
-- `.md-pre` background `#0a0d14` → `var(--bg-3)` (theme-aware)
-- `.md-code` color `#cdd5e0` → `var(--text-1)`
-- `.md-copy-btn` background hardcode → `var(--bg-2)` + `var(--radius-sm)`
-- `.md-inline` background hardcode → `color-mix` accent
-
-### Changed — ソースバッジ 10色レインボー → 4 系統 border-left
-- 旧: ソース毎に dark-only な背景色 (`#1f2540` 等) × 10 種類 →
-  ライトモードで白ページに濃いシミが点在
-- 新: **共通の中立背景** + **2px border-left** で 4 グループに分類:
-  - 🟣 テキスト系 (claude / notes / manual) → `var(--accent-1)`
-  - 🟢 ファイル → `var(--good)`
-  - 🟡 メッセージ系 (gmail / imessage / line) → `var(--warn)`
-  - 🟦 メディア・予定 (photo / browser / calendar) → `var(--accent-2)`
-
-### Changed — why-chip 5色レインボー → グレー1色 + rerank だけ強調
-- 「マッチ理由」は補助情報なので全部 `var(--text-3)` に統一。
-- AI rerank だけ accent で残すことで「これが主役のシグナル」と
-  視覚的に伝える。
-
-### Changed — ハードコード値を token 駆動に
-- `.flashback-card` radius 10px → `var(--radius-md)`,
-  shadow → `var(--shadow-1)`
-- `.timeline-day:hover` shadow → `var(--shadow-1)` (dark-only だった)
-- `.src-pill-preview` background `#1c2030` → `var(--bg-3)`,
-  shadow → `var(--shadow-1)`
-- modal blur 2px → 4px (help-modal と統一)
-- `.siblings-panel` border `#2a2a2a` → `var(--border-1)`
-- `.sibling-item` border-left `#efaf4a` → `var(--warn)`,
-  radius 4px → `var(--radius-sm)`
-- `.md-copy-btn` radius 5px → `var(--radius-sm)`
-- `.md-inline` radius 4px → `var(--radius-sm)`
-
-### Removed — 未使用 `.model-row` CSS
-- Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
 ## [0.10.22] - 2026-06-29
 
@@ -890,6 +843,7 @@ reviewer 21 実機検証で見つかった 🔴 4 点の token 化 + density 修
   - **別 session への切替は confirm() で警告** + 切替後も裏で生成
     完了し DB 保存 (戻れば見える)
 
+
 ## [0.9.6] - 2026-06-28
 
 第20回 UI 監査の取りこぼし 3 件を消化。
@@ -906,6 +860,54 @@ reviewer 21 実機検証で見つかった 🔴 4 点の token 化 + density 修
   `var(--accent-1)` でハードコード排除。
 - lightbox 自体は dark overlay なのでパネル内テキストは白固定維持
   (両モードで暗背景に乗るため)、ただし CSS クラス経由で保守性向上。
+
+## [0.9.5] - 2026-06-28
+
+ビジュアル監査 (reviewer 19) の Tier 1〜3 + R-1 を全部消化。
+
+### Fixed — 🚨 検索結果「もっと見る」が動いていなかった
+- `btn.closest('.result-card')` だったが実クラスは `.result` → 修正。
+  280 文字超の検索結果カードが展開できなかったバグを解消。
+
+### Fixed — 🚨 検索結果フェードアウト色が背景とズレていた
+- `.result-content::after` のフェード先が `var(--bg-0)` だったが、
+  親 `.result` の bg は `var(--bg-1)` → 修正。継ぎ目の段差消失。
+
+### Fixed — 🚨 ライトモードでチャット コードブロックが真っ黒
+- `.md-pre` background `#0a0d14` → `var(--bg-3)` (theme-aware)
+- `.md-code` color `#cdd5e0` → `var(--text-1)`
+- `.md-copy-btn` background hardcode → `var(--bg-2)` + `var(--radius-sm)`
+- `.md-inline` background hardcode → `color-mix` accent
+
+### Changed — ソースバッジ 10色レインボー → 4 系統 border-left
+- 旧: ソース毎に dark-only な背景色 (`#1f2540` 等) × 10 種類 →
+  ライトモードで白ページに濃いシミが点在
+- 新: **共通の中立背景** + **2px border-left** で 4 グループに分類:
+  - 🟣 テキスト系 (claude / notes / manual) → `var(--accent-1)`
+  - 🟢 ファイル → `var(--good)`
+  - 🟡 メッセージ系 (gmail / imessage / line) → `var(--warn)`
+  - 🟦 メディア・予定 (photo / browser / calendar) → `var(--accent-2)`
+
+### Changed — why-chip 5色レインボー → グレー1色 + rerank だけ強調
+- 「マッチ理由」は補助情報なので全部 `var(--text-3)` に統一。
+- AI rerank だけ accent で残すことで「これが主役のシグナル」と
+  視覚的に伝える。
+
+### Changed — ハードコード値を token 駆動に
+- `.flashback-card` radius 10px → `var(--radius-md)`,
+  shadow → `var(--shadow-1)`
+- `.timeline-day:hover` shadow → `var(--shadow-1)` (dark-only だった)
+- `.src-pill-preview` background `#1c2030` → `var(--bg-3)`,
+  shadow → `var(--shadow-1)`
+- modal blur 2px → 4px (help-modal と統一)
+- `.siblings-panel` border `#2a2a2a` → `var(--border-1)`
+- `.sibling-item` border-left `#efaf4a` → `var(--warn)`,
+  radius 4px → `var(--radius-sm)`
+- `.md-copy-btn` radius 5px → `var(--radius-sm)`
+- `.md-inline` radius 4px → `var(--radius-sm)`
+
+### Removed — 未使用 `.model-row` CSS
+- Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
 ## [0.9.4] - 2026-06-28
 
