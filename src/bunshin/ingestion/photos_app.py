@@ -85,6 +85,62 @@ end tell
 '''
 
 
+def _build_album_map_script() -> str:
+    """One-shot AppleScript that emits {album_name}\\t{photo_id} per line
+    for every album × media item. Cheaper than asking each item for its
+    albums (per-item Apple Events round trips dominate)."""
+    return f'''
+tell application "Photos"
+    set fieldDelim to "{_DELIM_FIELD}"
+    set lineDelim to "{_DELIM_ITEM}"
+    set out to {{}}
+    try
+        set theAlbums to every album
+    on error
+        return ""
+    end try
+    repeat with anAlbum in theAlbums
+        try
+            set albumName to (name of anAlbum) as string
+            set itemsInAlbum to media items of anAlbum
+            repeat with anItem in itemsInAlbum
+                try
+                    set itemId to (id of anItem) as string
+                    copy (albumName & fieldDelim & itemId) to end of out
+                end try
+            end repeat
+        end try
+    end repeat
+    set AppleScript's text item delimiters to lineDelim
+    return out as string
+end tell
+'''
+
+
+def _build_album_map() -> dict[str, list[str]]:
+    """v0.10.5 (B4): photo_id → [album_name, ...] map.
+
+    Returns {} if AppleScript fails or no albums exist; callers must
+    handle the empty case (the importer just skips the album line then).
+    """
+    raw = _run_applescript(_build_album_map_script(), timeout=600)
+    if not raw or not raw.strip():
+        return {}
+    out: dict[str, list[str]] = {}
+    for line in raw.split(_DELIM_ITEM):
+        line = line.strip()
+        if not line or _DELIM_FIELD not in line:
+            continue
+        parts = line.split(_DELIM_FIELD, 1)
+        if len(parts) != 2:
+            continue
+        album_name, photo_id = parts[0].strip(), parts[1].strip()
+        if not album_name or not photo_id:
+            continue
+        out.setdefault(photo_id, []).append(album_name)
+    return out
+
+
 def _count_total_items() -> Optional[int]:
     raw = _run_applescript(_build_count_script(), timeout=60)
     if raw is None:
@@ -289,6 +345,18 @@ def import_photos_app(
         if verbose:
             print(f"  Listed {len(items)} / {min(cap, total)} items")
 
+    # v0.10.5 (B4 写真ライブラリ深堀り): collect photo_id → albums map
+    # so search hits like "壱岐黄金 アルバム" or "2026 旅行 ハワイ"
+    # surface the right items.
+    album_map: dict[str, list[str]] = _build_album_map()
+    if verbose:
+        if album_map:
+            in_album_count = sum(1 for it in items if it["id"] in album_map)
+            print(f"Albums: {len(set().union(*album_map.values())) if album_map else 0} unique, "
+                  f"{in_album_count} of these items are in ≥1 album")
+        else:
+            print("Albums: none (or AppleScript failed to read)")
+
     # Day-side filter in Python (AppleScript date comparisons are fragile
     # across locales)
     if days > 0:
@@ -366,7 +434,14 @@ def import_photos_app(
         header_parts.append(item["name"])
         header = " ".join(p for p in header_parts if p)
 
-        body = ocr_text or "(no text recognized)"
+        albums_for_item = album_map.get(item_id, [])
+
+        body_parts = []
+        if albums_for_item:
+            body_parts.append("アルバム: " + " / ".join(albums_for_item))
+        if ocr_text:
+            body_parts.append(ocr_text)
+        body = "\n".join(body_parts) if body_parts else "(no text recognized)"
         content = f"{header}\n{body}".strip()
 
         rid = insert_record(
@@ -384,6 +459,7 @@ def import_photos_app(
                 "favorite": item["favorite"],
                 "kind": item["kind"],
                 "ocr_chars": len(ocr_text),
+                "albums": albums_for_item,
             },
         )
         if rid:

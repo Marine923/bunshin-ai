@@ -52,6 +52,23 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.5] - 2026-06-29
+
+### Added — Photos.app アルバム取り込み (本田レビュー B4 写真ライブラリ深堀り 第1弾)
+- `_build_album_map()` で AppleScript の **album → media items** の
+  1 回 batch 取得 → `photo_id → [album, ...]` マッピング構築
+- 各写真 record の content に **「アルバム: 〇〇 / △△」** 行を追加
+- metadata に `albums: [...]` を保存
+- これにより 「壱岐黄金 アルバム」「2026 旅行」「ハワイ」のような
+  アルバム名検索で対象写真が hit するようになる
+- 既存 record は次回 `bunshin import-photos-app --force` で更新
+
+### Why not 顔認識
+ユーザーの Photos.app で named persons = 0 件 (2,141 person 自動検出
+だが全て unnamed) だったため、顔認識 backend を作っても今は value
+出ない。Photos.app で「これは誰?」に名前を付ければ将来ヒットする
+scaffold は別途検討。
+
 ## [0.10.4] - 2026-06-29
 
 ### Added — 関係性タブの蜘蛛の巣ビューに type 色分け + hover tooltip
