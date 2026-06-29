@@ -52,6 +52,34 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.13] - 2026-06-29
+
+### Changed — `bunshin import-line` がディレクトリ一括対応 (Honda TOP3)
+- 旧: 単一 .txt のみ受理 (`bunshin import-line file.txt`)
+- 新: **ディレクトリも受理**、配下の全 `*.txt` を一括取り込み
+- 各トーク 1 ファイルとして処理、失敗は skip して続行
+- 集計: 取り込み成功/失敗トーク数 + 総メッセージ数 + 総 chunk 数
+
+### Why not Mac DB direct ingestion
+本田 TOP3 の本来の希望は「macOS ローカル DB → 取り込み」だったが、
+**LINE Mac v15+ はサンドボックス内 (`~/Library/Containers/jp.naver.line.mac/`)
+で SQLite ファイルが存在せず、チャット履歴はアプリ内部で DRM 化された
+バイナリで保管されている** ことを確認。直接 DB を読む経路は技術的に
+封じられている (`find . -name '*.sqlite*'` ヒット 0)。
+
+代替: 既に実装済の **LINE 公式エクスポート (.txt)** 経路を強化。
+ユーザーは LINE app → ⚙ → 「トーク履歴を送信」で自分宛にメール →
+.txt をフォルダにまとめて投入 → CLI で一括処理。
+
+### 使い方
+```bash
+# 単一トーク
+bunshin import-line ~/Downloads/[LINE]トーク履歴.txt
+
+# 複数トーク一括 (新)
+bunshin import-line ~/Downloads/line-talks/
+```
+
 ## [0.10.12] - 2026-06-29
 
 ### Changed — Entity 抽出 prompt を全面刷新 (Honda TOP2 part 2)

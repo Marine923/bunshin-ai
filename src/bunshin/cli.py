@@ -570,7 +570,7 @@ def import_browser_cmd(browsers: tuple[str, ...], initial_days: int, full: bool,
 
 
 @main.command("import-line")
-@click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
 @click.option("--verbose", "-v", is_flag=True)
 @click.option(
     "--db",
@@ -578,21 +578,66 @@ def import_browser_cmd(browsers: tuple[str, ...], initial_days: int, full: bool,
     default=DEFAULT_DB_PATH,
 )
 def import_line_cmd(path: Path, verbose: bool, db: Path):
-    """Import a LINE chat export (text file)."""
+    """Import LINE chat exports (single .txt or a directory of .txt files).
+
+    LINE's Mac client (v15+) sandboxes its chat DB and encrypts the
+    binary, so direct DB ingestion isn't possible. Workflow:
+
+      1. In LINE app: open a talk → ⚙ → 'トーク履歴を送信' → mail it to
+         yourself or save the .txt to a folder.
+      2. Drop one or many .txt files into a folder (e.g. ~/Downloads/line-talks/).
+      3. Run `bunshin import-line ~/Downloads/line-talks/` for the whole
+         folder, or `bunshin import-line ~/Downloads/[LINE]talk.txt` for
+         a single talk.
+    """
     from bunshin.ingestion.line import import_line_file
 
     conn = init_db(db)
-    console.print(f"Reading [cyan]{path.name}[/cyan]...")
-    stats = import_line_file(conn, path, verbose=verbose)
-    if stats.get("error_msg"):
-        console.print(f"[red]Error:[/red] {stats['error_msg']}")
-    else:
-        table = Table(title=f"LINE import — {stats.get('title','')[:60]}")
+
+    if path.is_dir():
+        # v0.10.13 (Honda TOP3): support a directory of LINE exports so
+        # users with many talks don't have to invoke the CLI per file.
+        files = sorted(path.glob("*.txt"))
+        if not files:
+            console.print(f"[yellow]No .txt files found in {path}[/yellow]")
+            conn.close()
+            return
+        console.print(f"Importing [cyan]{len(files)}[/cyan] LINE talks from {path}...")
+        total_msgs = 0
+        total_chunks = 0
+        ok = 0
+        skipped = 0
+        for f in files:
+            stats = import_line_file(conn, f, verbose=verbose)
+            if stats.get("error_msg"):
+                console.print(f"  [yellow]⚠[/yellow] {f.name}: {stats['error_msg']}")
+                skipped += 1
+                continue
+            ok += 1
+            total_msgs += stats["messages_parsed"]
+            total_chunks += stats["chunks_inserted"]
+            if verbose:
+                console.print(f"  [green]✓[/green] {f.name}: {stats['messages_parsed']} msgs → {stats['chunks_inserted']} chunks")
+        table = Table(title=f"LINE bulk import — {ok}/{len(files)} talks")
         table.add_column("Metric", style="cyan")
         table.add_column("Count", justify="right")
-        table.add_row("messages_parsed", str(stats["messages_parsed"]))
-        table.add_row("chunks_inserted", str(stats["chunks_inserted"]))
+        table.add_row("talks imported", str(ok))
+        table.add_row("talks skipped", str(skipped))
+        table.add_row("messages parsed", f"{total_msgs:,}")
+        table.add_row("chunks inserted", f"{total_chunks:,}")
         console.print(table)
+    else:
+        console.print(f"Reading [cyan]{path.name}[/cyan]...")
+        stats = import_line_file(conn, path, verbose=verbose)
+        if stats.get("error_msg"):
+            console.print(f"[red]Error:[/red] {stats['error_msg']}")
+        else:
+            table = Table(title=f"LINE import — {stats.get('title','')[:60]}")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Count", justify="right")
+            table.add_row("messages_parsed", str(stats["messages_parsed"]))
+            table.add_row("chunks_inserted", str(stats["chunks_inserted"]))
+            console.print(table)
     conn.close()
 
 
