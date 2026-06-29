@@ -200,6 +200,120 @@ def re_describe_all_cmd(host: str, port: int, limit: int,
     )
 
 
+@main.command("merge-entities")
+@click.argument("source")
+@click.argument("target")
+@click.option("--dry-run", is_flag=True,
+              help="Show what would be merged without changing anything.")
+def merge_entities_cmd(source: str, target: str, dry_run: bool):
+    """Merge entity SOURCE into TARGET. Both can be IDs or exact names.
+
+    All record_entities rows pointing at SOURCE are rewritten to TARGET,
+    then SOURCE is deleted. Useful for collapsing duplicates like
+    「分身」 + 「Bunshin」 that NER pulled out as two entities.
+
+    The merged entity keeps TARGET's name, type, and description, but
+    inherits SOURCE's mention rows so search hits stay intact.
+
+    Example:
+      bunshin merge-entities "Bunshin" "分身"
+      bunshin merge-entities 137 22 --dry-run
+    """
+    import sqlite3
+    from bunshin.storage import init_db
+    conn = init_db()
+    conn.row_factory = sqlite3.Row
+    try:
+        def resolve(spec: str):
+            if spec.isdigit():
+                row = conn.execute(
+                    "SELECT id, name, type FROM entities WHERE id = ?", (int(spec),)
+                ).fetchone()
+                if row:
+                    return {"id": row["id"], "name": row["name"], "type": row["type"]}
+            row = conn.execute(
+                "SELECT id, name, type FROM entities WHERE name = ?", (spec,)
+            ).fetchone()
+            return {"id": row["id"], "name": row["name"], "type": row["type"]} if row else None
+
+        src = resolve(source)
+        tgt = resolve(target)
+        if not src:
+            console.print(f"[red]✗ source entity not found:[/red] {source}")
+            return
+        if not tgt:
+            console.print(f"[red]✗ target entity not found:[/red] {target}")
+            return
+        if src["id"] == tgt["id"]:
+            console.print("[yellow]source and target are the same entity — nothing to do[/yellow]")
+            return
+
+        # Count what's about to move.
+        n_rows = conn.execute(
+            "SELECT COUNT(*) FROM record_entities WHERE entity_id = ?",
+            (src["id"],),
+        ).fetchone()[0]
+        # Records already linked to BOTH (would dup if we just moved).
+        n_conflict = conn.execute(
+            "SELECT COUNT(*) FROM record_entities re "
+            "WHERE re.entity_id = ? "
+            "AND EXISTS (SELECT 1 FROM record_entities re2 "
+            "            WHERE re2.entity_id = ? AND re2.record_id = re.record_id)",
+            (src["id"], tgt["id"]),
+        ).fetchone()[0]
+        n_move = n_rows - n_conflict
+
+        console.print(
+            f"[cyan]Merge plan:[/cyan]\n"
+            f"  source:  #{src['id']} {src['name']!r} ({src.get('type','?')})\n"
+            f"  target:  #{tgt['id']} {tgt['name']!r} ({tgt.get('type','?')})\n"
+            f"  rewrite: {n_move} record_entities rows  (drop {n_conflict} dup, total {n_rows})\n"
+            f"  delete:  entities row #{src['id']}\n"
+        )
+        if dry_run:
+            console.print("[yellow]--dry-run: no changes made[/yellow]")
+            return
+        # Drop conflicts first to satisfy the UNIQUE (record_id, entity_id) constraint.
+        with conn:
+            conn.execute(
+                "DELETE FROM record_entities "
+                "WHERE entity_id = ? "
+                "AND EXISTS (SELECT 1 FROM record_entities re2 "
+                "            WHERE re2.entity_id = ? AND re2.record_id = record_entities.record_id)",
+                (src["id"], tgt["id"]),
+            )
+            conn.execute(
+                "UPDATE record_entities SET entity_id = ? WHERE entity_id = ?",
+                (tgt["id"], src["id"]),
+            )
+            # Carry co-occurrence edges if the table exists.
+            try:
+                conn.execute(
+                    "UPDATE OR IGNORE entity_relations SET a_id = ? WHERE a_id = ?",
+                    (tgt["id"], src["id"]),
+                )
+                conn.execute(
+                    "UPDATE OR IGNORE entity_relations SET b_id = ? WHERE b_id = ?",
+                    (tgt["id"], src["id"]),
+                )
+                conn.execute(
+                    "DELETE FROM entity_relations WHERE a_id = b_id"
+                )
+                conn.execute(
+                    "DELETE FROM entity_relations WHERE a_id = ? OR b_id = ?",
+                    (src["id"], src["id"]),
+                )
+            except Exception:
+                pass
+            conn.execute("DELETE FROM entities WHERE id = ?", (src["id"],))
+        console.print(
+            f"[green]✓[/green] merged #{src['id']} → #{tgt['id']} "
+            f"({n_move} rows moved, {n_conflict} duplicates dropped)"
+        )
+    finally:
+        conn.close()
+
+
 @main.command("status")
 @click.option(
     "--db",

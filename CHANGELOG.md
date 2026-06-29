@@ -52,6 +52,29 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.18] - 2026-06-29
+
+### Added — `bunshin merge-entities <source> <target>` CLI
+- 重複 entity を 1 つに統合できる手動コマンド (NER のゆれ補正用)
+- 引数は **ID** か **完全一致名** どちらでも OK
+- `--dry-run` で実行前確認可能 (rewrite/drop/delete 件数表示)
+- 処理:
+  - `record_entities` の競合行 (target にも既に紐づいてる record) を先に削除
+  - 残った source 行を target に書換 (UNIQUE 制約 OK)
+  - `entity_relations` も target に書換 + 自己 loop 削除
+  - source entity 行を削除
+- 実例:
+  ```
+  $ bunshin merge-entities 105 113 --dry-run
+  Merge plan:
+    source:  #105 'ホークす(海外帰りの模索日記)' (project)
+    target:  #113 'ホークす' (project)
+    rewrite: 0 record_entities rows  (drop 576 dup, total 576)
+    delete:  entities row #105
+  --dry-run: no changes made
+  ```
+- OSS 公開時にユーザーが NER の重複を手動で整理できる手段を提供
+
 ## [0.10.17] - 2026-06-29
 
 ### Added — Wizard 最終 step に Anthropic API キー案内
