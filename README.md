@@ -140,6 +140,10 @@ python3.11 -m venv ~/.bunshin/venv
 
 # Check setup health any time
 ~/.bunshin/venv/bin/bunshin doctor
+
+# Clean up NER duplicates (e.g. "Bunshin" + "分身（Bunshin）" → one entity)
+~/.bunshin/venv/bin/bunshin find-duplicates
+~/.bunshin/venv/bin/bunshin merge-entities <source> <target> --dry-run
 ```
 
 See [`docs/SETUP.md`](docs/SETUP.md) for Gmail, Calendar, Ollama, MCP, and scheduler setup.

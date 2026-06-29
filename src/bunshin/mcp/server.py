@@ -556,16 +556,46 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
 
     @mcp.tool()
     def get_server_info() -> str:
-        """Return the running MCP server's version + uptime info.
+        """Return the running MCP server's version, uptime, and DB stats.
 
-        Use this on session start to detect "Bunshin was updated but
-        Claude is still talking to the old MCP server" — if the
-        version returned here lags behind the bundled DMG version,
-        ask the user to quit and relaunch Claude so a fresh MCP
-        process is spawned.
+        Use this on session start for two things:
+
+        1. Detect "Bunshin was updated but Claude is still talking to
+           the old MCP server" — if the version returned here lags
+           behind the bundled DMG version, ask the user to quit and
+           relaunch Claude so a fresh MCP process is spawned.
+
+        2. Get a quick read on **how much memory exists**: record /
+           entity counts, top source breakdown, oldest record date.
+           Useful for sanity-checking "is the user's DB rich enough
+           that I should rely on it" before deciding whether to lean
+           on search_memory results.
         """
         from bunshin import __version__
         import os as _os
+        conn = init_db(db_path)
+        try:
+            n_records = conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]
+            try:
+                n_entities = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+            except Exception:
+                n_entities = 0
+            sources = {}
+            try:
+                for src, cnt in conn.execute(
+                    "SELECT source, COUNT(*) FROM records GROUP BY source "
+                    "ORDER BY 2 DESC LIMIT 8"
+                ):
+                    sources[src] = cnt
+            except Exception:
+                pass
+            oldest = conn.execute(
+                "SELECT MIN(timestamp) FROM records WHERE timestamp > 0"
+            ).fetchone()
+            oldest_ts = (oldest[0] if oldest else None) or 0
+            oldest_iso = _format_timestamp(oldest_ts) if oldest_ts else None
+        finally:
+            conn.close()
         return json.dumps({
             "server": "bunshin-mcp",
             "version": __version__,
@@ -575,6 +605,12 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                 "list_top_entities", "get_today_hero", "get_recent_chat",
                 "get_server_info",
             ],
+            "memory": {
+                "records": n_records,
+                "entities": n_entities,
+                "top_sources": sources,
+                "oldest_record": oldest_iso,
+            },
             "note": (
                 "If this version is older than the Bunshin app you just "
                 "updated, quit Claude (⌘Q) and relaunch — the MCP "

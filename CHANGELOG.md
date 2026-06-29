@@ -52,6 +52,26 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.22] - 2026-06-29
+
+### Changed — MCP `get_server_info` に DB スケール情報を追加
+- 旧: version / pid / tool list / 再起動 note のみ
+- 新: 上記 + **`memory`** ブロック
+  ```json
+  "memory": {
+    "records": 20822,
+    "entities": 191,
+    "top_sources": {"file": 6799, "gmail": 4436, "claude": 4181, ...},
+    "oldest_record": "2015-03-18 21:42"
+  }
+  ```
+- LLM caller が session 開始時に **「Bunshin の DB に lean しても良いか」**
+  を即判断できる (records 0 件なら lean しない、20k 件 + 10 年分なら lean する等)
+
+### Changed — README にも新 CLI を追記
+- v0.10.18-21 で追加した `doctor` 強化 / `find-duplicates` / `merge-entities`
+  を README の Quick start セクションに 1 行ずつ明示
+
 ## [0.10.21] - 2026-06-29
 
 ### Changed — `bunshin doctor` に重複候補エンティティ summary 追加
