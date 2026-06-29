@@ -1653,6 +1653,44 @@ def web_cmd(host: str, port: int, db: Path):
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
+@main.command("photos-place-clusters")
+@click.option("--db", type=click.Path(path_type=Path), default=DEFAULT_DB_PATH,
+              help="Bunshin DB path.")
+@click.option("--min-photos", type=int, default=5,
+              help="Min photos per bucket (default 5).")
+@click.option("--max-clusters", type=int, default=50,
+              help="Cap on entities created (default 50).")
+@click.option("--verbose", is_flag=True)
+def photos_place_clusters_cmd(db: Path, min_photos: int, max_clusters: int,
+                               verbose: bool):
+    """Group GPS-tagged photos by proximity → create place entities.
+
+    Bunshin already imports photo timestamps + GPS, but the raw
+    coordinates don't surface in search. This pass buckets photos at
+    ~1.1km resolution, reverse-geocodes each bucket via Wikipedia
+    geosearch, and registers the result as a `place` entity linked to
+    every photo in the cluster. After running, queries like "壱岐島
+    の写真" / "ハワイの写真" surface the right images, and the
+    relationships graph gets concrete geographic nodes.
+    """
+    from bunshin.photos_clusters import compute_place_clusters
+    conn = init_db(db)
+    try:
+        stats = compute_place_clusters(
+            conn,
+            min_photos=min_photos,
+            max_clusters=max_clusters,
+            verbose=verbose,
+        )
+    finally:
+        conn.close()
+    table = Table(title="Place clusters")
+    table.add_column("Metric"); table.add_column("Count", justify="right")
+    for k, v in stats.items():
+        table.add_row(k.replace("_", " "), str(v))
+    console.print(table)
+
+
 @main.command("re-describe-all")
 @click.option("--limit", type=int, default=200,
               help="Max entities to refresh (default 200, ≥ current 137).")

@@ -52,6 +52,32 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.6] - 2026-06-29
+
+### Added — `bunshin photos-place-clusters` CLI (B4 写真深堀り 第2弾)
+- GPS タグ付き写真を **~1.1km grid** で bucket 化
+- 各 bucket を **Wikipedia geosearch API で逆ジオコーディング** →
+  ja は ja.wikipedia, それ以外は en.wikipedia
+- **行政区優先 heuristic**: 「市/町/村/区/県/府/都」「City/Town/County
+  /Province」を facility (学校/ホテル/駅/水道局/Castle/Museum 等)
+  より優先 → 「○○の写真」検索で実用的な地名がヒット
+- 各 cluster を `place` entity として知識グラフに登録 + 写真と link
+- 設定: `--min-photos 5` `--max-clusters 50` `--verbose`
+
+### Implementation notes
+- Wikipedia API は **User-Agent 必須** (デフォルト httpx ヘッダーだと
+  silent 0-result) → 「Bunshin/0.10」を明示
+- `gsradius` API max 10km → 候補 10 件取得 → admin heuristic で選定
+- Honda DB で test 実行: 10 cluster / 574 photo link 作成
+  ("壱岐市" "長崎市" "Olsztyn County" "日見村" etc.)
+
+### How to test
+```bash
+bunshin photos-place-clusters --min-photos 5 --max-clusters 50 --verbose
+```
+→ 関係性タブで「壱岐島」開くと、写真ロケーションが新規 place
+entity として可視化される。
+
 ## [0.10.5] - 2026-06-29
 
 ### Added — Photos.app アルバム取り込み (本田レビュー B4 写真ライブラリ深堀り 第1弾)
