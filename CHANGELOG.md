@@ -52,6 +52,19 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.1] - 2026-06-29
+
+### Hardened — INDEX_HTML を raw string 化 (本田レビュー B3, v0.9.20 罠の再発防止)
+- v0.9.20 で踏んだ「Python triple-quoted string 内の JS コメント内
+  `\n` が改行に展開されて SyntaxError → UI 全凍結」と同系統のバグを
+  構造的に防止
+- `INDEX_HTML = """..."""` → `INDEX_HTML = r"""..."""`
+- 既存の `\\n` `\\t` `\\x` (Python source 上のエスケープ) を `\n`
+  `\t` `\x` (raw 内では literal) に書き換え (28 行変更)
+- 配信される HTML / JS 動作は完全に同じ (検証済み)
+- 今後 JS コメント内に `\n` を書いても literal 2 文字として配信
+  される → JS comment が早期終了しない
+
 ## [0.10.0] - 2026-06-29
 
 ### Added — `bunshin re-describe-all` CLI (本田レビュー A2)

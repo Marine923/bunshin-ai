@@ -29,7 +29,7 @@ from bunshin.storage import (
 )
 
 
-INDEX_HTML = """<!DOCTYPE html>
+INDEX_HTML = r"""<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -4838,7 +4838,7 @@ function openUninstallModal() {
       unspecified: '未選択',
     }[reason] || reason;
     const subj = `[Bunshin] アンインストール理由: ${reasonLabel}`;
-    const body = `理由: ${reasonLabel}\\n\\n補足:\\n${comment || '(なし)'}\\n\\n--- 環境 ---\\nBunshin version: ${(typeof STATS_BUNSHIN_VERSION === 'string') ? STATS_BUNSHIN_VERSION : '0.7.0'}\\nOS: ${navigator.platform}\\n`;
+    const body = `理由: ${reasonLabel}\n\n補足:\n${comment || '(なし)'}\n\n--- 環境 ---\nBunshin version: ${(typeof STATS_BUNSHIN_VERSION === 'string') ? STATS_BUNSHIN_VERSION : '0.7.0'}\nOS: ${navigator.platform}\n`;
     const mailto = `mailto:?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
     window.open(mailto, '_blank');
     showSteps();
@@ -4961,7 +4961,7 @@ async function rebuildEmbeddings() {
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\\n');
+      const lines = buffer.split('\n');
       buffer = lines.pop() || '';
       for (const ln of lines) {
         if (!ln.trim()) continue;
@@ -5003,7 +5003,7 @@ function wireTroubleshootPanel() {
       if (mail) {
         mail.hidden = false;
         const subj = `Bunshin 困りごと (v${j.bunshin_version || '?'})`;
-        const body = '下記の問題が起きました：\\n\\n[ここに状況を書いてください — 何をしたら、何が起きたか]\\n\\n--- 診断情報（自動生成） ---\\n' + text;
+        const body = '下記の問題が起きました：\n\n[ここに状況を書いてください — 何をしたら、何が起きたか]\n\n--- 診断情報（自動生成） ---\n' + text;
         mail.href = `mailto:?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
       }
     } catch (e) {
@@ -5362,7 +5362,7 @@ function wireLearningDashboard() {
   const resetBtn = $('learning-reset-btn');
   if (resetBtn) {
     resetBtn.addEventListener('click', async () => {
-      if (!confirm('学習を全部リセットしますか？\\nこれまでに「要らない」マークした全ての記録が再表示されます。\\n（記録そのものは消えません）')) return;
+      if (!confirm('学習を全部リセットしますか？\nこれまでに「要らない」マークした全ての記録が再表示されます。\n（記録そのものは消えません）')) return;
       await fetch('/api/learning/reset', {method: 'POST'});
       refreshLearningRules();
       loadStats();
@@ -5433,7 +5433,7 @@ function wireBackupPanel() {
         if (!r.ok || j.error) {
           alert('復元失敗: ' + (j.error || j.detail || r.statusText));
         } else {
-          alert('復元しました。Bunshin を再起動してください。\\n旧 DB: ' + j.previous_saved_to);
+          alert('復元しました。Bunshin を再起動してください。\n旧 DB: ' + j.previous_saved_to);
         }
       } finally {
         btn.disabled = false;
@@ -6598,7 +6598,7 @@ async function loadInsights() {
       const text = body.textContent || '';
       const stripped = text.replace(/\\s/g, '');
       if (stripped.length > 20) {
-        const ascii = (stripped.match(/[\\x21-\\x7e]/g) || []).length;
+        const ascii = (stripped.match(/[\x21-\x7e]/g) || []).length;
         if (ascii / stripped.length > 0.6) body.classList.add('raw-output');
       }
       // Only show toggle when content overflows the clamp.
@@ -6628,7 +6628,7 @@ async function loadInsights() {
             area.innerHTML = `<div class="empty">エラー: ${esc(j.error)}</div>`;
             return;
           }
-          const formatted = esc(j.digest).replace(/\\n/g, '<br>').replace(/^## (.+)$/gm, '<h3 style="margin:14px 0 6px;color:#ddd;">$1</h3>').replace(/^- (.+)$/gm, '• $1');
+          const formatted = esc(j.digest).replace(/\n/g, '<br>').replace(/^## (.+)$/gm, '<h3 style="margin:14px 0 6px;color:#ddd;">$1</h3>').replace(/^- (.+)$/gm, '• $1');
           area.innerHTML = `
             <div class="insights-card" style="border-left:3px solid #5fbf6f;">
               <div class="meta">モデル: ${esc(j.model)} · 対象記録: ${j.covered_records} 件</div>
@@ -7494,7 +7494,7 @@ function copyResultsBundle() {
   }
   lines.push(`---`);
   lines.push(`*このコピーは Bunshin (https://github.com/Marine923/bunshin-ai) の検索結果です。*`);
-  const text = lines.join('\\n');
+  const text = lines.join('\n');
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.getElementById('copy-bundle-btn');
     if (btn) {
@@ -8362,7 +8362,7 @@ async function pullDefaultModel(model) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\\n');
+      const lines = buffer.split('\n');
       buffer = lines.pop() || '';
       for (const ln of lines) {
         if (!ln.trim()) continue;
@@ -8371,16 +8371,16 @@ async function pullDefaultModel(model) {
           if (j.line) { lastLine = j.line; log.textContent = lastLine; log.scrollTop = log.scrollHeight; }
           if (j.done) {
             if (j.code === 0) {
-              log.textContent = lastLine + '\\n✓ ダウンロード完了';
+              log.textContent = lastLine + '\n✓ ダウンロード完了';
             } else {
-              log.textContent = lastLine + `\\n✗ エラー (code ${j.code})`;
+              log.textContent = lastLine + `\n✗ エラー (code ${j.code})`;
             }
           }
         } catch {}
       }
     }
   } catch (e) {
-    log.textContent += '\\n✗ ' + (e && e.message || 'error');
+    log.textContent += '\n✗ ' + (e && e.message || 'error');
   } finally {
     _ollamaPullInProgress = false;
     btn.disabled = false;
@@ -9175,7 +9175,7 @@ chatForm.addEventListener('submit', async (e) => {
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\\n');
+      const lines = buffer.split('\n');
       buffer = lines.pop();
       for (const line of lines) {
         if (!line.trim()) continue;
