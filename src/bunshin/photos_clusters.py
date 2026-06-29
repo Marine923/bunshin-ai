@@ -50,61 +50,108 @@ def _wikipedia_place(lat: float, lon: float) -> Optional[str]:
     coordinate-string place name.
     """
     in_japan = 24.0 <= lat <= 46.0 and 122.0 <= lon <= 146.0
-    lang = "ja" if in_japan else "en"
-    # Pull 10 candidates so the post-filter can prefer admin areas
-    # (壱岐市) over nearby buildings (○○学校 / Some Hotel) which would
-    # otherwise win on distance alone.
-    try:
-        r = httpx.get(
-            f"https://{lang}.wikipedia.org/w/api.php",
-            params={
-                "action": "query",
-                "list": "geosearch",
-                "gscoord": f"{lat}|{lon}",
-                "gsradius": str(WIKI_RADIUS_M),
-                "gslimit": "10",
-                "format": "json",
-            },
-            headers={
-                "User-Agent": "Bunshin/0.10 (https://github.com/Marine923/bunshin-ai)",
-            },
-            timeout=8.0,
-        )
-        if r.status_code != 200:
-            return None
-        results = r.json().get("query", {}).get("geosearch", [])
-        if not results:
-            return None
+    # v0.10.14 (Honda v0.10.13 review): always try ja.wikipedia first,
+    # even for non-Japan coordinates — Polish / European admin areas
+    # often have a ja Wikipedia article that reads better in the JP UI
+    # ("オルシュティン郡 (ポーランド)" vs "Olsztyn County"). Fall back
+    # to en.wikipedia if ja has nothing within the radius.
+    langs = ["ja", "en"] if in_japan else ["ja", "en"]
+    headers = {
+        "User-Agent": "Bunshin/0.10 (https://github.com/Marine923/bunshin-ai)",
+    }
 
-        # Admin-area heuristic. Most-preferred → least-preferred:
-        #   1. JA: ends in 市 / 町 / 村 / 区 / 県 / 府 / 都
-        #   2. EN: title contains City / Town / County / Province / Prefecture
-        #   3. neither facility-style nor place-detail
-        #   4. anything left
+    def _query(lang_code: str) -> list:
+        try:
+            r = httpx.get(
+                f"https://{lang_code}.wikipedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "list": "geosearch",
+                    "gscoord": f"{lat}|{lon}",
+                    "gsradius": str(WIKI_RADIUS_M),
+                    "gslimit": "10",
+                    "format": "json",
+                },
+                headers=headers,
+                timeout=8.0,
+            )
+            if r.status_code != 200:
+                return []
+            return r.json().get("query", {}).get("geosearch", [])
+        except Exception:
+            return []
+
+    # Collect candidates from both languages, prefer the ja set when
+    # it contains any admin-area hit.
+    results: list = []
+    for lang_code in langs:
+        results = _query(lang_code)
+        if results:
+            break
+    if not results:
+        return None
+
+    try:
+
+        # Admin-area heuristic with priority tiers:
+        # v0.10.14 (Honda v0.10.13 review): prefer modern administrative
+        # entities (市/区/県/府/都) over 旧地名 (村/町 can be ambiguous,
+        # e.g. "小栗村 (長崎県)" for what is now 諫早市). Also push down
+        # disambiguation-paren titles (○○ (xx県)) — they tend to be
+        # historical names that just happen to have Wikipedia stubs.
         import re as _re
-        ja_admin_re = _re.compile(r"(市|町|村|区|県|府|都)$")
+        # Match the admin suffix at the end of the bare title, optionally
+        # followed by Wikipedia's disambiguation parens (e.g.
+        # "小栗村 (長崎県)" — the "村" we care about isn't at string
+        # end because Wikipedia tacked on " (長崎県)").
+        _dab_tail = r"(?:\s*[（(].+?[）)])?$"
+        ja_modern_admin_re = _re.compile(r"(市|区|県|府|都)" + _dab_tail)
+        ja_old_admin_re = _re.compile(r"(町|村|郡)" + _dab_tail)
         en_admin_words = ("City", "Town", "Village", "Prefecture", "Province",
                           "County", "Region", "Municipality", "Borough", "District")
         facility_words = (
             "学校", "小学校", "中学校", "高等学校", "大学", "病院",
             "駅", "空港", "ホテル", "美術館", "博物館", "図書館",
             "水道局", "役所", "役場", "支店", "本社", "営業所", "工場",
+            "消防本部", "消防署", "組合", "事務所", "センター", "会館",
+            "刑務所", "拘置所", "公民館", "市民館",
             "School", "University", "Hotel", "Station", "Hospital",
             "Museum", "Library", "Stadium", "Park", "Bridge", "House",
             "Castle", "Tower", "Cathedral", "Church", "Temple",
+            "Headquarters", "Office", "Center", "Hall",
         )
 
-        ja_admin_hit = [r for r in results
-                        if ja_admin_re.search(r.get("title", ""))]
-        en_admin_hit = [r for r in results
-                        if any(w in r.get("title", "") for w in en_admin_words)]
-        non_facility = [r for r in results
-                        if not any(w in r.get("title", "") for w in facility_words)]
-        chosen = (ja_admin_hit or en_admin_hit or non_facility or results)[0]
+        def _has_dab(t: str) -> bool:
+            return "(" in t or "(" in t
+
+        # Build the priority tiers — lower-priority disambiguation
+        # entries get pushed to the back of each tier.
+        def _sort_by_dab(rs):
+            return sorted(rs, key=lambda r: (1 if _has_dab(r.get("title", "")) else 0,
+                                              r.get("dist", 9999999)))
+
+        ja_modern = _sort_by_dab([
+            r for r in results
+            if ja_modern_admin_re.search(r.get("title", ""))
+        ])
+        ja_old = _sort_by_dab([
+            r for r in results
+            if ja_old_admin_re.search(r.get("title", ""))
+        ])
+        en_admin_hit = _sort_by_dab([
+            r for r in results
+            if any(w in r.get("title", "") for w in en_admin_words)
+        ])
+        non_facility = _sort_by_dab([
+            r for r in results
+            if not any(w in r.get("title", "") for w in facility_words)
+        ])
+        chosen = (ja_modern or ja_old or en_admin_hit or non_facility or results)[0]
         title = (chosen.get("title") or "").strip()
         return title or None
     except Exception:
         return None
+    return None
 
 
 def compute_place_clusters(

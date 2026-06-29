@@ -266,6 +266,18 @@ def apply_entity_type_overrides(conn: sqlite3.Connection) -> int:
         "ソーシャルメディア", "SNS",
         "サブレディット", "Subreddit",
     )
+    # v0.10.14 (Honda v0.10.13 review): "Latent Space" was stuck as
+    # place — clearly a concept/term, not a location. Add a concept
+    # keyword pass for description bodies that talk about abstract
+    # math / ML / theory.
+    _CONCEPT_KEYWORDS = (
+        "概念", "理論", "考え方", "アプローチ",
+        "アルゴリズム", "数学", "数理",
+        "ベクトル空間", "潜在空間", "Latent Space",
+        "抽象空間", "抽象的", "データの空間",
+        "機械学習で作られる", "機械学習で生成",
+        "Theory", "framework",
+    )
     _GEO_KEYWORDS_IN_NAME = (
         "市", "町", "村", "区", "県", "府", "都", "島",
         "City", "County", "Town", "Village", "Prefecture", "Province",
@@ -287,14 +299,20 @@ def apply_entity_type_overrides(conn: sqlite3.Connection) -> int:
         if (
             current_type == "place"
             and description
-            and any(kw in description for kw in _ORG_KEYWORDS)
             and not any(g in name for g in _GEO_KEYWORDS_IN_NAME)
         ):
-            conn.execute(
-                "UPDATE entities SET type = 'organization' WHERE id = ?",
-                (ent_id,),
-            )
-            fixed += 1
+            if any(kw in description for kw in _ORG_KEYWORDS):
+                conn.execute(
+                    "UPDATE entities SET type = 'organization' WHERE id = ?",
+                    (ent_id,),
+                )
+                fixed += 1
+            elif any(kw in description for kw in _CONCEPT_KEYWORDS):
+                conn.execute(
+                    "UPDATE entities SET type = 'concept' WHERE id = ?",
+                    (ent_id,),
+                )
+                fixed += 1
     if fixed:
         conn.commit()
     return fixed

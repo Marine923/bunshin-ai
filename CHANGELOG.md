@@ -52,6 +52,33 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.14] - 2026-06-29
+
+本田 v0.10.13 レビューの残課題 3 件:
+
+### Fixed — Wikipedia geosearch を ja 優先で日本語化 (Honda B)
+- 旧: Olsztyn (ポーランド) → "Olsztyn County" 英語のまま
+- 新: 海外座標でも **ja.wikipedia を先に試す** → "オルシュティン郡"
+- 日本語 UI 上で違和感のない地名表記に
+
+### Fixed — Disambiguation 付き旧地名を拾えるよう regex 修正 (Honda A)
+- 旧 regex `(町|村|郡)$` は末尾 match のみ → 「小栗村 (長崎県)」が
+  exclude されていた (Wikipedia の disambiguation suffix で末尾でなくなる)
+- 新 regex `(町|村|郡)(?:\s*[（(].+?[）)])?$` で suffix 許容
+- 32.83, 130.06 の場合: 旧 "県央地域広域市町村圏組合消防本部" →
+  新 "小栗村 (長崎県)" (実は長崎県諫早市の旧地名 = Wikipedia 正解)
+
+### Fixed — Latent Space を place → concept に reclassify (Honda C)
+- description-based reclassify に **`_CONCEPT_KEYWORDS`** を追加
+- 「概念 / 理論 / 抽象空間 / ベクトル空間 / 機械学習で作られる」等
+- 実機検証: Latent Space → concept ✅
+
+### facility_words 拡張
+- 「消防本部 / 組合 / 事務所 / センター / 会館 / 刑務所 / 公民館 /
+  Headquarters / Office / Center / Hall」追加
+- 「県央地域広域市町村圏組合消防本部」のような facility が place
+  entity として選ばれる事故を防止
+
 ## [0.10.13] - 2026-06-29
 
 ### Changed — `bunshin import-line` がディレクトリ一括対応 (Honda TOP3)
