@@ -52,6 +52,20 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.21] - 2026-06-29
+
+### Changed — `bunshin doctor` に重複候補エンティティ summary 追加
+- v0.10.18-19 で merge-entities + find-duplicates の pair を提供したが、
+  ユーザーは能動的に find-duplicates を実行しないと気づかなかった
+- doctor の Knowledge Graph セクション直後に重複候補グループ数を表示:
+  ```
+  ℹ 重複候補エンティティ: 1 件の merge 候補グループあり
+     → bunshin find-duplicates  →  bunshin merge-entities …
+  ```
+- find-duplicates と同じ normalize ロジックを再利用 (parenthesized suffix /
+  whitespace / punctuation 除去)
+- これで doctor 1 回叩くだけで「掃除した方が良い」と分かる
+
 ## [0.10.20] - 2026-06-29
 
 ### Changed — `bunshin doctor` を強化

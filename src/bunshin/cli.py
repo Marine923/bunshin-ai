@@ -1348,6 +1348,39 @@ def doctor_cmd(db: Path):
             )
         else:
             console.print(f"[green]✓[/green] Knowledge Graph: {e_count} エンティティ, {link_count} リンク")
+
+            # v0.10.21: duplicate-candidate summary — same normalize logic as
+            # find-duplicates. Just count groups, don't print details (that's
+            # what `bunshin find-duplicates` is for).
+            try:
+                import re as _re
+                def _normalize(name):
+                    if not name: return ""
+                    s = _re.sub(r"\s*[（(].*?[)）]\s*", "", name)
+                    s = s.strip().lower()
+                    return _re.sub(r"[ \t/・,，、:：·]", "", s)
+                rows = conn.execute(
+                    "SELECT e.name, (SELECT COUNT(*) FROM record_entities re WHERE re.entity_id = e.id) AS m "
+                    "FROM entities e"
+                ).fetchall()
+                groups: dict = {}
+                for name, m in rows:
+                    if (m or 0) < 1:
+                        continue
+                    k = _normalize(name)
+                    if not k or len(k) < 2:
+                        continue
+                    groups.setdefault(k, 0)
+                    groups[k] += 1
+                dup_count = sum(1 for v in groups.values() if v >= 2)
+                if dup_count > 0:
+                    issues.append(
+                        ("ℹ", "重複候補エンティティ",
+                         f"{dup_count} 件の merge 候補グループあり",
+                         "bunshin find-duplicates  →  bunshin merge-entities …")
+                    )
+            except Exception:
+                pass
         conn.close()
     except Exception:
         pass
