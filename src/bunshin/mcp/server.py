@@ -214,16 +214,27 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             conn.close()
 
     @mcp.tool()
-    def recall_session(source_id: str, max_messages: int = 100) -> str:
+    def recall_session(
+        source_id: Annotated[
+            str,
+            Field(description=(
+                "source_id from a search_memory result. Identifies the "
+                "session / file / message thread to expand."
+            )),
+        ],
+        max_messages: Annotated[
+            int,
+            Field(
+                default=100, ge=1, le=1000,
+                description="Max messages to return (1-1000, default 100).",
+            ),
+        ] = 100,
+    ) -> str:
         """Get the full conversation/session that contains a specific record.
 
         Use this after `search_memory` returns a hit, when you need full
         context around the matched record (e.g. "what led up to that
         decision?", "what was the rest of that discussion?").
-
-        Args:
-            source_id: The source_id from a search_memory result.
-            max_messages: Maximum messages to return (default 100).
 
         Returns:
             JSON list of all messages in that session, in chronological
@@ -253,15 +264,24 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             conn.close()
 
     @mcp.tool()
-    def get_flashback(date: str | None = None) -> str:
+    def get_flashback(
+        date: Annotated[
+            str | None,
+            Field(
+                default=None,
+                description=(
+                    "ISO date string (YYYY-MM-DD). Defaults to today. "
+                    "The function pulls records from this date last week, "
+                    "3 months ago, 1 year ago, and 5 years ago."
+                ),
+            ),
+        ] = None,
+    ) -> str:
         """Get "this date in the past" recall windows for a given date.
 
         Returns up to 5 records each from last week, 3 months ago, 1 year ago,
         and 5 years ago. Use this when the user asks "what was I doing last
         year on this day?" or for daily morning reflection prompts.
-
-        Args:
-            date: ISO date string (YYYY-MM-DD). Defaults to today.
         """
         from datetime import date as _date, datetime as _dt, timedelta
         conn = init_db(db_path)
@@ -318,16 +338,40 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
 
     @mcp.tool()
     def list_top_entities(
-        type_: str | None = None,
-        limit: int = 20,
-        exclude_noisy: bool = True,
+        type_: Annotated[
+            str | None,
+            Field(
+                default=None,
+                description=(
+                    "Optional entity type filter: 'person', 'project', "
+                    "'place', 'organization', 'concept', 'tool', or 'topic'. "
+                    "Omit to get all types."
+                ),
+            ),
+        ] = None,
+        limit: Annotated[
+            int,
+            Field(
+                default=20, ge=1, le=200,
+                description="Max number of entities to return (1-200, default 20).",
+            ),
+        ] = 20,
+        exclude_noisy: Annotated[
+            bool,
+            Field(
+                default=True,
+                description=(
+                    "Drop newsletter-driven noise (entities whose mentions "
+                    "come >80% from gmail/browser). Default True."
+                ),
+            ),
+        ] = True,
     ) -> str:
         """List the most-mentioned entities in the user's memory.
 
         Use this to surface what's currently active in the user's life:
         the people, projects, and places that come up most often across
-        all sources. Filter by `type_` ("person", "project", "place",
-        "organization", "topic") if you want a specific category.
+        all sources.
 
         Each entity includes `top_sources` (per-source mention
         breakdown). When `exclude_noisy=True` (default), entities whose
@@ -338,11 +382,6 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
 
         Backed by the shared `get_top_entities()` helper, so this list
         always matches what the web UI shows.
-
-        Args:
-            type_: Optional entity type filter.
-            limit: Max number of entities to return (default 20).
-            exclude_noisy: drop newsletter-driven noise (default True).
         """
         from bunshin.knowledge_graph import get_top_entities, init_kg_schema
         conn = init_db(db_path)
@@ -453,12 +492,27 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             conn.close()
 
     @mcp.tool()
-    def get_recent_chat(n: int = 5, min_user_chars: int = 8) -> str:
+    def get_recent_chat(
+        n: Annotated[
+            int,
+            Field(
+                default=5, ge=1, le=50,
+                description="Max sessions to return (1-50, default 5).",
+            ),
+        ] = 5,
+        min_user_chars: Annotated[
+            int,
+            Field(
+                default=8, ge=0, le=200,
+                description=(
+                    "Skip sessions whose first user message is shorter "
+                    "than this (default 8). 'hello' / 'hi' / 'test' "
+                    "don't carry useful context. Set 0 to include them all."
+                ),
+            ),
+        ] = 8,
+    ) -> str:
         """Return the user's N most recent substantive chat sessions.
-
-        Sessions whose first user message is shorter than `min_user_chars`
-        (default 8) are skipped — "hello" / "hi" / "test" don't carry
-        useful context. To include them, pass min_user_chars=0.
 
         Use to give continuity context — "what has the user been
         discussing with their assistant lately?" — without dredging up

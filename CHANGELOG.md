@@ -52,6 +52,30 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.16] - 2026-06-29
+
+### Changed — 全 7 MCP ツールの引数に Pydantic Field description / 範囲制限を公開
+- TOP1 (v0.10.10) で **search_memory のみ** description 付与だったので
+  残り 6 ツールにも適用:
+  - `recall_session` (source_id, max_messages 1-1000)
+  - `get_flashback` (date)
+  - `list_top_entities` (type_, limit 1-200, exclude_noisy)
+  - `get_recent_chat` (n 1-50, min_user_chars 0-200)
+  - `get_today_hero` / `get_server_info` (引数なしのため対応不要)
+- 効果: MCP 経由で呼び出す LLM が引数の意味と妥当範囲を schema から
+  読み取れるようになり、誤呼び出しを防止 + パラメータ調整がしやすい
+
+### 確認
+```
+search_memory: 5 args, 5 with description
+recall_session: 2 args, 2 with description
+get_flashback: 1 args, 1 with description
+list_top_entities: 3 args, 3 with description
+get_today_hero: 0 args, 0 with description (ok)
+get_recent_chat: 2 args, 2 with description
+get_server_info: 0 args, 0 with description (ok)
+```
+
 ## [0.10.15] - 2026-06-29
 
 ### Changed — describe prompt に top_relations を注入 (Honda D)
