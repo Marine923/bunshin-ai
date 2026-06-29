@@ -36,20 +36,7 @@ read it, *locally*.
 
 ---
 
-## The 4 Conditions (All Met)
-
-| # | Condition | Description | Implementation |
-|---|-----------|-------------|----------------|
-| 1 | **Local-First** | All data stays on YOUR device | SQLite + sqlite-vec |
-| 2 | **AI-Agnostic** | Works with any LLM (Claude, GPT, Gemini, Llama, …) | MCP protocol |
-| 3 | **Offline-Capable** | Functions without internet | Ollama integration |
-| 4 | **Omni-Source** | Ingests email, files, chats, notes, photos, browser history, calendar | 11 ingestion paths |
-
-**To our knowledge, no other product satisfies all 4 conditions** (as of 2026-06).
-
----
-
-## Why this matters
+## Why Bunshin
 
 Today's AI products tie your memory to the vendor:
 
@@ -60,6 +47,18 @@ Today's AI products tie your memory to the vendor:
 If your AI vendor changes pricing, shuts down, or you simply want to switch, **all your accumulated memory is gone**.
 
 Bunshin inverts this: your memory lives on your machine, in a standard SQLite file. Any LLM that speaks the MCP protocol can use it. If Anthropic disappears tomorrow, your memory survives.
+
+## Where Bunshin fits
+
+Bunshin sits in a space that local-first AI projects are starting to converge on. We're not the only entrant — Stanford's open-source [OpenJarvis](https://github.com/Marqovo/OpenJarvis) covers similar local + AI-agnostic ground. Bunshin's differentiation is:
+
+| Axis | Detail |
+|---|---|
+| 🇯🇵 Japanese-first sources | LINE chat history, iMessage, Photos.app albums + GPS clusters, Apple Notes — built for what Japanese users actually use day-to-day |
+| 📸 Deep Photos integration | GPS-tagged photos auto-cluster into `place` entities (Wikipedia-resolved: 壱岐市 / Long-march City / etc.) and contiguous photo days collapse into trip events |
+| 🕸 Knowledge graph with type colors | Entities color-coded by kind (person / place / organization / project / concept / tool) — visible at a glance |
+| 🔌 MCP-native | Claude Code / Claude Desktop / any MCP client can call `search_memory`, `get_today_hero` and 5 other tools |
+| 🔒 Local + offline-capable | SQLite + sqlite-vec for storage, Ollama for inference. Everything works without internet (cloud AI optional for the describe pass) |
 
 ---
 
