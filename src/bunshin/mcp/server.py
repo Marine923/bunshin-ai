@@ -69,6 +69,8 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         query: str,
         limit: int = 10,
         sort: str = "relevance",
+        min_relevance: int = 20,
+        content_max_chars: int = 1500,
     ) -> str:
         """Search the user's past memory by semantic similarity.
 
@@ -87,21 +89,34 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             query: Natural language search query (Japanese OK).
             limit: Maximum number of results to return (default 10, max 50).
             sort: "relevance" (default), "newest", or "oldest".
+            min_relevance: Drop hits below this relevance_percent (0-100,
+                default 20). Set 0 to disable. Mirrors Bunshin's auto-filter
+                so MCP callers don't see junk-tier hits.
+            content_max_chars: Per-hit content cap (default 1500). Use a
+                smaller value (e.g. 400) when context budget is tight, or
+                a larger one (e.g. 4000) when you need more text inline
+                without an extra recall_session round-trip.
 
         Returns:
             JSON list of relevant past records, each with timestamp, role,
             source, source_id, relevance_percent (0-100, same as web UI;
             null when only keyword-fallback matched), content_truncated
             (bool — when true, fetch full text via recall_session), and
-            content (capped at 1500 chars to preserve calling LLM
+            content (capped at content_max_chars to preserve calling LLM
             context budget).
         """
         conn = init_db(db_path)
+        # Clamp inputs to sane bounds — callers sometimes pass through
+        # raw user input and we don't want a 5000-limit query DoSing
+        # ourselves or a negative content cap producing empty strings.
+        eff_limit = min(max(limit, 1), 50)
+        eff_min_rel = max(0, min(int(min_relevance), 100))
+        eff_max_chars = max(100, min(int(content_max_chars), 20000))
         try:
             results = do_search(
                 conn,
                 query,
-                limit=min(max(limit, 1), 50),
+                limit=eff_limit,
                 sort=sort if sort in ("relevance", "newest", "oldest") else "relevance",
                 # Fix 1: force LLM query expansion. Settings panel toggle
                 # doesn't help here — MCP callers don't read user settings.
@@ -112,12 +127,20 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             )
             formatted = []
             for r in results:
+                rel = _distance_to_percent(r)
+                # v0.10.8 Honda Patch A: drop sub-threshold hits. Mirrors
+                # the Web UI's auto-filter behaviour so MCP callers don't
+                # get a "0% relevance" hit they'd have to filter out
+                # themselves. None (keyword-fallback) passes through —
+                # we have no quality signal so let the caller judge.
+                if rel is not None and rel < eff_min_rel:
+                    continue
                 content = r.get("content") or ""
-                truncated = len(content) > _MCP_CONTENT_MAX
+                truncated = len(content) > eff_max_chars
                 if truncated:
                     content = (
-                        content[:_MCP_CONTENT_MAX]
-                        + f"\n\n…[content truncated at {_MCP_CONTENT_MAX} chars — "
+                        content[:eff_max_chars]
+                        + f"\n\n…[content truncated at {eff_max_chars} chars — "
                         f"call recall_session(source_id={r['source_id']!r}) for the full session]"
                     )
                 formatted.append({
@@ -128,12 +151,18 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                     # Fix 3: surface the same 0-100 score the web UI shows
                     # so the calling LLM can sort/filter on actual quality
                     # rather than the all-1.0 raw distance.
-                    "relevance_percent": _distance_to_percent(r),
+                    "relevance_percent": rel,
                     "content_truncated": truncated,  # Fix 2 transparency
                     "content": content,
                 })
             return json.dumps(
-                {"query": query, "count": len(formatted), "results": formatted},
+                {
+                    "query": query,
+                    "count": len(formatted),
+                    "min_relevance_applied": eff_min_rel,
+                    "content_max_chars": eff_max_chars,
+                    "results": formatted,
+                },
                 ensure_ascii=False,
                 indent=2,
             )

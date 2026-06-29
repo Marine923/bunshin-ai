@@ -52,6 +52,35 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.8] - 2026-06-29
+
+本田さんレビュー (松完了確認時) の新規 3 課題のうち A + C を対応。
+B (多語クエリのランキング破綻) は A 適用で症状緩和される予測 → 再評価依頼。
+
+### Added — MCP `search_memory` に `min_relevance` パラメータ (Patch A)
+- デフォルト **20** で `relevance_percent < 20` の hits を drop
+- 「SKYPIX 対馬」「投資 NISA」などで混入していた **0% 結果を自動除外**
+- Web UI の auto-filter (signal_score 閾値 30) と挙動を揃えた
+- 全件返したい時は `min_relevance: 0` で opt-out 可能
+- レスポンスに **`min_relevance_applied`** フィールド追加 (透明性)
+
+### Added — MCP `search_memory` に `content_max_chars` パラメータ (Patch C)
+- デフォルト **1500** のまま (v0.9.16 と互換)
+- 大幅縮小したい場合 `content_max_chars: 400` 等
+- 大幅拡大も可能 (max 20000)
+- レスポンスに **`content_max_chars`** フィールド追加
+
+### 実測検証 (stdio MCP test)
+- 「SKYPIX 対馬」 → 旧 3 件 (全 0%) → 新 2 件 (27% / 24% のみ) ✅
+- 「壱岐黄金」 content_max_chars=400 → content 571 chars,
+  truncated=True ✅
+- min_relevance=0 で opt-out 動作確認 ✅
+
+### Added — `scripts/lint_index_html.py` + `scripts/build.sh`
+- v0.9.20 系統 (`\n` in JS // comment) を pre-build で捕捉
+- 故意に注入した bug で「Unexpected identifier 'bar'」を再現確認
+- v0.10.8 はこの新パイプラインで初めて build (lint OK)
+
 ## [0.10.7] - 2026-06-29
 
 ### Added — `bunshin photos-time-stories` CLI (B4 写真深堀り 第3弾、完了)
