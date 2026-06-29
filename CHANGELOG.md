@@ -52,6 +52,18 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.2] - 2026-06-29
+
+### Fixed — v0.10.1 の raw-string 化を revert (関係性タブのクリックが効かなくなった)
+- v0.10.1 で `INDEX_HTML` を `r"""..."""` に変えたが、実機 (computer-use)
+  でサイドバーの関係性タブをクリックしても画面遷移しない問題を確認
+- 原因詳細特定はせず安全側に倒して revert (raw 化以外の v0.10.0 改善:
+  re-describe-all CLI / Wizard LINE 追加 / search_expand デフォルト ON
+  は維持)
+- v0.10.2 で関係性タブクリック → 蜘蛛の巣ビュー遷移成功確認 (実機 screenshot)
+- raw 化の再発防止策は別アプローチ (pre-build linter / Node.js
+  syntax check) で検討予定
+
 ## [0.10.1] - 2026-06-29
 
 ### Hardened — INDEX_HTML を raw string 化 (本田レビュー B3, v0.9.20 罠の再発防止)
