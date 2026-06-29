@@ -688,18 +688,40 @@ def add_custom_entity(
 # LLM-based entity discovery
 # ────────────────────────────────────────────────────────────
 
-_DISCOVERY_PROMPT = """以下のテキストから、実際に登場する**人物名・組織名・プロジェクト名・場所名**を抽出してください。
+_DISCOVERY_PROMPT = """以下のテキストから、実際に登場する**固有名詞**を抽出してください。
 
-ルール：
-- テキスト中に**明示的に名前として登場するもののみ**抽出（推測しない）
-- 一般名詞（「会社」「人」「ドローン」など）は抽出しない
+■ 出力 JSON フォーマット (説明文・コードブロック禁止):
+{"entities": [{"name": "...", "type": "person|organization|place|project|concept|tool"}]}
+
+■ type の決め方 (重要):
+
+- **person**: 個人名のみ (山田太郎 / Steve Jobs)。ハンドル名でも実在の個人と分かる場合。
+  ✗ 会社の hand­le 名 (reefballjapan は organization)
+
+- **organization**: 会社・団体・**ウェブサイト・SNS・プラットフォーム・掲示板・コミュニティ**。
+  例: Anthropic / Google / X/Twitter / HackerNews / Reddit / Reddit r/MachineLearning /
+      Discord サーバー / Slack workspace / GitHub Organization / YouTube
+  ✗ 「物理的に行ける場所」ではない → place ではなく **organization**
+
+- **place**: 物理的に存在する地理的場所 (国・都市・建物・空港・店舗)。
+  例: 日本 / 東京 / 壱岐島 / 長崎市 / 羽田空港 / スターバックス○○店
+
+- **project**: ユーザーが取り組んでいる**具体的な事業・成果物の名前**。
+  例: 壱岐黄金プロジェクト / 第二種電気工事士参考書 / DJアプリ向け音楽認識AI
+
+- **concept**: 抽象的な概念・技術・方法論。
+  例: MCP / RAG / Event Segmentation Theory
+
+- **tool**: ソフトウェア製品・ライブラリ・SaaS。
+  例: Claude Code / VS Code / fastembed / FastAPI
+
+■ ルール:
+- テキストに**明示的に名前として登場するもののみ** (推測しない)
+- 一般名詞 (「会社」「人」「ドローン」「メール」など) は抽出しない
 - 重複は除く
-- JSON のみで応答（説明文・コードブロック禁止）
+- **迷ったら抽出しない**。不正確より少ない方がよい。
 
-出力フォーマット：
-{"entities": [{"name": "...", "type": "person|organization|project|place"}]}
-
-抽出対象テキスト：
+■ 抽出対象テキスト:
 """
 
 

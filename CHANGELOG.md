@@ -52,6 +52,23 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.12] - 2026-06-29
+
+### Changed — Entity 抽出 prompt を全面刷新 (Honda TOP2 part 2)
+- 各 type の **境界を明確化 + 具体例を併記**
+- `place` = **物理的に行ける地理的場所のみ** (国/都市/建物/空港/店舗)
+- `organization` には **ウェブサイト/SNS/プラットフォーム/掲示板/コミュニティ**
+  を明示包含 (X/Twitter, HackerNews, Reddit r/MachineLearning, GitHub
+  Organization 等)
+- `concept` / `tool` の境界も具体例で区別
+- ハンドル名問題: 「reefballjapan」のような会社のハンドル名は person
+  ではなく organization と注記
+- 「迷ったら抽出しない」を最終ルールに
+
+### 影響範囲
+- 既存 137 entity は v0.10.11 の起動時 reclassify で healed 済
+- 新規取り込みからの entity 抽出はこの新 prompt 適用 (高品質 type 割当)
+
 ## [0.10.11] - 2026-06-29
 
 ### Fixed — Description ベースで誤分類 entity を再分類 (本田 TOP2 第1弾)
