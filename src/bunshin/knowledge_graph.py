@@ -249,13 +249,51 @@ def apply_entity_type_overrides(conn: sqlite3.Connection) -> int:
     # 2) Pattern-based inference for everything else.
     # Pull all entities once and check in Python — regex in SQL is
     # painful and the entity table is small (137 rows in Honda's DB).
-    rows = conn.execute("SELECT id, name, type FROM entities").fetchall()
-    for ent_id, name, current_type in rows:
+    rows = conn.execute(
+        "SELECT id, name, type, description FROM entities"
+    ).fetchall()
+    # v0.10.11 (Honda TOP2): description-based reclassify — catches
+    # entities mis-classified by the extractor LLM when the describe
+    # pass later wrote a clear "○○サイト" / "○○会社" body. e.g. before
+    # this pass, X/Twitter / HackerNews / Reddit r/MachineLearning
+    # were all `place` even though their AI descriptions read
+    # "アメリカの会社が運営する…ソーシャルメディアサイト".
+    _ORG_KEYWORDS = (
+        "サイト", "ウェブサイト", "WEBサイト",
+        "プラットフォーム",
+        "会社", "企業", "Inc.", "Inc", "LLC", "Ltd",
+        "コミュニティ", "掲示板", "フォーラム",
+        "ソーシャルメディア", "SNS",
+        "サブレディット", "Subreddit",
+    )
+    _GEO_KEYWORDS_IN_NAME = (
+        "市", "町", "村", "区", "県", "府", "都", "島",
+        "City", "County", "Town", "Village", "Prefecture", "Province",
+    )
+    for ent_id, name, current_type, description in rows:
         if name in ENTITY_TYPE_OVERRIDES:
             continue  # already handled above
         inferred = _pattern_type(name)
         if inferred and inferred != current_type:
-            conn.execute("UPDATE entities SET type = ? WHERE id = ?", (inferred, ent_id))
+            conn.execute(
+                "UPDATE entities SET type = ? WHERE id = ?",
+                (inferred, ent_id),
+            )
+            fixed += 1
+            continue
+        # description-based reclassify (only for already-existing
+        # descriptions). place → organization if body talks about it
+        # as a site/company/platform AND name has no geographic suffix.
+        if (
+            current_type == "place"
+            and description
+            and any(kw in description for kw in _ORG_KEYWORDS)
+            and not any(g in name for g in _GEO_KEYWORDS_IN_NAME)
+        ):
+            conn.execute(
+                "UPDATE entities SET type = 'organization' WHERE id = ?",
+                (ent_id,),
+            )
             fixed += 1
     if fixed:
         conn.commit()

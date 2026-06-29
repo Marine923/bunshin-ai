@@ -52,6 +52,30 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.11] - 2026-06-29
+
+### Fixed — Description ベースで誤分類 entity を再分類 (本田 TOP2 第1弾)
+- 起動時 `apply_entity_type_overrides()` に **description-based
+  reclassify** を追加
+- `place` だが description に「サイト / プラットフォーム / 会社 /
+  企業 / コミュニティ / 掲示板 / ソーシャルメディア / Subreddit」等
+  が含まれる entity を `organization` に自動再分類
+- name が地名サフィックス (市/町/島/City/County 等) を含む場合は skip
+  (本物の場所 を誤検出しない)
+
+### Honda DB で 5 entity 自動修正
+| 旧 type | 新 type | name |
+|---|---|---|
+| place | organization | X/Twitter |
+| place | organization | HackerNews |
+| place | organization | Reddit r/MachineLearning |
+| place (description のみ) | organization | Sequoia / a16z (verify) |
+
+### 関係性タブの効果
+これらが place → organization に変わると、蜘蛛の巣ビューで
+**緑 → 青** にタイトリング切り替わる + 「人物 / 場所 / 組織」の
+凡例が現実と一致する。
+
 ## [0.10.10] - 2026-06-29
 
 ### Added — MCP search_memory に Pydantic Field description を公開 (本田 TOP1)
