@@ -52,6 +52,30 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.19] - 2026-06-29
+
+### Added — `bunshin find-duplicates` CLI
+- v0.10.18 の merge-entities を使いやすくするための **発見ツール**
+- 全 entity の name を normalize (parenthesized suffix 除去 / lowercase /
+  whitespace · 句読点除去) → 同じ normalize 後 key の group を表示
+- 各 group で **mention 多い順 + 短い名前優先** で target を自動選定
+- そのまま貼り付ければ実行できる
+  `bunshin merge-entities <source> <target> --dry-run` を 1 行出力
+- `--limit` (default 30) / `--min-mentions` (default 1) でフィルタ
+
+### 実機検証 (本田さん DB)
+```
+1. (2 entities, normalized: 'ホークす')
+   → #113 'ホークす'                    (project, 576 mentions)
+     #105 'ホークす(海外帰りの模索日記)'  (project, 576 mentions)
+     $ bunshin merge-entities 105 113 --dry-run
+
+2. (2 entities, normalized: 'marineflight')
+   → #17  'MARINE FLIGHT'                (organization, 101 mentions)
+     #10  'MARINE FLIGHT（主催ブランド名）' (project, 0 mentions)
+     $ bunshin merge-entities 10 17 --dry-run
+```
+
 ## [0.10.18] - 2026-06-29
 
 ### Added — `bunshin merge-entities <source> <target>` CLI

@@ -314,6 +314,93 @@ def merge_entities_cmd(source: str, target: str, dry_run: bool):
         conn.close()
 
 
+@main.command("find-duplicates")
+@click.option("--limit", default=30, type=int,
+              help="Max duplicate groups to show.")
+@click.option("--min-mentions", default=1, type=int,
+              help="Skip entities with fewer than N mentions.")
+def find_duplicates_cmd(limit: int, min_mentions: int):
+    """Find candidate-duplicate entities (NER variants of the same thing).
+
+    Two entities are considered candidates when their names normalize to
+    the same string. Normalization strips whitespace, parenthesized
+    suffixes ("MARINE FLIGHT（主催ブランド名）" → "MARINE FLIGHT"),
+    case, and a few common punctuation marks.
+
+    Prints a ready-to-paste `bunshin merge-entities <source> <target>`
+    line for each group, with the most-mentioned entity as TARGET.
+
+    Read the suggestions, then run the merge commands you agree with.
+    """
+    import re as _re
+    import sqlite3
+    from bunshin.storage import init_db
+    conn = init_db()
+    conn.row_factory = sqlite3.Row
+
+    def _normalize(name: str) -> str:
+        if not name:
+            return ""
+        # Strip parenthesized suffix groups (both ASCII and 全角)
+        s = _re.sub(r"\s*[（(].*?[)）]\s*", "", name)
+        # Strip leading/trailing whitespace, lowercase, drop common punctuation
+        s = s.strip().lower()
+        s = _re.sub(r"[ \t/・,，、:：·]", "", s)
+        return s
+
+    try:
+        rows = conn.execute(
+            "SELECT e.id, e.name, e.type, "
+            "       (SELECT COUNT(*) FROM record_entities re WHERE re.entity_id = e.id) AS mentions "
+            "FROM entities e"
+        ).fetchall()
+        groups: dict[str, list[dict]] = {}
+        for r in rows:
+            mentions = r["mentions"] or 0
+            if mentions < min_mentions:
+                continue
+            key = _normalize(r["name"])
+            if not key or len(key) < 2:
+                continue
+            groups.setdefault(key, []).append({
+                "id": r["id"],
+                "name": r["name"],
+                "type": r["type"],
+                "mentions": mentions,
+            })
+        dup_groups = [g for g in groups.values() if len(g) >= 2]
+        # Sort: groups with the highest single-entity mention count first
+        dup_groups.sort(key=lambda g: -max(e["mentions"] for e in g))
+        if not dup_groups:
+            console.print("[green]No duplicate-candidate entities found.[/green]")
+            return
+        console.print(f"[cyan]{len(dup_groups)} duplicate-candidate group(s):[/cyan]\n")
+        for i, group in enumerate(dup_groups[:limit], 1):
+            # Most mentions wins; tie-break on shorter name (the "cleaner"
+            # canonical form — "ホークす" over "ホークす(海外帰りの模索日記)").
+            group.sort(key=lambda e: (-e["mentions"], len(e["name"] or "")))
+            target = group[0]
+            console.print(f"[bold]{i}.[/bold]  ({len(group)} entities, normalized: {_normalize(group[0]['name'])!r})")
+            for e in group:
+                marker = "→ " if e is target else "  "
+                console.print(
+                    f"  {marker}#{e['id']:4d}  {e['name']!r:40s} "
+                    f"({e['type'] or '?':12s}, {e['mentions']:5d} mentions)"
+                )
+            for e in group[1:]:
+                console.print(
+                    f"     [yellow]$ bunshin merge-entities {e['id']} {target['id']} --dry-run[/yellow]"
+                )
+            console.print()
+        if len(dup_groups) > limit:
+            console.print(
+                f"[dim]... and {len(dup_groups) - limit} more "
+                f"(pass --limit {len(dup_groups)} to see all)[/dim]"
+            )
+    finally:
+        conn.close()
+
+
 @main.command("status")
 @click.option(
     "--db",
