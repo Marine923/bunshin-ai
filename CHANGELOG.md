@@ -52,6 +52,18 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.20] - 2026-06-29
+
+### Changed — `bunshin doctor` を強化
+- 既存 doctor の項目 (DB / vector / Ollama / Gmail / Calendar / auto-update /
+  MCP / Knowledge Graph) に **2 項目追加**
+- **Anthropic API キー**: 設定有無を検出、未設定なら describe 品質低下を
+  案内 (「設定タブ → console.anthropic.com」)
+- **bunshin web reachability**: 127.0.0.1:8000 で実機検証、起動してない
+  場合は `Bunshin.app を開く / bunshin web` を提案
+- β テスター配布後に「動かない」報告が来た時、ユーザー自身で原因を
+  切り分けやすくする
+
 ## [0.10.19] - 2026-06-29
 
 ### Added — `bunshin find-duplicates` CLI

@@ -1294,6 +1294,45 @@ def doctor_cmd(db: Path):
         except Exception:
             pass
 
+    # ── 6.5. Anthropic API key (optional but lifts describe quality)
+    try:
+        if db.exists():
+            import sqlite3 as _sqlite3
+            _c = _sqlite3.connect(str(db))
+            _row = _c.execute(
+                "SELECT value FROM settings WHERE key = ?", ("anthropic_api_key",)
+            ).fetchone()
+            _c.close()
+            v = (_row[0] if _row else "") or ""
+            if v.strip():
+                masked = v[:7] + "…" + v[-4:] if len(v) > 12 else "(short)"
+                console.print(f"[green]✓[/green] Anthropic API キー: 設定済 ({masked}) — Claude describe 有効")
+            else:
+                issues.append(
+                    ("ℹ", "Anthropic API キー",
+                     "未設定 — describe はローカル LLM のみ (品質低下)",
+                     "設定タブ → Anthropic API キー (任意) → console.anthropic.com")
+                )
+    except Exception:
+        pass
+
+    # ── 6.6. bunshin web reachability
+    try:
+        import urllib.request as _ur
+        with _ur.urlopen("http://127.0.0.1:8000/api/health", timeout=2) as _r:
+            import json as _json
+            _body = _json.loads(_r.read())
+        console.print(
+            f"[green]✓[/green] bunshin web v{_body.get('version','?')} 起動中 "
+            f"(rss {_body.get('rss_mb','?')} MB)"
+        )
+    except Exception:
+        issues.append(
+            ("ℹ", "bunshin web",
+             "127.0.0.1:8000 で起動してない",
+             "Bunshin.app を開く  または  bunshin web")
+        )
+
     # ── 7. Knowledge Graph
     try:
         from bunshin.knowledge_graph import init_kg_schema
