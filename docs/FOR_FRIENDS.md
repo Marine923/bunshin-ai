@@ -15,8 +15,9 @@
 ダウンロード:
 https://github.com/Marine923/bunshin-ai/releases/latest
 
-→ "Bunshin-0.9.11-arm64.dmg"（M1/M2/M3/M4 Mac）か
-   "Bunshin-0.9.11.dmg"（Intel Mac）を落として、開いてアプリをドラッグ。
+→ "Bunshin-X.Y.Z-arm64.dmg"（M1/M2/M3/M4 Mac）か
+   "Bunshin-X.Y.Z.dmg"（Intel Mac）を落として、開いてアプリをドラッグ。
+   ※ X.Y.Z は最新版番号
 
 ⚠ 「開発元未確認」って言われたら → 右クリック → 開く
 ⚠ メモリ 16 GB 以上の Mac 推奨
@@ -48,8 +49,9 @@ https://github.com/Marine923/bunshin-ai/releases/latest
 【ダウンロード】
 https://github.com/Marine923/bunshin-ai/releases/latest
 
-  Apple Silicon Mac (M1/M2/M3/M4): "Bunshin-0.9.11-arm64.dmg"
-  Intel Mac: "Bunshin-0.9.11.dmg"
+  Apple Silicon Mac (M1/M2/M3/M4): "Bunshin-X.Y.Z-arm64.dmg"
+  Intel Mac: "Bunshin-X.Y.Z.dmg"
+  ※ X.Y.Z は最新リリース番号（GitHub の Releases ページから取得）
 
 【インストール手順】
 1. .dmg を開く → Bunshin を Applications フォルダにドラッグ

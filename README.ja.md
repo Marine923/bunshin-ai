@@ -78,14 +78,15 @@
 
 | ▍ | 機能 | 何ができるか |
 |---|---|---|
-| 🔍 | **検索** | 過去の自分が触れた全部から、自然な日本語で探せる |
+| 🔍 | **検索** | 過去の自分が触れた全部から、自然な日本語で探せる（LLM クエリ拡張がデフォルト ON、複数語クエリも取りこぼし減） |
 | ✦ | **今日のフラッシュバック** | 1 年前・3 ヶ月前・先週の同じ日に書いてたことを毎朝見せてくれる |
 | 💬 | **AI と相談** | 過去記憶を AI が読んだ上で答える（あなたの文脈を持ったまま）、応答に **コピー / 再生成 / 読み上げ** ボタン付き |
-| 🕸 | **関係性** | 蜘蛛の巣ビュー + 「**AI に説明させる**」(Wikipedia + DuckDuckGo + 公式サイト + Claude API 並列調査 → judge agent 選定) |
+| 🕸 | **関係性** | 蜘蛛の巣ビュー（**type で色分け**：人物/場所/組織/プロジェクト/概念）+ 「**AI に説明させる**」(Wikipedia + DuckDuckGo + 公式サイト + Claude API 並列調査 → judge agent 選定) |
+| 📸 | **写真の場所と旅行** | GPS 付き写真を地名 entity 化（壱岐市 / 長崎市 / Olsztyn County 等）+ 同じ場所×連続日付を「○○の旅行」イベントとして集約 |
 | 📅 | **タイムライン** | リスト表示 / **GitHub 風 365 日ヒートマップ** 切替可能 |
 | 🗑 | **不要は捨てる** | 「これ要らない」とマークすれば、Bunshin が学習して以降の似た記録は自動非表示 |
 | 🔔 | **メニューバー常駐** | 画面右上の `∞` から、アプリ閉じてても瞬時に呼べる |
-| 🔌 | **MCP 6 ツール** | Claude Desktop / ChatGPT から `search_memory` / `get_today_hero` / `get_flashback` 等で外部 AI が記憶を直接引ける |
+| 🔌 | **MCP 7 ツール** | Claude Desktop / ChatGPT から `search_memory` / `get_today_hero` / `get_flashback` / `list_top_entities` / `recall_session` / `get_recent_chat` / `get_server_info` で外部 AI が記憶を直接引ける |
 | 🎨 | **ライト / ダーク 両対応** | macOS のシステム設定追従 |
 
 ---
