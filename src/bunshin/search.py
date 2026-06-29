@@ -498,6 +498,28 @@ def search(
         results = cross_encode_rerank(original_query, rerank_input, top_k=limit)
         if tail and len(results) < limit:
             results.extend(tail[: limit - len(results)])
+
+        # v0.10.9 (Honda Patch B): jina-reranker-v2 returns negative
+        # logits for some multi-word proper-noun queries ("SKYPIX 対馬",
+        # "投資 NISA") even when the doc clearly contains both terms.
+        # That makes every relevance_percent clamp to 0 — the user sees
+        # "hits but no ranking". Boost docs that contain *all* query
+        # tokens by +0.5 so they win regardless of rerank's mood. Stops
+        # ranking from breaking on proper-noun + descriptor pairs.
+        _q_tokens = [
+            t for t in re.findall(r"\w+", original_query, re.UNICODE)
+            if len(t) >= 2
+        ]
+        if len(_q_tokens) >= 2:
+            for r in results:
+                content = (r.get("content") or "").lower()
+                hits = sum(1 for t in _q_tokens if t.lower() in content)
+                if hits == len(_q_tokens):
+                    r["rerank_score"] = r.get("rerank_score", 0.0) + 0.5
+                    sc = r.setdefault("score_components", {})
+                    sc["rerank"] = r["rerank_score"]
+                    sc["all_terms_match"] = True
+            results.sort(key=lambda r: -r.get("rerank_score", 0.0))
     else:
         results = results[:limit]
 

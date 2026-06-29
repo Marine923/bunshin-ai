@@ -52,6 +52,28 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.9] - 2026-06-29
+
+### Fixed — 多語クエリのランキング破綻 (本田レビュー Patch B)
+- 原因: jina-reranker-v2 が「SKYPIX 対馬」「投資 NISA」のような
+  proper-noun + descriptor の複合クエリで **negative logit** を返し、
+  `round(rerank * 100) → clamp 0` で全件 0% になっていた
+- 対策: rerank 後に **AND-match boost** を追加
+  - query を `\w+` で分割し、2 token 以上の query で
+  - **すべての token を content に含む doc に `+0.5` の rerank_score 加点**
+  - boost 後に再ソート、`score_components.all_terms_match: true` を保存
+
+### 実測 (stdio MCP test、min_relevance=0)
+
+| Query | v0.10.8 | v0.10.9 |
+|---|---|---|
+| SKYPIX 対馬 | 0% × 3 | 77 / 74 / 72 / 55 / 38 % |
+| 投資 NISA | 0% tail | 79 / 62 / 48 / 31 / 0 % |
+| 壱岐黄金 じゃがいも | 87 / 73 / 44 % | 100 / 100 / 94 / 79 / 25 % |
+
+→ 全 token 含む doc が上位に安定して並ぶ。1 token のみのクエリ
+(「壱岐黄金」単独) は `len(_q_tokens) >= 2` で boost 不発 = 旧挙動維持。
+
 ## [0.10.8] - 2026-06-29
 
 本田さんレビュー (松完了確認時) の新規 3 課題のうち A + C を対応。
