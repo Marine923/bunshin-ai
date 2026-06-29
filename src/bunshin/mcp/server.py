@@ -9,8 +9,10 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from bunshin.search import search as do_search
 from bunshin.storage import (
@@ -66,11 +68,53 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
 
     @mcp.tool()
     def search_memory(
-        query: str,
-        limit: int = 10,
-        sort: str = "relevance",
-        min_relevance: int = 20,
-        content_max_chars: int = 1500,
+        query: Annotated[
+            str,
+            Field(description=(
+                "Natural language search query, Japanese OK. "
+                "Multi-word queries (e.g. '壱岐黄金 じゃがいも') are "
+                "automatically LLM-paraphrased for better recall."
+            )),
+        ],
+        limit: Annotated[
+            int,
+            Field(
+                default=10, ge=1, le=50,
+                description="Max results to return (1-50, default 10).",
+            ),
+        ] = 10,
+        sort: Annotated[
+            str,
+            Field(
+                default="relevance",
+                description=(
+                    "'relevance' (default), 'newest', or 'oldest'."
+                ),
+            ),
+        ] = "relevance",
+        min_relevance: Annotated[
+            int,
+            Field(
+                default=20, ge=0, le=100,
+                description=(
+                    "Drop hits below this relevance_percent (0-100, default 20). "
+                    "Set 0 to disable filtering. Mirrors Bunshin's web-UI "
+                    "auto-filter so callers don't see junk-tier hits."
+                ),
+            ),
+        ] = 20,
+        content_max_chars: Annotated[
+            int,
+            Field(
+                default=1500, ge=100, le=20000,
+                description=(
+                    "Per-hit content cap (default 1500). Use a smaller "
+                    "value (e.g. 400) when context budget is tight, or a "
+                    "larger one (e.g. 4000) when you need more text inline "
+                    "without an extra recall_session round-trip."
+                ),
+            ),
+        ] = 1500,
     ) -> str:
         """Search the user's past memory by semantic similarity.
 

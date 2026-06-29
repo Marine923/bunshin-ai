@@ -52,6 +52,23 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.10] - 2026-06-29
+
+### Added — MCP search_memory に Pydantic Field description を公開 (本田 TOP1)
+- v0.10.8 で `min_relevance` / `content_max_chars` を実装したが、
+  JSON Schema には title/type/default のみで **description が空** →
+  呼び出し側 LLM が引数の意味を理解できず「実装あり・呼び出せない」
+  状態だった
+- `Annotated[T, Field(description=..., ge=..., le=...)]` で:
+  - `description` (引数の意味)
+  - `minimum / maximum` (Pydantic validation)
+- 動作確認: `tools/list` で全 5 引数に description / 範囲制限が公開
+
+### Added — Wizard ステップ 5 に「LLM クエリ拡張 ON 推奨」周知 (本田 9 位)
+- 設定タブの label は v0.10.0 で「(推奨ON)」化済だったが、
+  Wizard の最終画面に明示的な tip が無かった → 追加
+- 「複数語クエリの取りこぼし防止」と「遅く感じたら OFF」の両方を説明
+
 ## [0.10.9] - 2026-06-29
 
 ### Fixed — 多語クエリのランキング破綻 (本田レビュー Patch B)

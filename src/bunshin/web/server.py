@@ -7158,6 +7158,7 @@ const ONBOARDING_STEPS = [
         </div>
         <ul class="step-tips">
           <li>${icon('lightbulb', 13)}<span>「<b>覚えといて: ◯◯</b>」とチャットで書くと、AI に聞かずに記憶に追加されます。</span></li>
+          <li>${icon('lightbulb', 13)}<span><b>LLM クエリ拡張</b>はデフォルト ON です（「壱岐黄金 じゃがいも」のような複数語クエリの取りこぼし防止）。検索が遅く感じる時だけ設定タブで OFF に。</span></li>
           <li>${icon('lightbulb', 13)}<span>設定タブでフィルター強度や接続を調整できます。</span></li>
         </ul>
       `;
