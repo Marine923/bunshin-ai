@@ -52,6 +52,34 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.7] - 2026-06-29
+
+### Added — `bunshin photos-time-stories` CLI (B4 写真深堀り 第3弾、完了)
+- v0.10.6 で作成した `place` entity × 連続日付の写真群を
+  **`event` type entity** として登録 (例:「壱岐市 2021-03-26」)
+- 同じ場所で **48 時間以内** に撮影された写真を 1 ストーリー扱い
+- 4 枚以上で entity 化 (`--min-photos` で調整可能)
+- entity description: 「○○ で撮影された写真 N 枚 (start〜end)」
+
+### Honda DB 実行結果
+- 45 stories created, 455 photo links 作成
+- 例: 「Barcelona City Hall 2019-09-03〜2019-09-05」(5枚)、
+  「長崎市 2021-03-26」(20枚)、「日見村 2017-10-13」(8枚)
+
+### B4 三部作完了
+| Phase | リリース | 機能 |
+|---|---|---|
+| 1 | v0.10.5 | Photos.app アルバム取り込み |
+| 2 | v0.10.6 | GPS → 地名 place entity (Wikipedia 解決) |
+| 3 | v0.10.7 | 時系列ストーリー → event entity |
+
+### Recommended pipeline
+```bash
+bunshin import-photos-app --force      # アルバム反映 (v0.10.5)
+bunshin photos-place-clusters --verbose   # 地名 entity (v0.10.6)
+bunshin photos-time-stories --verbose     # event entity (v0.10.7)
+```
+
 ## [0.10.6] - 2026-06-29
 
 ### Added — `bunshin photos-place-clusters` CLI (B4 写真深堀り 第2弾)

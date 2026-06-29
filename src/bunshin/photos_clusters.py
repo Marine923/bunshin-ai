@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import defaultdict
+from datetime import datetime
 from typing import Optional
 
 import httpx
@@ -210,6 +211,125 @@ def compute_place_clusters(
         if verbose:
             print(f"  '{place_name}' ← {len(rids)} photos "
                   f"({'Wiki' if wiki_name else 'GPS'})")
+
+    conn.commit()
+    return stats
+
+
+# ───────────────────────────────────────────────────────────────────
+# B4 Phase 3: time-series stories
+# Group photos sharing a place_entity + a contiguous date span into
+# `event` entities ("壱岐市 2026-04-15〜04-18 (37 枚)").
+# ───────────────────────────────────────────────────────────────────
+
+
+# Photos within this many seconds count as part of the same story.
+# 48h tolerates a 1-day trip with a return flight or a mid-trip
+# travel-rest day with no photos.
+STORY_GAP_SEC = 48 * 3600
+
+# A story needs at least this many photos to be worth its own entity.
+STORY_MIN_PHOTOS = 4
+
+
+def compute_time_stories(
+    conn: sqlite3.Connection,
+    min_photos: int = STORY_MIN_PHOTOS,
+    gap_sec: int = STORY_GAP_SEC,
+    verbose: bool = False,
+) -> dict:
+    """Group photos by place × contiguous date span → `event` entities."""
+    init_kg_schema(conn)
+
+    # Pull (record_id, timestamp, place_entity_id, place_name) for every
+    # photos_app record that's already linked to a place via Phase 2.
+    cur = conn.execute(
+        """
+        SELECT r.id, r.timestamp, e.id, e.name
+        FROM records r
+        JOIN record_entities re ON re.record_id = r.id
+        JOIN entities e ON e.id = re.entity_id
+        WHERE r.source = 'photos_app'
+          AND e.type = 'place'
+        ORDER BY e.id, r.timestamp
+        """
+    )
+    rows = cur.fetchall()
+    if not rows:
+        if verbose:
+            print("No photo→place links found. Run photos-place-clusters first.")
+        return {"stories_created": 0, "links_created": 0}
+
+    # Sweep through rows, breaking into stories whenever the place
+    # changes or the time gap exceeds gap_sec.
+    stats = {
+        "stories_created": 0,
+        "stories_reused": 0,
+        "links_created": 0,
+        "candidates_too_short": 0,
+    }
+
+    def _flush(story: list[tuple]) -> None:
+        if len(story) < min_photos:
+            stats["candidates_too_short"] += 1
+            return
+        place_name = story[0][3]
+        first_ts = story[0][1]
+        last_ts = story[-1][1]
+        first_d = datetime.fromtimestamp(first_ts).strftime("%Y-%m-%d")
+        last_d = datetime.fromtimestamp(last_ts).strftime("%Y-%m-%d")
+        if first_d == last_d:
+            story_name = f"{place_name} {first_d}"
+        else:
+            story_name = f"{place_name} {first_d}〜{last_d}"
+
+        before = conn.execute(
+            "SELECT id FROM entities WHERE name = ?", (story_name,)
+        ).fetchone()
+        ent_id = upsert_entity(
+            conn,
+            name=story_name,
+            type_="event",
+            description=(
+                f"{place_name} で撮影された写真 {len(story)} 枚 "
+                f"({first_d}〜{last_d})"
+            ),
+        )
+        if ent_id == 0:
+            return
+        if before:
+            stats["stories_reused"] += 1
+        else:
+            stats["stories_created"] += 1
+        for record_id, _, _, _ in story:
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO record_entities(record_id, entity_id) "
+                    "VALUES(?, ?)",
+                    (record_id, ent_id),
+                )
+                stats["links_created"] += 1
+            except sqlite3.Error:
+                pass
+        if verbose:
+            print(f"  '{story_name}' ← {len(story)} photos")
+
+    current: list[tuple] = []
+    prev_place = None
+    prev_ts = None
+    for record_id, ts, place_id, place_name in rows:
+        if (
+            prev_place != place_id
+            or (prev_ts is not None and ts - prev_ts > gap_sec)
+        ):
+            if current:
+                _flush(current)
+            current = []
+        current.append((record_id, ts, place_id, place_name))
+        prev_place = place_id
+        prev_ts = ts
+    if current:
+        _flush(current)
 
     conn.commit()
     return stats

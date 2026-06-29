@@ -1653,6 +1653,42 @@ def web_cmd(host: str, port: int, db: Path):
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
+@main.command("photos-time-stories")
+@click.option("--db", type=click.Path(path_type=Path), default=DEFAULT_DB_PATH,
+              help="Bunshin DB path.")
+@click.option("--min-photos", type=int, default=4,
+              help="Min photos per story (default 4).")
+@click.option("--gap-hours", type=int, default=48,
+              help="Max gap between consecutive photos in same story.")
+@click.option("--verbose", is_flag=True)
+def photos_time_stories_cmd(db: Path, min_photos: int, gap_hours: int,
+                             verbose: bool):
+    """Group photos by place × contiguous date span → `event` entities.
+
+    Run after `photos-place-clusters`. Photos sharing a place_entity
+    and falling within `gap_hours` of one another become a single
+    "story" — usually a trip, a day out, or a multi-day project. The
+    story is registered as an `event` entity ("壱岐市 2026-04-15〜
+    2026-04-18 (37 枚)") and linked to every photo in the span.
+    """
+    from bunshin.photos_clusters import compute_time_stories
+    conn = init_db(db)
+    try:
+        stats = compute_time_stories(
+            conn,
+            min_photos=min_photos,
+            gap_sec=gap_hours * 3600,
+            verbose=verbose,
+        )
+    finally:
+        conn.close()
+    table = Table(title="Time-series stories")
+    table.add_column("Metric"); table.add_column("Count", justify="right")
+    for k, v in stats.items():
+        table.add_row(k.replace("_", " "), str(v))
+    console.print(table)
+
+
 @main.command("photos-place-clusters")
 @click.option("--db", type=click.Path(path_type=Path), default=DEFAULT_DB_PATH,
               help="Bunshin DB path.")
