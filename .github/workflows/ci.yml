@@ -47,3 +47,27 @@ jobs:
         run: pip install ruff
       - name: Lint
         run: ruff check src/ tests/ || true   # advisory for now
+
+  lint-index-html:
+    # v0.10.x guard against the v0.9.20 bug: a `\n` inside a //
+    # JS comment in INDEX_HTML gets Python-interpolated into a real
+    # newline, ending the comment early and breaking the JS parse.
+    # scripts/lint_index_html.py serves the same INDEX_HTML through
+    # `node --check` and exits non-zero on SyntaxError.
+    name: lint INDEX_HTML JS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install bunshin
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Run JS-in-HTML linter
+        run: python scripts/lint_index_html.py
