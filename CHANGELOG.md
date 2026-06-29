@@ -52,6 +52,22 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.3] - 2026-06-29
+
+### Changed — 関係性タブの蜘蛛の巣ビューで entity 名を円の中に配置
+- 旧: 円の下に文字 (`y = r + 14`) → ノードが密集すると label が
+  どの円のものか分からない (Honda 報告)
+- 新: **円の中央に文字** (`y = 0`, `dominant-baseline: central`)
+- 円のサイズを **大幅拡大**: center 30→46px, neighbor 12-24→36-48px
+- 配置 radius を 0.36 → 0.42 に拡大 (重なり防止)
+- 文字サイズ: neighbor 12→10px, center 13→12px
+- **truncation を visual width 計算に変更** (CJK=2, ASCII=1)
+  - 旧: `name.slice(0, 13) + …` で「DeepSeek」が「DeepS…」に
+  - 新: visual 13 unit cap で「DeepSeek」「Anthropic」「Sequoia」
+    「OpenAI」「Google」「Meta」「X/Twitter」「Latent Space」
+    「Product Hunt」「HackerNews」「a16z」「ドローン」「JA壱岐市」
+    「芦辺」全部 full display
+
 ## [0.10.2] - 2026-06-29
 
 ### Fixed — v0.10.1 の raw-string 化を revert (関係性タブのクリックが効かなくなった)

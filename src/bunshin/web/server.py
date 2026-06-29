@@ -3378,15 +3378,16 @@ INDEX_HTML = """<!DOCTYPE html>
     stroke: var(--accent-2);
   }
   .web-node text {
-    font-size: 12px;
+    font-size: 10px;
     fill: var(--text-1);
     pointer-events: none;
     text-anchor: middle;
+    dominant-baseline: central;
     user-select: none;
     font-family: inherit;
   }
-  .web-node.center text { font-weight: 700; font-size: 13px; }
-  .web-node.neighbor text { fill: var(--text-2); }
+  .web-node.center text { font-weight: 700; font-size: 12px; }
+  .web-node.neighbor text { fill: var(--text-1); }
   .web-node.faded { opacity: 0.25; }
   .web-edge.faded { opacity: 0.12; }
 
@@ -5838,7 +5839,9 @@ function drawWeb(center, neighbors) {
   ];
   const edges = [];
   const n = neighbors.length;
-  const radius = Math.min(W, H) * 0.36;
+  // v0.10.3: bigger circles → push neighbors further out so they don't
+  // overlap the center node or each other.
+  const radius = Math.min(W, H) * 0.42;
   neighbors.forEach((r, i) => {
     const angle = (i / Math.max(n, 1)) * Math.PI * 2;
     // v0.9.21: clamp to 0-1 because v0.9.17 changed entity_relations()
@@ -5877,13 +5880,32 @@ function drawWeb(center, neighbors) {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('class', 'web-node ' + node.role);
     g.dataset.id = node.id;
-    const r = node.role === 'center' ? 30 : Math.max(12, 14 + (node.weight || 0.5) * 10);
+    // v0.10.3: bigger circles so the label fits inside the disc.
+    // Honda 2026-06-29 reported the previous below-circle labels were
+    // hard to associate back to nodes when they collided. Center the
+    // text inside the circle and grow circles to hold ~6 Japanese chars.
+    const r = node.role === 'center'
+      ? 46
+      : Math.max(36, 36 + Math.min(1, node.weight || 0.5) * 12);
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     circle.setAttribute('r', String(r));
     g.appendChild(circle);
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('y', String(r + 14));
-    text.textContent = node.name.length > 14 ? node.name.slice(0, 13) + '…' : node.name;
+    text.setAttribute('y', '0');
+    // Truncate by visual width: CJK = 2, ASCII = 1. r=36 holds ~13
+    // visual units, center r=46 holds ~15. Lets "DeepSeek" (8 ASCII) /
+    // "MARINE FLIGHT" (13 ASCII) fit instead of being chopped to 5.
+    const maxVisual = node.role === 'center' ? 15 : 13;
+    let visual = 0;
+    let cut = node.name.length;
+    for (let i = 0; i < node.name.length; i++) {
+      const w = node.name.charCodeAt(i) > 127 ? 2 : 1;
+      if (visual + w > maxVisual - 1) { cut = i; break; }
+      visual += w;
+    }
+    text.textContent = cut < node.name.length
+      ? node.name.slice(0, cut) + '…'
+      : node.name;
     g.appendChild(text);
     gNodes.appendChild(g);
     return { el: g, circle, text, node, r };
