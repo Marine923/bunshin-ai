@@ -52,6 +52,19 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed — 未使用 `.model-row` CSS
 - Phase 1 でサイドバーから model 選択を移動した時の残骸。
 
+## [0.10.4] - 2026-06-29
+
+### Added — 関係性タブの蜘蛛の巣ビューに type 色分け + hover tooltip
+- **type 別に円を色分け** (color-mix で theme-aware tint):
+  - 👤 person: 紫 / 📍 place: 緑 / 🏢 organization: 青
+  - 📁 project: amber / 💡 concept: cyan / 🛠 tool: pink / 🏷 topic: gray
+  - **center**: type に関わらず accent indigo (focal point 強調)
+- **SVG `<title>` で hover tooltip** → 切り捨てられた長い名前
+  (「The Informat…」など) も hover で full name 確認可能
+- 「壱岐黄金プロジェクト」が amber で一発で project と分かる、
+  「芦辺/Latent Space」が緑で place、Google/Anthropic 等が青で
+  organization という直感的識別が可能に
+
 ## [0.10.3] - 2026-06-29
 
 ### Changed — 関係性タブの蜘蛛の巣ビューで entity 名を円の中に配置

@@ -3388,6 +3388,21 @@ INDEX_HTML = """<!DOCTYPE html>
   }
   .web-node.center text { font-weight: 700; font-size: 12px; }
   .web-node.neighbor text { fill: var(--text-1); }
+  /* v0.10.4: type-based fill so the graph is scannable at a glance.
+     All tints are theme-aware via color-mix. */
+  .web-node.type-person circle    { fill: color-mix(in srgb, #8b5cf6 22%, var(--bg-2)); stroke: color-mix(in srgb, #8b5cf6 55%, transparent); }
+  .web-node.type-place circle     { fill: color-mix(in srgb, #10b981 22%, var(--bg-2)); stroke: color-mix(in srgb, #10b981 55%, transparent); }
+  .web-node.type-organization circle { fill: color-mix(in srgb, #3b82f6 22%, var(--bg-2)); stroke: color-mix(in srgb, #3b82f6 55%, transparent); }
+  .web-node.type-project circle   { fill: color-mix(in srgb, #f59e0b 22%, var(--bg-2)); stroke: color-mix(in srgb, #f59e0b 55%, transparent); }
+  .web-node.type-concept circle   { fill: color-mix(in srgb, #06b6d4 22%, var(--bg-2)); stroke: color-mix(in srgb, #06b6d4 55%, transparent); }
+  .web-node.type-tool circle      { fill: color-mix(in srgb, #ec4899 22%, var(--bg-2)); stroke: color-mix(in srgb, #ec4899 55%, transparent); }
+  .web-node.type-topic circle     { fill: color-mix(in srgb, #64748b 22%, var(--bg-2)); stroke: color-mix(in srgb, #64748b 55%, transparent); }
+  /* Center keeps the accent fill regardless of type so it stays the focal point. */
+  .web-node.center circle {
+    fill: var(--accent-soft);
+    stroke: var(--accent-1);
+    stroke-width: 2;
+  }
   .web-node.faded { opacity: 0.25; }
   .web-edge.faded { opacity: 0.12; }
 
@@ -5878,8 +5893,15 @@ function drawWeb(center, neighbors) {
 
   const nodeEls = nodes.map(node => {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    g.setAttribute('class', 'web-node ' + node.role);
+    // v0.10.4: include type-X class so CSS can tint per entity type.
+    const typeClass = node.type ? ' type-' + String(node.type).replace(/[^a-z0-9_-]/gi, '') : '';
+    g.setAttribute('class', 'web-node ' + node.role + typeClass);
     g.dataset.id = node.id;
+    // SVG native tooltip — shows full name on hover, useful when text
+    // is truncated with '…'.
+    const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    titleEl.textContent = node.type ? `${node.name} (${node.type})` : node.name;
+    g.appendChild(titleEl);
     // v0.10.3: bigger circles so the label fits inside the disc.
     // Honda 2026-06-29 reported the previous below-circle labels were
     // hard to associate back to nodes when they collided. Center the
