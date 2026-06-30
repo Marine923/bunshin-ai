@@ -5,6 +5,21 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.30] - 2026-07-01
+
+### Added — 関係性タブ entity-detail に **pin 入出力 UI**
+- v0.10.28 で `bunshin pin-context` CLI を提供したが、CLI を叩かないと
+  pin できないので一般ユーザーには敷居高かった
+- 関係性タブ右側 entity-detail に「📌 ユーザー指定コンテキスト」
+  セクションを追加:
+  - 現在の pin をテキストエリアに表示 (空なら placeholder)
+  - 「保存」ボタンで `POST /api/entities/{id}/pin` → settings 保存
+  - 「クリア」ボタンで削除 (pin がある時のみ表示)
+- 保存後ステータス: 「✓ 保存しました。『やり直し』で description を更新できます。」
+- backend: `GET /api/entities/{id}` 応答に `pinned_context` 追加 +
+  `POST /api/entities/{id}/pin` 新規 endpoint
+- CLI (`bunshin pin-context`) と完全に同等、両方から編集可能
+
 ## [0.10.29] - 2026-06-30
 
 ### Changed — `pin-context` を「ヒント」から **「ハード制約」** に強化

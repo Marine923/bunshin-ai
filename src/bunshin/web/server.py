@@ -5677,13 +5677,13 @@ async function loadEntityWeb(centerId) {
     _webRoot = { center, neighbors };
     drawWeb(center, neighbors);
     loading.style.display = 'none';
-    renderEntityDetailFromAPI(center, all, j.first_seen, j.records || []);
+    renderEntityDetailFromAPI(center, all, j.first_seen, j.records || [], j.pinned_context || '');
   } catch (e) {
     loading.textContent = 'エラー: ' + String(e);
   }
 }
 
-function renderEntityDetailFromAPI(e, related, firstSeen, records) {
+function renderEntityDetailFromAPI(e, related, firstSeen, records, pinnedContext) {
   const detailEl = $('entity-detail');
   if (!detailEl) return;
   // The hardcoded "(LLM 抽出)" placeholder is information-free.
@@ -5738,6 +5738,32 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
         計 <b>${mentions.toLocaleString()}</b> 件の記録で言及
       </div>
     </div>` : '';
+  // v0.10.30: pinned-context editor. Lets the user override what the
+  // describe pass sees as "the truth" about this entity — works around
+  // record-derived describes that miss off-screen reality (e.g. 壱岐島
+  // is the user's 壱岐黄金 / MARINE FLIGHT / 海洋教育 base, not just
+  // an AI-research-mentioned island).
+  const pinBlock = `
+    <div class="section" id="entity-pin-section">
+      <h3><span class="h3-icon">${icon('lock', 14)}</span> ユーザー指定コンテキスト <span style="font-weight:400;color:var(--text-3);font-size:11px;">（任意・describe 最優先）</span></h3>
+      <p style="font-size:12px;color:var(--text-3);margin:0 0 8px;">
+        記録に出てこない実生活の文脈をここに書くと、AI 説明の生成で最優先されます。空欄なら通常通り記録から推測。
+      </p>
+      <textarea id="entity-pin-input" rows="3"
+                style="width:100%;box-sizing:border-box;background:var(--bg-2);color:var(--text-0);border:1px solid var(--border-1);border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical;"
+                placeholder="例: 壱岐黄金プロジェクト・MARINE FLIGHT・海洋教育の活動拠点">${esc(pinnedContext || '')}</textarea>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+        <button class="settings-save-btn" id="entity-pin-save" type="button" data-id="${e.id}"
+                style="padding:4px 12px;font-size:12px;">
+          ${icon('save', 11)} 保存
+        </button>
+        ${pinnedContext ? `<button class="settings-save-btn" id="entity-pin-clear" type="button" data-id="${e.id}"
+                style="padding:4px 12px;font-size:12px;background:transparent;color:var(--text-3);border:1px solid var(--border-1);">
+          クリア
+        </button>` : ''}
+        <span id="entity-pin-status" style="font-size:11px;color:var(--text-3);"></span>
+      </div>
+    </div>`;
   detailEl.innerHTML = `
     <h2>${esc(e.name)}</h2>
     <div>
@@ -5745,6 +5771,7 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
       ${e.aliases?.length ? `<span style="color:var(--text-3);font-size:12px;">別名: ${esc(e.aliases.join(', '))}</span>` : ''}
     </div>
     ${realDescription}
+    ${pinBlock}
     ${recallBlock}
     <div class="section">
       <h3><span class="h3-icon">${icon('link', 14)}</span> 関連エンティティ（特異性スコア順）</h3>
@@ -5765,6 +5792,59 @@ function renderEntityDetailFromAPI(e, related, firstSeen, records) {
       loadEntityWeb(el.dataset.id);
     });
   });
+  // v0.10.30: pin save / clear handlers.
+  const pinSaveBtn = document.getElementById('entity-pin-save');
+  const pinClearBtn = document.getElementById('entity-pin-clear');
+  const pinStatus = document.getElementById('entity-pin-status');
+  const setPinStatus = (msg, color) => {
+    if (!pinStatus) return;
+    pinStatus.textContent = msg;
+    pinStatus.style.color = color || 'var(--text-3)';
+    if (msg) setTimeout(() => { pinStatus.textContent = ''; }, 3500);
+  };
+  async function _savePin(id, text) {
+    try {
+      const r = await fetch(`/api/entities/${id}/pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context: text }),
+      });
+      const j = await r.json();
+      if (j.error) throw new Error(j.error);
+      return true;
+    } catch (err) {
+      setPinStatus('保存失敗: ' + String(err), 'var(--err)');
+      return false;
+    }
+  }
+  if (pinSaveBtn) {
+    pinSaveBtn.addEventListener('click', async () => {
+      const inp = document.getElementById('entity-pin-input');
+      if (!inp) return;
+      const id = pinSaveBtn.dataset.id;
+      pinSaveBtn.disabled = true;
+      const ok = await _savePin(id, inp.value || '');
+      pinSaveBtn.disabled = false;
+      if (ok) {
+        setPinStatus('✓ 保存しました。「やり直し」で description を更新できます。', 'var(--good)');
+      }
+    });
+  }
+  if (pinClearBtn) {
+    pinClearBtn.addEventListener('click', async () => {
+      const id = pinClearBtn.dataset.id;
+      pinClearBtn.disabled = true;
+      const ok = await _savePin(id, '');
+      if (ok) {
+        const inp = document.getElementById('entity-pin-input');
+        if (inp) inp.value = '';
+        pinClearBtn.style.display = 'none';
+        setPinStatus('✓ クリアしました', 'var(--good)');
+      } else {
+        pinClearBtn.disabled = false;
+      }
+    });
+  }
   const describeBtn = document.getElementById('entity-describe-btn');
   if (describeBtn) {
     describeBtn.addEventListener('click', async () => {
@@ -11524,12 +11604,48 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     "snippet": (first_row[3] or "")[:280],
                     "timestamp": first_row[4],
                 }
+            # v0.10.30: surface the pinned context so the UI can
+            # show/edit it inline. Stored under settings key
+            # "pin:entity:<id>" by the pin-context CLI.
+            pinned = _get_setting(conn, f"pin:entity:{entity_id}") or ""
             return {
                 "entity": entity,
                 "first_seen": first_seen,
                 "relations": entity_relations(conn, entity_id, limit=30),
                 "records": entity_records(conn, entity_id, limit=10),
+                "pinned_context": pinned,
             }
+        finally:
+            conn.close()
+
+    @app.post("/api/entities/{entity_id}/pin")
+    def api_entity_pin(entity_id: int, payload: dict):
+        """Set or clear the user-pinned context for an entity.
+
+        Body: {"context": "<text>"} to set, {"context": ""} (or
+        omitted) to clear. v0.10.30 — UI counterpart of the
+        `bunshin pin-context` CLI.
+        """
+        conn = init_db(db_path)
+        try:
+            row = conn.execute(
+                "SELECT id FROM entities WHERE id = ?", (entity_id,)
+            ).fetchone()
+            if not row:
+                return {"error": "Entity not found"}
+            text = (payload or {}).get("context", "") or ""
+            text = text.strip()
+            key = f"pin:entity:{entity_id}"
+            if not text:
+                with conn:
+                    conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+                return {"ok": True, "pinned_context": ""}
+            with conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    (key, text),
+                )
+            return {"ok": True, "pinned_context": text}
         finally:
             conn.close()
 
