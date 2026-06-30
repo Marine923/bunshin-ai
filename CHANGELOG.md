@@ -5,6 +5,23 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.32] - 2026-07-01
+
+### Added — MCP に **`pin_entity_context`** tool 追加
+- Claude / MCP client から pin を set / get / clear できる 8 つ目の tool
+- 引数:
+  - `entity`: ID か entity 完全一致名
+  - `context`: pin 内容 (空文字 or 省略で clear)
+  - `action`: `auto` (default、context 有無で set/clear 判断) / `get` / `clear`
+- Pydantic Field description 完備 → MCP schema 経由で LLM が用途・引数を把握可能
+- `get_server_info` の tools list 配列にも追加
+
+### 用途例 (Claude 経由)
+- Claude が「`search_memory("壱岐島")` の結果と record co-occurrence が
+  乖離してる → pin した方が良いかも」と判断 → `pin_entity_context` で
+  ユーザーに「こう書いておきます」と提案
+- ユーザーが Claude に「この entity に context を pin して」と直接依頼可能
+
 ## [0.10.31] - 2026-07-01
 
 ### Added — 設定タブに **「ユーザー指定コンテキスト (pin) 一覧」** セクション

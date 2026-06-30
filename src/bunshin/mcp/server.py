@@ -555,6 +555,119 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             conn.close()
 
     @mcp.tool()
+    def pin_entity_context(
+        entity: Annotated[
+            str,
+            Field(description=(
+                "Entity to pin context onto. Either the integer ID "
+                "(as a string, e.g. '22') or the EXACT entity name "
+                "(e.g. '壱岐島'). Use list_top_entities or search_memory "
+                "to find the right identifier."
+            )),
+        ],
+        context: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "1-2 sentence user-authored context that will be "
+                    "applied as a HARD CONSTRAINT on the next describe "
+                    "for this entity. Overrides record co-occurrence "
+                    "and web sources. Pass empty string to clear the "
+                    "existing pin. Pass nothing (no arg) to read the "
+                    "current pin without changing it."
+                ),
+            ),
+        ] = "",
+        action: Annotated[
+            str,
+            Field(
+                default="auto",
+                description=(
+                    "'auto' (default): set if context is non-empty, "
+                    "clear if context is empty. 'get': always read "
+                    "(ignores context). 'clear': always delete (ignores context)."
+                ),
+            ),
+        ] = "auto",
+    ) -> str:
+        """Set, read, or clear a user-pinned context on an entity.
+
+        Pins are the user's hand-written declaration of what an entity
+        actually is — they override what the records and web sources
+        would otherwise infer. Useful when:
+
+        - The records reflect what the user has been *talking about*
+          rather than what an entity *actually is* (e.g. 壱岐島's record
+          co-occurrence is dominated by AI-research entities Honda
+          chatted with Claude about, but the real-world place hosts his
+          ECommerce / drone-services / ocean-education businesses).
+        - Wikipedia / official site returns a generic public answer
+          that the user wants to override with private context (e.g.
+          AIR Flight's public profile vs. Honda's "I'm the new-business
+          producer there" framing).
+
+        After setting a pin, the next describe call will weave it into
+        the prompt as a hard constraint. The pin persists in the
+        settings table until cleared.
+        """
+        conn = init_db(db_path)
+        try:
+            row = conn.execute(
+                "SELECT id, name FROM entities WHERE "
+                + ("id = ?" if entity.isdigit() else "name = ?"),
+                (int(entity) if entity.isdigit() else entity,),
+            ).fetchone()
+            if not row:
+                return json.dumps(
+                    {"ok": False, "error": f"entity not found: {entity!r}"},
+                    ensure_ascii=False,
+                )
+            eid, name = row["id"] if isinstance(row, dict) else row[0], row[1] if not isinstance(row, dict) else row["name"]
+            key = f"pin:entity:{eid}"
+            # Resolve action
+            if action == "get":
+                op = "get"
+            elif action == "clear":
+                op = "clear"
+            elif action == "auto":
+                op = "clear" if not (context or "").strip() else "set"
+            else:
+                return json.dumps({"ok": False, "error": f"unknown action: {action}"}, ensure_ascii=False)
+            if op == "get":
+                cur = conn.execute(
+                    "SELECT value FROM settings WHERE key = ?", (key,)
+                ).fetchone()
+                v = (cur[0] if cur else "") or ""
+                return json.dumps(
+                    {"ok": True, "entity_id": eid, "entity_name": name,
+                     "action": "get", "context": v},
+                    ensure_ascii=False, indent=2,
+                )
+            if op == "clear":
+                with conn:
+                    conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+                return json.dumps(
+                    {"ok": True, "entity_id": eid, "entity_name": name,
+                     "action": "clear"},
+                    ensure_ascii=False, indent=2,
+                )
+            # set
+            with conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    (key, context.strip()),
+                )
+            return json.dumps(
+                {"ok": True, "entity_id": eid, "entity_name": name,
+                 "action": "set", "context": context.strip(),
+                 "note": "Next describe call for this entity will use this pin as a hard constraint."},
+                ensure_ascii=False, indent=2,
+            )
+        finally:
+            conn.close()
+
+    @mcp.tool()
     def get_server_info() -> str:
         """Return the running MCP server's version, uptime, and DB stats.
 
@@ -603,7 +716,7 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             "tools": [
                 "search_memory", "recall_session", "get_flashback",
                 "list_top_entities", "get_today_hero", "get_recent_chat",
-                "get_server_info",
+                "pin_entity_context", "get_server_info",
             ],
             "memory": {
                 "records": n_records,
