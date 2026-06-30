@@ -5,6 +5,16 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.31] - 2026-07-01
+
+### Added — 設定タブに **「ユーザー指定コンテキスト (pin) 一覧」** セクション
+- v0.10.30 で関係性タブ entity-detail に pin 編集 UI を追加したが、
+  「今どの entity を pin してたっけ」を一覧できる場所がなかった
+- 新セクション: 全 pin (settings table の `pin:entity:%`) を entity 名昇順で表示
+  - 各行に entity 名 + type バッジ + pin テキスト全文 + 「クリア」ボタン
+  - entity 名クリックで関係性タブにジャンプ + その entity を中心表示
+- backend: 新 endpoint `GET /api/pins/list` (settings JOIN entities)
+
 ## [0.10.30] - 2026-07-01
 
 ### Added — 関係性タブ entity-detail に **pin 入出力 UI**

@@ -4773,6 +4773,87 @@ function wireCalendarPanel() {
   refresh();
 }
 
+// v0.10.31: Pinned-context list in the settings tab. Lets the user
+// see and edit every pin in one place instead of clicking through
+// the relationships tab one entity at a time.
+function renderPinsPanel() {
+  return `
+    <div class="settings-section">
+      <h2><span class="h2-icon">${icon('lock', 18)}</span> ユーザー指定コンテキスト (pin) 一覧</h2>
+      <div class="settings-help" style="margin-bottom:12px;">
+        記録に出てこない実生活の文脈を entity に pin した一覧。
+        describe 時に最優先で反映されます。関係性タブの各 entity 画面でも編集できます。
+      </div>
+      <div id="pins-list-root">
+        <div style="color:var(--text-3);font-size:13px;">読み込み中…</div>
+      </div>
+    </div>`;
+}
+
+function wirePinsPanel() {
+  // delegated handlers attached after loadPinsList renders rows
+}
+
+async function loadPinsList() {
+  const root = document.getElementById('pins-list-root');
+  if (!root) return;
+  try {
+    const r = await fetch('/api/pins/list');
+    const j = await r.json();
+    const items = j.pins || [];
+    if (!items.length) {
+      root.innerHTML = `
+        <div style="color:var(--text-3);font-size:13px;padding:14px;background:var(--bg-1);border-radius:8px;border:1px dashed var(--border-1);">
+          まだ pin はありません。関係性タブで entity を選び「📌 ユーザー指定コンテキスト」を保存すると、ここに並びます。
+        </div>`;
+      return;
+    }
+    root.innerHTML = items.map(p => `
+      <div class="pin-row" data-id="${p.entity_id}" style="background:var(--bg-1);border:1px solid var(--border-1);border-radius:8px;padding:12px 14px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;">
+          <div style="font-weight:600;font-size:14px;">
+            <a href="#" class="pin-open-entity" data-id="${p.entity_id}" style="color:var(--accent);text-decoration:none;">${esc(p.entity_name)}</a>
+            <span class="type-badge type-${esc(p.entity_type || 'topic')}" style="margin-left:6px;font-size:10px;">${esc(p.entity_type || 'topic')}</span>
+          </div>
+          <button class="settings-save-btn pin-list-clear" type="button" data-id="${p.entity_id}"
+                  style="padding:3px 10px;font-size:11px;background:transparent;color:var(--text-3);border:1px solid var(--border-1);">
+            クリア
+          </button>
+        </div>
+        <div style="font-size:12px;color:var(--text-1);line-height:1.55;white-space:pre-wrap;">${esc(p.context)}</div>
+      </div>
+    `).join('');
+    root.querySelectorAll('.pin-open-entity').forEach(a => {
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        const id = a.dataset.id;
+        const tab = document.querySelector('.sidebar-tab[data-pane="web"]');
+        if (tab) tab.click();
+        setTimeout(() => { if (typeof loadEntityWeb === 'function') loadEntityWeb(id); }, 100);
+      });
+    });
+    root.querySelectorAll('.pin-list-clear').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        btn.disabled = true;
+        try {
+          await fetch(`/api/entities/${id}/pin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: '' }),
+          });
+          loadPinsList();
+        } catch (e) {
+          btn.disabled = false;
+          alert('クリア失敗: ' + String(e));
+        }
+      });
+    });
+  } catch (e) {
+    root.innerHTML = `<div style="color:var(--err);">読み込みエラー: ${esc(String(e))}</div>`;
+  }
+}
+
 function renderUninstallPanel() {
   return `
     <div class="settings-section">
@@ -5507,6 +5588,7 @@ async function loadSettings() {
     html += renderCalendarPanel();
     html += renderSchedulerPanel();
     html += renderNoiseHygienePanel();
+    html += renderPinsPanel();
     html += renderBackupPanel();
     html += renderExportPanel();
     html += renderLearningDashboard();
@@ -5523,9 +5605,11 @@ async function loadSettings() {
     wireTroubleshootPanel();
     wireUninstallPanel();
     wireNoiseHygienePanel();
+    wirePinsPanel();
     loadModelRecommendation();
     loadSchedulerStatus();
     loadPrivacyStatus();
+    loadPinsList();
 
     // Attach toggle behaviour
     root.querySelectorAll('.settings-toggle').forEach(el => {
@@ -11614,6 +11698,37 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                 "relations": entity_relations(conn, entity_id, limit=30),
                 "records": entity_records(conn, entity_id, limit=10),
                 "pinned_context": pinned,
+            }
+        finally:
+            conn.close()
+
+    @app.get("/api/pins/list")
+    def api_pins_list():
+        """List every entity with a non-empty pinned context.
+
+        v0.10.31: backs the settings-tab pin list. Sorted by entity
+        name for a stable, browsable view.
+        """
+        conn = init_db(db_path)
+        try:
+            rows = conn.execute(
+                "SELECT s.key, s.value, e.id, e.name, e.type "
+                "FROM settings s "
+                "JOIN entities e ON ('pin:entity:' || e.id) = s.key "
+                "WHERE s.key LIKE 'pin:entity:%' "
+                "  AND s.value IS NOT NULL AND TRIM(s.value) <> '' "
+                "ORDER BY e.name COLLATE NOCASE"
+            ).fetchall()
+            return {
+                "pins": [
+                    {
+                        "entity_id": r[2],
+                        "entity_name": r[3],
+                        "entity_type": r[4],
+                        "context": r[1],
+                    }
+                    for r in rows
+                ],
             }
         finally:
             conn.close()
