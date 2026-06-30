@@ -5,6 +5,32 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.29] - 2026-06-30
+
+### Changed — `pin-context` を「ヒント」から **「ハード制約」** に強化
+- v0.10.28 では pin が user_context_label の末尾に追記されるだけで、
+  ローカル LLM (qwen2.5:14b) や judge が「ただの背景情報」として扱い、
+  pin の核心が description に反映されないケースがあった
+  (例: AIR Flight pinned「壱岐拠点、本田が新規事業プロデューサー」
+  → describe が Wikipedia の「諫早市のドローンスクール」で上書きされた)
+- 新: pin がある場合、prompt の **冒頭に「最優先制約」ブロック** として
+  分離配置:
+  ```
+  ■ 【最優先制約・ユーザー指定】
+  ユーザーは「○○」について以下を正確と宣言しています:
+    <pin 内容>
+  この内容は 記録 / Wikipedia / 公式サイト / その他すべての候補より優先
+  されます。候補がこれと矛盾する場合、候補側を疑い、ユーザー指定を中核に
+  据えて description を書き直してください。
+  ```
+- ローカル LLM prompt + Claude judge prompt 両方で同じ強化
+
+### 実機検証 (本田 DB)
+| Entity | v0.10.28 description | v0.10.29 description |
+|---|---|---|
+| 壱岐島 (#22) | 「ドローン関連のAI業界調査や新規事業の拠点」 | 「**「壱岐黄金プロジェクト」という小粒じゃがいもの高級ブランド化事業や、海洋教育リーフボール事業に取り組んでいます**」 |
+| AIR Flight (#18) | 「諫早市のドローンスクール、初心者向けコース、機体販売・修理」 | 「**本田さんが新規事業プロデューサーを務めています**」 |
+
 ## [0.10.28] - 2026-06-30
 
 本田 v0.10.26 レビュー残課題 (2)(3) を完全対応。

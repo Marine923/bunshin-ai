@@ -11825,14 +11825,38 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             f"【候補 {i+1} ({c['source']})】\n{c['description']}"
             for i, c in enumerate(candidates)
         )
+        # v0.10.29: pull "ユーザー指定" out of user_context and put it
+        # at the TOP as a hard constraint. When the user has pinned
+        # context, web sources (Wikipedia, official site) routinely
+        # contradict it — AIR Flight pinned as "壱岐拠点 / 本田が新規
+        # 事業プロデューサー" but Wikipedia says "諫早市のドローン
+        # スクール". The pin should win because the user knows their
+        # own reality better than the web.
+        pin_in_context = ""
+        ctx_clean = user_context
+        if user_context and "| ユーザー指定:" in user_context:
+            base, _, pin_part = user_context.partition("| ユーザー指定:")
+            pin_in_context = pin_part.strip()
+            ctx_clean = base.strip()
+        pin_block = ""
+        if pin_in_context:
+            pin_block = (
+                f"\n■ 【最優先制約・ユーザー指定】\n"
+                f"ユーザーは「{name}」について以下を正確と宣言しています:\n"
+                f"  {pin_in_context}\n"
+                f"この内容は **記録 / Wikipedia / 公式サイト / その他すべての候補より優先** されます。\n"
+                f"候補がこれと矛盾する場合、候補側を疑い、ユーザー指定を中核に据えて description を書き直してください。\n\n"
+            )
         judge_prompt = (
             f"あなたは「{name}」（種別: {entity_type or '不明'}）について、複数のソースから集めた説明候補を比較し、"
             "**最も正確で、IT/専門知識ゼロの一般読者にも分かる説明** を 1 つ選んで日本語で書き直す judge です。\n\n"
             f"{_DESCRIBE_STYLE_GUIDE}\n\n"
+            f"{pin_block}"
             "■ 候補の選び方:\n"
+            "- ユーザー指定がある場合はそれを最優先\n"
             "- 食い違う場合は、より具体的・検証可能な内容を優先\n"
             "- どの候補も「不明」「該当なし」なら正直に「詳細不明」と書く\n\n"
-            f"ユーザーのこの entity への接触: {user_context}\n\n"
+            f"ユーザーのこの entity への接触: {ctx_clean}\n\n"
             f"=== 候補 ===\n{listed}\n=== ここまで ===\n\n"
             "出力 (JSON):\n"
             '{"description": "<書き直した日本語説明 (3 行構成、上記ルール厳守)>", "chosen_source": "<採用した候補のソース名>", "reasoning": "<選択理由 1 文>"}'
@@ -12107,14 +12131,22 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                         ename, etype, user_context_label, api_key
                     )))
             # v0.10.28: stitch the pin into the local-LLM prompt's
-            # samples block so the local model also sees it. Without
-            # this, only the Claude/judge branches get the pin.
+            # samples block. v0.10.29: smaller local models (qwen2.5:14b)
+            # were treating the pin as ordinary context — describe came
+            # back reflecting record co-occurrence instead. Strengthen
+            # the framing so the pin reads as a *constraint*, not a
+            # hint, and put it in the FIRST line where local models
+            # weight it most.
             samples_with_pin = samples
             if pin_text.strip():
                 samples_with_pin = (
-                    f"[ユーザー指定の固定コンテキスト] {pin_text.strip()}\n"
-                    f"(このコンテキストは記録ベースの抜粋より優先して反映してください)\n"
-                    f"\n---\n"
+                    f"【最優先指示・必ず反映】\n"
+                    f"ユーザーは「{ename}」について以下を正確と宣言しています:\n"
+                    f"  {pin_text.strip()}\n"
+                    f"description は必ずこの内容を中核に据え、矛盾する内容は除外する。\n"
+                    f"以下の記録抜粋は補助情報として参考にしてよいが、\n"
+                    f"上記指示と異なる方向に description を引っ張ってはならない。\n"
+                    f"\n===== 補助情報 (記録抜粋) =====\n"
                     f"{samples}"
                 )
             tasks.append(("local", lambda: _describe_via_local_llm(
