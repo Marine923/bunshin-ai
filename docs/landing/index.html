@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bunshin Memory — Your past is yours. AI is just the lens.</title>
+<meta name="description" content="Mac の中だけで動く、あなた専用の記憶 AI。メール・写真・メモ・Claude の会話を全部覚えていて、「あの時のあれ何だっけ」を AI が思い出させてくれます。">
+<meta name="theme-color" content="#0a0d14">
+<link rel="canonical" href="https://bunshinmemory.com/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Bunshin Memory — 個人記憶 AI">
+<meta property="og:description" content="Mac の中だけで動く、あなた専用の記憶 AI。メール・写真・メモ・Claude の会話を全部覚えています。">
+<meta property="og:url" content="https://bunshinmemory.com/">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root {
+    --bg-0: #0a0d14;
+    --bg-1: #11151f;
+    --bg-2: #1a2030;
+    --text-0: #f1f3f8;
+    --text-1: #c8cdd8;
+    --text-2: #8089a0;
+    --accent: #818cf8;
+    --accent-2: #5fbf6f;
+    --warn: #fbbf24;
+    --border: #2a2f3e;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg-0: #ffffff;
+      --bg-1: #f7f8fb;
+      --bg-2: #eef0f5;
+      --text-0: #0a0d14;
+      --text-1: #2c3245;
+      --text-2: #6b7388;
+      --border: #d8dce6;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans",
+                 "Noto Sans JP", "Yu Gothic", sans-serif;
+    background: var(--bg-0);
+    color: var(--text-0);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  header, main, footer { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 24px; padding-bottom: 8px;
+  }
+  .brand {
+    font-weight: 700; font-size: 18px; letter-spacing: -0.01em;
+    color: var(--text-0); text-decoration: none;
+  }
+  .brand .ja { color: var(--text-2); font-weight: 400; margin-left: 6px; font-size: 14px; }
+  nav a {
+    color: var(--text-1); text-decoration: none; margin-left: 24px;
+    font-size: 14px;
+  }
+  nav a:hover { color: var(--accent); }
+  .hero { padding: 72px 0 56px; text-align: left; }
+  .hero h1 {
+    font-size: clamp(36px, 5vw, 56px); line-height: 1.15;
+    margin: 0 0 16px; letter-spacing: -0.02em; font-weight: 700;
+  }
+  .hero .tagline {
+    font-size: clamp(18px, 2vw, 22px); color: var(--text-1);
+    margin: 0 0 32px; max-width: 640px;
+  }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 12px 22px; border-radius: 10px;
+    text-decoration: none; font-weight: 600; font-size: 15px;
+    transition: transform 0.1s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary {
+    background: var(--bg-2); color: var(--text-0); border: 1px solid var(--border);
+  }
+  .features {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px; padding: 24px 0 56px;
+  }
+  .feature {
+    background: var(--bg-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .feature h3 { margin: 0 0 8px; font-size: 16px; }
+  .feature p { margin: 0; color: var(--text-1); font-size: 14px; }
+  .feature .ic { font-size: 24px; margin-bottom: 8px; display: block; }
+  .privacy {
+    background: var(--bg-1); border-left: 3px solid var(--accent-2);
+    border-radius: 6px; padding: 20px 24px; margin: 24px 0 56px;
+  }
+  .privacy h2 { margin: 0 0 8px; font-size: 18px; }
+  .privacy p { margin: 0; color: var(--text-1); font-size: 14px; }
+  .stats {
+    display: flex; gap: 32px; flex-wrap: wrap; margin: 40px 0;
+    color: var(--text-1); font-size: 14px;
+  }
+  .stats b { color: var(--text-0); font-size: 22px; display: block; margin-bottom: 4px; }
+  footer {
+    border-top: 1px solid var(--border); padding: 32px 24px 56px;
+    color: var(--text-2); font-size: 13px;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  }
+  footer a { color: var(--text-1); text-decoration: none; }
+  footer a:hover { color: var(--accent); }
+  .distinct {
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px; margin: 32px 0;
+    font-size: 14px; color: var(--text-1);
+  }
+  .distinct b { color: var(--text-0); }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="brand" href="/">
+    Bunshin Memory<span class="ja">分身メモリー</span>
+  </a>
+  <nav>
+    <a href="https://github.com/Marine923/bunshin-ai">GitHub</a>
+    <a href="https://github.com/Marine923/bunshin-ai/releases/latest">Download</a>
+    <a href="#features">Features</a>
+  </nav>
+</header>
+
+<main>
+
+<section class="hero">
+  <h1>Your past is yours.<br>AI is just the lens.</h1>
+  <p class="tagline">
+    Mac の中だけで動く、あなた専用の記憶 AI。<br>
+    メール・写真・メモ・Claude の会話を全部覚えていて、<br>
+    <b>「あの時のあれ何だっけ」を AI が思い出させてくれます。</b>
+  </p>
+  <div class="cta">
+    <a class="btn btn-primary" href="https://github.com/Marine923/bunshin-ai/releases/latest">
+      Download for macOS ↓
+    </a>
+    <a class="btn btn-secondary" href="https://github.com/Marine923/bunshin-ai">
+      GitHub で見る
+    </a>
+  </div>
+  <div class="stats">
+    <div><b>11</b> 取り込みソース</div>
+    <div><b>100%</b> ローカル</div>
+    <div><b>MIT</b> ライセンス (OSS)</div>
+  </div>
+</section>
+
+<section class="privacy">
+  <h2>🔒 あなたのデータは、この Mac から一歩も出ません</h2>
+  <p>
+    AI 推論もローカル (Ollama)。<br>
+    Anthropic / OpenAI / Google など、外部サービスへの送信は一切ありません。
+    Anthropic API キー (任意) を設定すると describe 精度が上がりますが、
+    記録本体は Mac 内で完結します。
+  </p>
+</section>
+
+<section id="features" class="features">
+  <div class="feature">
+    <span class="ic">🔍</span>
+    <h3>横断検索</h3>
+    <p>Gmail / 写真 / メモ / Claude / ブラウザ履歴を一発で。意味検索 + キーワード検索のハイブリッド。日本語フル対応。</p>
+  </div>
+  <div class="feature">
+    <span class="ic">💬</span>
+    <h3>あなたの記憶に基づくチャット</h3>
+    <p>Ollama でローカル LLM が動作。過去の記録を文脈として自動で読み込み、引用元へ即ジャンプ。</p>
+  </div>
+  <div class="feature">
+    <span class="ic">🕸</span>
+    <h3>関係性グラフ</h3>
+    <p>あなたの世界を構成する人・プロジェクト・場所が蜘蛛の巣ビューで可視化。タイプ別に色分け。</p>
+  </div>
+  <div class="feature">
+    <span class="ic">📅</span>
+    <h3>タイムライン</h3>
+    <p>記録を日付別に整理。「先月の旅行で何があった？」を秒で振り返り。</p>
+  </div>
+  <div class="feature">
+    <span class="ic">💡</span>
+    <h3>毎日の気づき</h3>
+    <p>放置プロジェクト / 直近の予定 / 過去の質問が朝のフラッシュバックで届く。</p>
+  </div>
+  <div class="feature">
+    <span class="ic">🤖</span>
+    <h3>MCP 対応</h3>
+    <p>Claude Code / Claude Desktop から「あなたの記憶」を呼び出せる。7 個の MCP ツール公開。</p>
+  </div>
+</section>
+
+<section class="distinct">
+  <b>※ bunshin.app との関係</b><br>
+  同じ「Bunshin」名で <a href="https://bunshin.app/" target="_blank" rel="noopener">bunshin.app</a> という別プロダクトがあります。あちらは <b>開発者向けの Claude Code デスクトップラッパー</b>。こちら Bunshin Memory は <b>一般ユーザー向けのパーソナル記憶 AI</b>。カテゴリが完全に異なります。
+</section>
+
+</main>
+
+<footer>
+  <div>© 2026 Marine923 · MIT License</div>
+  <div>
+    <a href="https://github.com/Marine923/bunshin-ai">GitHub</a> ·
+    <a href="https://github.com/Marine923/bunshin-ai/issues">Issues</a> ·
+    <a href="https://github.com/Marine923/bunshin-ai/releases/latest">Releases</a>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -53,9 +53,14 @@ If your AI vendor changes pricing, shuts down, or you simply want to switch, **a
 
 Bunshin inverts this: your memory lives on your machine, in a standard SQLite file. Any LLM that speaks the MCP protocol can use it. If Anthropic disappears tomorrow, your memory survives.
 
-## Where Bunshin fits
+## Where Bunshin Memory fits
 
-Bunshin sits in a space that local-first AI projects are starting to converge on. We're not the only entrant — Stanford's open-source [OpenJarvis](https://github.com/Marqovo/OpenJarvis) covers similar local + AI-agnostic ground. Bunshin's differentiation is:
+Bunshin Memory sits in a space that local-first AI projects are starting to converge on. We're not the only entrant:
+
+- Stanford's open-source [OpenJarvis](https://github.com/Marqovo/OpenJarvis) covers similar local + AI-agnostic ground (English-first).
+- [bunshin.app](https://bunshin.app/) (frankkk96 — same anime name, **different category**: a Tauri desktop wrapper that puts a UI around Claude Code for developers). If you came here looking for a coding-agent host, **that's the one you want, not this one**.
+
+Bunshin Memory's differentiation is:
 
 | Axis | Detail |
 |---|---|
