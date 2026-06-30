@@ -5,6 +5,24 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.37] - 2026-07-01
+
+### Added — MCP `list_top_entities` の各 entity に **`pinned`** フィールド
+- 戻り値 entities 配列の各 entity に追加:
+  - `pinned`: bool — pin が設定されているかどうか
+  - `pinned_context_preview`: 設定されている場合のみ、最初の改行までの 120 文字 preview
+- LLM が top entities を見るときに「ユーザーが anchored している entity」を
+  視覚的に区別可能 = 「📌 マークがあれば user-declared truth として扱う」
+- 各 entity ごとに `pin_entity_context(action="get")` を別途呼ばなくて済む
+
+### 実機検証 (本田 DB)
+```
+count=20, pinned in top 20: 1
+  📌 壱岐島 (place) — 壱岐黄金プロジェクト・MARINE FLIGHT・海洋教育の活動拠点…
+```
+
+他の 5 pin entity (#1, #4, #17, #18, #19) は mentions が壱岐島 (626) より少ないため top 20 圏外。limit を上げれば順次 surface。
+
 ## [0.10.36] - 2026-07-01
 
 ### Added — MCP `get_today_hero` 出力に **`pinned_anchors`** を含める

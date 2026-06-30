@@ -436,6 +436,37 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                 conn, limit=limit, type_=type_,
                 with_sources=True, exclude_noisy=exclude_noisy,
             )
+            # v0.10.37: tag each entity with its pin status. The LLM can
+            # then visually distinguish "user-anchored" entities from
+            # raw NER output in a single tools/call. Saves a follow-up
+            # pin_entity_context(action="get") per entity.
+            try:
+                ids = [e.get("id") for e in entities if e.get("id")]
+                pinned_map: dict = {}
+                if ids:
+                    placeholders = ",".join("?" * len(ids))
+                    keys = [f"pin:entity:{i}" for i in ids]
+                    rows = conn.execute(
+                        f"SELECT key, value FROM settings "
+                        f"WHERE key IN ({placeholders}) "
+                        f"AND value IS NOT NULL AND TRIM(value) <> ''",
+                        keys,
+                    ).fetchall()
+                    for k, v in rows:
+                        try:
+                            pinned_map[int(k.split(":")[-1])] = v
+                        except (ValueError, IndexError):
+                            pass
+                for e in entities:
+                    eid = e.get("id")
+                    pin_val = pinned_map.get(eid) if eid else None
+                    e["pinned"] = bool(pin_val)
+                    if pin_val:
+                        e["pinned_context_preview"] = (
+                            pin_val.split("\n")[0]
+                        )[:120]
+            except Exception:
+                pass
             return json.dumps(
                 {"count": len(entities), "entities": entities},
                 ensure_ascii=False, indent=2,
