@@ -1381,6 +1381,41 @@ def doctor_cmd(db: Path):
                     )
             except Exception:
                 pass
+
+            # v0.10.24 (Honda v0.10.22 review follow-up): detect
+            # photo place entities that still carry Wikipedia-era
+            # names (disambiguation suffix, English admin words,
+            # facility/building names). These won't match modern
+            # admin city names and read as broken on the
+            # relationships graph.
+            try:
+                stale_re_jp = _re.compile(r"[（(](?:長崎|熊本|東京|大阪|京都|福岡|愛知|北海道|長野)[県都府道]?[)）]")
+                stale_words = (
+                    "County", "City Hall", "Cathedral", "Plaza",
+                    "Square", "Stadium", "Castle", "Bridge",
+                    "Archdiocese", "Armoury", "Tower",
+                )
+                stale_jp_suffixes = ("市立", "町立", "村立", "立学校")
+                stale_count = 0
+                for r in conn.execute(
+                    "SELECT name FROM entities "
+                    "WHERE type = 'place' AND description LIKE 'GPS座標%'"
+                ):
+                    nm = r[0] or ""
+                    if (
+                        stale_re_jp.search(nm)
+                        or any(w in nm for w in stale_words)
+                        or any(s in nm for s in stale_jp_suffixes)
+                    ):
+                        stale_count += 1
+                if stale_count > 0:
+                    issues.append(
+                        ("ℹ", "古い写真地名",
+                         f"{stale_count} 件の photo 地名 entity が旧 Wikipedia 起点 (建物名や旧地名)",
+                         "bunshin photos-relabel-places --dry-run  →  確認後実行")
+                    )
+            except Exception:
+                pass
         conn.close()
     except Exception:
         pass
@@ -2123,6 +2158,16 @@ def photos_relabel_places_cmd(db: Path, dry_run: bool):
                     "UPDATE entities SET name = ? WHERE id = ?", (new, eid),
                 )
         console.print(f"[green]✓ Renamed {len(renames)} entit{'y' if len(renames)==1 else 'ies'}[/green]")
+        # After rename, several entities likely collapse to the same city
+        # (e.g. Barcelona City Hall + Nou Sardenya → both バルセロナ).
+        # Tell the user the next step explicitly rather than leaving them
+        # to discover the dups.
+        console.print(
+            "\n[dim]Next step:[/dim] "
+            "[cyan]bunshin find-duplicates[/cyan]  "
+            "[dim](renamed entities may now collide — merge with[/dim] "
+            "[cyan]bunshin merge-entities <src> <tgt>[/cyan][dim])[/dim]"
+        )
     finally:
         conn.close()
 

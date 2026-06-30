@@ -5,6 +5,31 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.24] - 2026-06-29
+
+v0.10.23 で実装した Nominatim + photos-relabel-places の **clean handoff** 仕上げ。
+
+### Added — `bunshin doctor` で古い写真地名を検出
+- description が「GPS座標 ...」で始まる photo place entity の name を
+  scan
+- pattern: 都道府県名 disambiguation parens (`(長崎県)` 等), 英語 admin
+  (`County`, `City Hall`), 建物名 (`Cathedral`, `Plaza`, `Stadium`,
+  `Castle`, `Archdiocese`, `Armoury`, `Tower` 等), 「市立/町立/村立/立学校」
+- 該当があれば issue として表示:
+  ```
+  ℹ 古い写真地名: 5 件の photo 地名 entity が旧 Wikipedia 起点 (建物名や旧地名)
+     → bunshin photos-relabel-places --dry-run → 確認後実行
+  ```
+
+### Changed — `photos-relabel-places` 完了時に next-step hint
+- rename 後は **同じ city に複数 entity が collapse する** (例:
+  Barcelona City Hall + Nou Sardenya → 両方 バルセロナ)
+- 実行後に明示的に case が起きる前提で next-step 提案:
+  ```
+  Next step: bunshin find-duplicates (renamed entities may now collide
+  — merge with bunshin merge-entities <src> <tgt>)
+  ```
+
 ## [0.10.23] - 2026-06-29
 
 本田 v0.10.22 レビュー残課題を品質優先で完全対応。
