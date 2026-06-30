@@ -278,6 +278,19 @@ def apply_entity_type_overrides(conn: sqlite3.Connection) -> int:
         "機械学習で作られる", "機械学習で生成",
         "Theory", "framework",
     )
+    # v0.10.23 (Honda v0.10.22 review): Deck B was misclassified as place
+    # despite description "音楽ミックスやパフォーマンスに使用されるソフトウェア機能".
+    # Software / app / tool / feature wording = tool, not place.
+    _TOOL_KEYWORDS = (
+        "ソフトウェア機能", "ソフトウェアの機能",
+        "アプリケーション機能", "アプリの機能",
+        "プラグイン", "拡張機能",
+        "ミックス機能", "DJ 機能", "DJ機能",
+        "コマンドラインツール", "CLI ツール", "CLIツール",
+        "ライブラリ", "SDK", "API ツール",
+        "デバッグツール", "可視化ツール",
+        "command-line tool", "CLI tool", "plugin",
+    )
     _GEO_KEYWORDS_IN_NAME = (
         "市", "町", "村", "区", "県", "府", "都", "島",
         "City", "County", "Town", "Village", "Prefecture", "Province",
@@ -310,6 +323,12 @@ def apply_entity_type_overrides(conn: sqlite3.Connection) -> int:
             elif any(kw in description for kw in _CONCEPT_KEYWORDS):
                 conn.execute(
                     "UPDATE entities SET type = 'concept' WHERE id = ?",
+                    (ent_id,),
+                )
+                fixed += 1
+            elif any(kw in description for kw in _TOOL_KEYWORDS):
+                conn.execute(
+                    "UPDATE entities SET type = 'tool' WHERE id = ?",
                     (ent_id,),
                 )
                 fixed += 1

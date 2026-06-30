@@ -2045,6 +2045,88 @@ def photos_place_clusters_cmd(db: Path, min_photos: int, max_clusters: int,
     console.print(table)
 
 
+@main.command("photos-relabel-places")
+@click.option("--db", type=click.Path(path_type=Path), default=DEFAULT_DB_PATH,
+              help="Bunshin DB path.")
+@click.option("--dry-run", is_flag=True,
+              help="Show what would change without touching the DB.")
+def photos_relabel_places_cmd(db: Path, dry_run: bool):
+    """Re-name existing place entities created by photos-place-clusters.
+
+    Older runs of photos-place-clusters used Wikipedia geosearch, which
+    sometimes picked historical 旧地名 ("小栗村 (長崎県)" for what is
+    now 諫早市) or facility names ("Barcelona City Hall" instead of
+    "Barcelona"). v0.10.23 added Nominatim as the primary geocoder —
+    this command applies that to every existing place entity whose
+    description still encodes the original GPS coordinates.
+
+    Safe to re-run. Only renames; never merges or deletes. Use
+    `bunshin merge-entities` afterwards if old and new names should
+    collapse into one entity.
+    """
+    import re as _re
+    import sqlite3 as _sql
+    import time as _time
+    from bunshin.photos_clusters import _nominatim_place
+    conn = init_db(db)
+    conn.row_factory = _sql.Row
+    try:
+        coord_re = _re.compile(r"GPS座標\s*([\-\d.]+)\s*,\s*([\-\d.]+)")
+        rows = conn.execute(
+            "SELECT id, name, description FROM entities "
+            "WHERE type = 'place' AND description LIKE 'GPS座標%'"
+        ).fetchall()
+        if not rows:
+            console.print("[yellow]No photo place entities found.[/yellow]")
+            return
+        console.print(f"[cyan]Found {len(rows)} photo place entities.[/cyan]\n")
+        renames: list[tuple[int, str, str, str]] = []
+        for r in rows:
+            m = coord_re.search(r["description"] or "")
+            if not m:
+                continue
+            lat, lon = float(m.group(1)), float(m.group(2))
+            new_name = _nominatim_place(lat, lon)
+            if not new_name:
+                console.print(
+                    f"  [yellow]?[/yellow] #{r['id']:4d}  {r['name']!r}  "
+                    f"→ Nominatim 解決失敗 ({lat:.4f}, {lon:.4f}) — skip"
+                )
+                continue
+            if new_name == r["name"]:
+                continue
+            renames.append((r["id"], r["name"], new_name, f"{lat:.4f},{lon:.4f}"))
+            _time.sleep(1.0)
+        if not renames:
+            console.print("[green]All place entities already have Nominatim-current names.[/green]")
+            return
+        console.print(f"[bold]{len(renames)} entit{'y' if len(renames)==1 else 'ies'} to rename:[/bold]\n")
+        for eid, old, new, coords in renames:
+            console.print(f"  #{eid:4d}  [red]{old!r}[/red] → [green]{new!r}[/green]  ({coords})")
+        console.print()
+        if dry_run:
+            console.print("[yellow]--dry-run: no changes made[/yellow]")
+            return
+        with conn:
+            for eid, _old, new, _coords in renames:
+                clash = conn.execute(
+                    "SELECT id FROM entities WHERE name = ? AND id != ?",
+                    (new, eid),
+                ).fetchone()
+                if clash:
+                    console.print(
+                        f"  [yellow]![/yellow] #{eid}: target name {new!r} already used by #{clash['id']} "
+                        f"— skipping rename. Run [cyan]bunshin merge-entities {eid} {clash['id']}[/cyan] to collapse."
+                    )
+                    continue
+                conn.execute(
+                    "UPDATE entities SET name = ? WHERE id = ?", (new, eid),
+                )
+        console.print(f"[green]✓ Renamed {len(renames)} entit{'y' if len(renames)==1 else 'ies'}[/green]")
+    finally:
+        conn.close()
+
+
 @main.command("re-describe-all")
 @click.option("--limit", type=int, default=200,
               help="Max entities to refresh (default 200, ≥ current 137).")

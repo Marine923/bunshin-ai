@@ -42,12 +42,64 @@ MAX_CLUSTERS = 50
 WIKI_RADIUS_M = 10000
 
 
-def _wikipedia_place(lat: float, lon: float) -> Optional[str]:
-    """Nearest Wikipedia article title within WIKI_RADIUS_M.
+def _nominatim_place(lat: float, lon: float) -> Optional[str]:
+    """Reverse-geocode via OpenStreetMap Nominatim.
 
-    Picks ja.wikipedia for coordinates inside Japan and en.wikipedia
-    otherwise. Returns None on any failure — callers fall back to the
-    coordinate-string place name.
+    v0.10.23 (Honda v0.10.22 review): Wikipedia geosearch picks
+    article titles, which often surface旧地名 / facility / building
+    names instead of the current administrative area
+    ("小栗村 (長崎県)" for what is now 諫早市, "Barcelona City
+    Hall" instead of "Barcelona", "Olsztyn County" instead of
+    "オルシュティン"). Nominatim returns structured addresses, so we
+    can pick the right level explicitly. Falls back to Wikipedia if
+    Nominatim is unreachable or doesn't have the area.
+
+    Returns the best-fit city/town name in Japanese when available,
+    otherwise the city in its native language. Returns None on any
+    failure.
+    """
+    headers = {
+        # Nominatim requires a real user-agent per their fair-use policy.
+        "User-Agent": "Bunshin/0.10 (https://github.com/Marine923/bunshin-ai)",
+    }
+    try:
+        r = httpx.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={
+                "lat": lat,
+                "lon": lon,
+                "format": "json",
+                "accept-language": "ja",  # JA first; Nominatim falls back to local lang
+                "zoom": 12,  # city / town level (10=country, 14=neighbourhood)
+            },
+            headers=headers,
+            timeout=8.0,
+        )
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        addr = data.get("address", {}) or {}
+        # Preferred order: smallest admin that still reads as a place
+        # name to a human, falling back upward.
+        for k in ("city", "town", "municipality", "village",
+                  "county", "state_district", "province", "state"):
+            v = addr.get(k)
+            if v and isinstance(v, str) and v.strip():
+                return v.strip()
+        # Last resort: parse the first segment of display_name
+        disp = (data.get("display_name") or "").split(",")
+        if disp and disp[0].strip():
+            return disp[0].strip()
+    except Exception:
+        return None
+    return None
+
+
+def _wikipedia_place(lat: float, lon: float) -> Optional[str]:
+    """Nearest Wikipedia article title within WIKI_RADIUS_M (fallback only).
+
+    v0.10.23: demoted to fallback for when Nominatim is unreachable.
+    Picks ja.wikipedia first, falls back to en.wikipedia.
     """
     in_japan = 24.0 <= lat <= 46.0 and 122.0 <= lon <= 146.0
     # v0.10.14 (Honda v0.10.13 review): always try ja.wikipedia first,
@@ -210,13 +262,19 @@ def compute_place_clusters(
     }
 
     for (lat, lon), rids in qualifying:
-        wiki_name = _wikipedia_place(lat, lon)
-        if wiki_name:
-            place_name = wiki_name
+        # v0.10.23: prefer Nominatim (returns current admin areas like
+        # 諫早市 instead of historical Wikipedia article titles like
+        # 小栗村 (長崎県)). Fall back to Wikipedia geosearch on failure.
+        place_name = _nominatim_place(lat, lon)
+        source_used = "Nominatim"
+        if not place_name:
+            place_name = _wikipedia_place(lat, lon)
+            source_used = "Wikipedia"
+        if place_name:
             stats["wikipedia_resolved"] += 1
             description = (
                 f"GPS座標 {lat:.4f}, {lon:.4f} 周辺で撮影した写真 "
-                f"{len(rids)} 件のクラスタ (Wikipedia から逆ジオコーディング)"
+                f"{len(rids)} 件のクラスタ ({source_used} から逆ジオコーディング)"
             )
         else:
             ns = "N" if lat >= 0 else "S"

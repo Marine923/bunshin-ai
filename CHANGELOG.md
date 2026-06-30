@@ -5,6 +5,43 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.23] - 2026-06-29
+
+本田 v0.10.22 レビュー残課題を品質優先で完全対応。
+
+### Added — Nominatim を写真位置の主 reverse-geocoder に
+- 旧: Wikipedia geosearch のみ → article title 起点で旧地名 (「小栗村
+  (長崎県)」) や建物名 (「Barcelona City Hall」) が picked up されてた
+- 新: **Nominatim を主 + Wikipedia を fallback**
+  - Nominatim は構造化された address を返すので「現代の admin」を
+    確実に拾える (`city` → `town` → `municipality` → ... の順で fall up)
+  - 公式 API、accept-language=ja で日本語化、zoom=12 で city/town レベル
+
+### 実測 (本田さん DB の 8 entity に対する Nominatim 解決)
+```
+小栗村 (長崎県)            → 諫早市      (32.83, 130.06)
+多比良町                  → 雲仙市      (32.86, 130.30)
+Olsztyn County            → オルシュティン  (53.78, 20.49)
+Barcelona City Hall       → バルセロナ     (41.38,  2.18)
+日見村                    → 長崎市      (32.76, 129.94)
+Roman Catholic Archdiocese of Warmia → オルシュティン
+Nou Sardenya              → バルセロナ
+Great Armoury             → グダニスク
+```
+
+### Added — `bunshin photos-relabel-places` CLI
+- 既存 photo place entities を Nominatim で再計算 → name を update
+- `--dry-run` で実行前確認可能
+- UNIQUE 制約衝突時は skip + merge コマンド提案
+- v0.10.18-19 の merge-entities / find-duplicates と連携
+
+### Changed — `_TOOL_KEYWORDS` 追加で Deck B 等を tool に reclassify
+- 旧: 「ソフトウェア機能」「ミックス機能」が _CONCEPT_KEYWORDS / _ORG_KEYWORDS
+  どちらにも該当せず、Deck B が type=place のまま放置されてた
+- 新: `_TOOL_KEYWORDS` 新規追加 (`ソフトウェア機能`, `ミックス機能`,
+  `プラグイン`, `ライブラリ`, `SDK`, `CLI ツール` 等) → place → tool
+- 実機検証: Deck B → tool ✅ (起動マイグレで自動 heal)
+
 ## [0.10.22] - 2026-06-29
 
 ### Changed — MCP `get_server_info` に DB スケール情報を追加
