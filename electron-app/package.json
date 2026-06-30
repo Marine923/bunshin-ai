@@ -66,6 +66,8 @@
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "minimumSystemVersion": "11.0.0",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "LSApplicationCategoryType": "public.app-category.productivity",
         "NSHumanReadableCopyright": "Copyright © 2026 Marine923",
@@ -74,7 +76,9 @@
           "ja"
         ]
       },
-      "identity": null
+      "notarize": {
+        "teamId": "${env.APPLE_TEAM_ID}"
+      }
     },
     "dmg": {
       "title": "Bunshin ${version}",

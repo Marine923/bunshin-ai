@@ -37,6 +37,16 @@ jobs:
         working-directory: electron-app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing + notarization secrets. Set these in repo
+          # Settings → Secrets → Actions to enable signed builds
+          # (see docs/CODE_SIGNING.md). When unset, electron-builder
+          # falls back to unsigned builds — the workflow keeps working
+          # but users will see "right-click → Open" the first time.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         # --publish never: build only, don't try to upload to release
         # (auto-publish requires draft release + GITHUB_TOKEN scopes
         # we don't grant by default). DMGs land in dist/ and are
