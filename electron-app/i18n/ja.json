@@ -1,10 +1,10 @@
 {
   "menu": {
-    "about": "Bunshin について",
-    "hide": "Bunshin を隠す",
+    "about": "Bunshin Memory について",
+    "hide": "Bunshin Memory を隠す",
     "hideOthers": "ほかを隠す",
     "unhide": "すべて表示",
-    "quit": "Bunshin を終了",
+    "quit": "Bunshin Memory を終了",
     "file": "ファイル",
     "newMemo": "新規メモ…",
     "newMemoPrefix": "覚えといて:",

@@ -1,7 +1,7 @@
 {
   "name": "bunshin-desktop",
-  "version": "0.10.26",
-  "description": "Bunshin — 4-condition personal memory AI (desktop wrapper)",
+  "version": "0.10.27",
+  "description": "Bunshin Memory — personal memory engine (desktop wrapper)",
   "main": "src/main.js",
   "author": {
     "name": "Marine923",
@@ -28,7 +28,7 @@
   },
   "build": {
     "appId": "com.bunshin.desktop",
-    "productName": "Bunshin",
+    "productName": "Bunshin Memory",
     "copyright": "Copyright © 2026 Marine923",
     "directories": {
       "output": "dist",

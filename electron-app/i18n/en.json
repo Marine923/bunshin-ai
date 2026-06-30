@@ -1,10 +1,10 @@
 {
   "menu": {
-    "about": "About Bunshin",
-    "hide": "Hide Bunshin",
+    "about": "About Bunshin Memory",
+    "hide": "Hide Bunshin Memory",
     "hideOthers": "Hide Others",
     "unhide": "Show All",
-    "quit": "Quit Bunshin",
+    "quit": "Quit Bunshin Memory",
     "file": "File",
     "newMemo": "New Memo…",
     "newMemoPrefix": "Remember:",

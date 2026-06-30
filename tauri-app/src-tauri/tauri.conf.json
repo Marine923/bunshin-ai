@@ -5,7 +5,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "Bunshin",
+    "productName": "Bunshin Memory",
     "version": "0.1.0"
   },
   "tauri": {
@@ -28,7 +28,7 @@
         "icons/icon.ico"
       ],
       "identifier": "com.bunshin.desktop",
-      "longDescription": "Bunshin (分身) — 4-condition personal memory AI: local-first, AI-agnostic, offline-capable, omni-source.",
+      "longDescription": "Bunshin Memory — personal memory engine: local-first, AI-agnostic, offline-capable, omni-source. Japanese-first.",
       "macOS": {
         "entitlements": null,
         "exceptionDomain": "",
@@ -54,7 +54,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "分身（Bunshin）",
+        "title": "Bunshin Memory",
         "width": 1280,
         "height": 860,
         "minWidth": 800,

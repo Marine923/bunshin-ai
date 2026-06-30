@@ -7032,10 +7032,10 @@ loadFlashback();
 const ONBOARDING_STEPS = [
   {
     label: '1 / 5',
-    title: () => `${icon('sparkles', 22)} ようこそ、分身（Bunshin）へ`,
+    title: () => `${icon('sparkles', 22)} ようこそ、Bunshin Memory へ`,
     body: () => `
       <p class="step-body">
-        分身は、あなたの過去の記憶を集めて、いつでも思い出させてくれる AI です。
+        Bunshin Memory は、あなたの過去の記憶を集めて、いつでも思い出させてくれる AI です。
         Claude の会話、Gmail、写真、メモ — ぜんぶを横断して検索できます。
       </p>
       <div class="step-warn">

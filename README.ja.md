@@ -1,14 +1,19 @@
 <div align="center">
 
-# 分身（Bunshin）
+# Bunshin Memory（分身メモリー）
 
 ### **あなたの過去は、あなたのもの。**
 
 メール、写真、会話、メモ、ファイル—
-あなたが Mac で扱った全部を Bunshin が覚えていて、
+あなたが Mac で扱った全部を Bunshin Memory が覚えていて、
 **「あの時のあれ何だっけ」を AI が教えてくれる** Mac アプリ。
 
 データは Mac の中だけ。ネット送信ゼロ。
+
+> CLI コマンドは過去互換のため `bunshin` のままです。
+> プロダクト名「Bunshin Memory」と単独の「Bunshin」を分ける理由は、
+> 別カテゴリの [bunshin.app](https://bunshin.app/) (Claude Code 用デスクトップ
+> ラッパー) と SEO 衝突しないようにするためです。
 
 [ダウンロード（macOS）](https://github.com/Marine923/bunshin-ai/releases/latest) &nbsp;·&nbsp;
 [English README](./README.md) &nbsp;·&nbsp;

@@ -1,12 +1,17 @@
 <div align="center">
 
-# Bunshin (分身)
+# Bunshin Memory
 
 ### **Your past is yours. AI is just the lens.**
 
-A personal memory engine that ingests your emails, files, chats,
-notes, photos, and browser history — then lets any LLM you choose
-read it, *locally*.
+A **personal memory engine** that ingests your emails, files,
+chats, notes, photos, and browser history — then lets any LLM you
+choose read it, *locally*. Japanese-first.
+
+> The CLI binary is still `bunshin` for backwards compatibility.
+> "Bunshin Memory" is the product name; "Bunshin" alone gets
+> confused with [bunshin.app](https://bunshin.app/) (a Claude
+> Code desktop wrapper — different category, same anime root).
 
 [![Latest release](https://img.shields.io/github/v/release/Marine923/bunshin-ai?style=for-the-badge&color=818cf8)](https://github.com/Marine923/bunshin-ai/releases/latest)
 [![Platform](https://img.shields.io/badge/macOS-11%2B-lightgrey?style=for-the-badge)]()

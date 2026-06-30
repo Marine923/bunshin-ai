@@ -5,6 +5,24 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.27] - 2026-06-29
+
+### Changed — プロダクト名を **「Bunshin Memory」** に
+- 既存 [bunshin.app](https://bunshin.app/) (Claude Code 用デスクトップ
+  ラッパー、frankkk96 開発、Tauri/OSS) と同名・別カテゴリで SEO 衝突
+  リスク → 修飾語付きで差別化
+- 更新箇所:
+  - README.md ヒーロー: `# Bunshin (分身)` → `# Bunshin Memory`
+  - README.ja.md ヒーロー: `# 分身（Bunshin）` → `# Bunshin Memory（分身メモリー）`
+  - `electron-app/package.json` productName
+  - `electron-app/i18n/en.json` + `ja.json` menu labels (About / Hide / Quit)
+  - `tauri-app/src-tauri/tauri.conf.json` productName + window title + longDescription
+  - Wizard step 1: 「ようこそ、Bunshin Memory へ」
+- **CLI コマンドは過去互換のため `bunshin` のまま** (CLI 名変更は
+  破壊的なので維持)
+- **ドメイン**: bunshinmemory.com / .app / .ai / .dev / .so / .io 全て空き
+  確認済 → 本田さん取得待ち
+
 ## [0.10.26] - 2026-06-29
 
 ### Changed — `photos-relabel-places` 完了時に **重複グループを inline 表示**
