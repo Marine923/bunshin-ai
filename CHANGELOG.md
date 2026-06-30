@@ -5,6 +5,32 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.28] - 2026-06-30
+
+本田 v0.10.26 レビュー残課題 (2)(3) を完全対応。
+
+### Added — `bunshin pin-context <entity> <context>` CLI
+- 旧: 壱岐島 description が「ドローン関連のビジネス環境や市場分析」=
+  本田 DB の co-occurrence 実態 (AI 業界 entities dominant) を正しく
+  反映していたが、**本田の実主要事業 (壱岐黄金 / MARINE FLIGHT / 海洋教育)
+  が textual records にあまり出てこない** ため、describe には現れず
+- 新: 本田自身が「壱岐島 = ○○ の活動拠点」と pin → describe prompt
+  に **「ユーザー指定」コンテキスト**として注入
+- 実機検証 (壱岐島):
+  - 旧 description: 「ドローン関連のビジネス環境や市場分析のために、
+    この島に関する情報を調べています」
+  - 新 description: 「**ドローン関連事業や海洋教育リーフボール事業、
+    小粒じゃがいもの高級ブランド化プロジェクトの活動**を行っています」 ✅
+- `bunshin pin-context 22 --clear` で削除、引数なしで現在の pin を表示
+
+### Changed — `_TOOL_KEYWORDS` 拡張で Deck A も reclassify
+- 旧: Deck A description「DJ**ソフトウェア内の**機能」が
+  既存 `_TOOL_KEYWORDS` (「ソフトウェア機能」「ソフトウェアの機能」)
+  にマッチせず place のまま
+- 新: 「ソフトウェア内の機能」「DJソフトウェア」「曲をロード」
+  「曲を再生」「次にどの曲」を追加 → 起動マイグレで自動 heal
+- 実機検証: Deck A → tool ✅
+
 ## [0.10.27] - 2026-06-29
 
 ### Changed — プロダクト名を **「Bunshin Memory」** に

@@ -314,6 +314,82 @@ def merge_entities_cmd(source: str, target: str, dry_run: bool):
         conn.close()
 
 
+@main.command("pin-context")
+@click.argument("entity")
+@click.argument("context", required=False)
+@click.option("--db", type=click.Path(path_type=Path), default=DEFAULT_DB_PATH,
+              help="Bunshin DB path.")
+@click.option("--clear", is_flag=True,
+              help="Remove the pinned context for this entity.")
+def pin_context_cmd(entity: str, context: str | None, db: Path, clear: bool):
+    """Pin a user-specified context onto an entity's AI description.
+
+    Bunshin's describe pass reads the user's record co-occurrence —
+    great when textual records reflect reality. But sometimes the
+    user's real-life work (e.g. 壱岐黄金 / MARINE FLIGHT / 海洋教育
+    at 壱岐島) barely shows up in textual records because it's
+    *off-screen* activity. Use this to tell the describe pass what
+    the entity actually IS, in the user's own words.
+
+    ENTITY: entity ID or exact name.
+    CONTEXT: a 1-2 sentence override, e.g. "壱岐黄金プロジェクト・
+             MARINE FLIGHT・海洋教育の活動拠点".
+
+    Then run `bunshin re-describe-all` or click "やり直し" in the UI
+    for that entity — the new description will incorporate this pin.
+
+    Examples:
+      bunshin pin-context 壱岐島 "壱岐黄金プロジェクト・MARINE FLIGHT・海洋教育の活動拠点"
+      bunshin pin-context 22 --clear
+    """
+    import sqlite3 as _sql
+    conn = init_db(db)
+    conn.row_factory = _sql.Row
+    try:
+        # Resolve entity to ID
+        if entity.isdigit():
+            row = conn.execute(
+                "SELECT id, name FROM entities WHERE id = ?", (int(entity),)
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id, name FROM entities WHERE name = ?", (entity,)
+            ).fetchone()
+        if not row:
+            console.print(f"[red]✗ entity not found:[/red] {entity}")
+            return
+        eid, name = row["id"], row["name"]
+        key = f"pin:entity:{eid}"
+        if clear:
+            with conn:
+                conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+            console.print(f"[green]✓[/green] cleared pin for #{eid} {name!r}")
+            return
+        if not context:
+            # Show current pin
+            cur = conn.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
+            v = (cur[0] if cur else "") or ""
+            if v.strip():
+                console.print(f"[cyan]Current pin for #{eid} {name!r}:[/cyan]\n  {v}")
+            else:
+                console.print(f"[yellow]No pin set for #{eid} {name!r}[/yellow]")
+            return
+        with conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (key, context),
+            )
+        console.print(
+            f"[green]✓[/green] pinned context on #{eid} {name!r}:\n  {context}\n"
+            f"[dim]→ Run [cyan]bunshin re-describe-all --limit 1 --min-mentions 0[/cyan] "
+            f"or click ✨ やり直し on the entity in the relationships tab[/dim]"
+        )
+    finally:
+        conn.close()
+
+
 @main.command("find-duplicates")
 @click.option("--limit", default=30, type=int,
               help="Max duplicate groups to show.")

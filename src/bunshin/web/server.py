@@ -12075,6 +12075,22 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     f"{user_context_label} | 主要関連: {top_relations_label}"
                 )
 
+            # v0.10.28 (Honda v0.10.26 review #3 — 壱岐島 description):
+            # The user can override the record-derived context for a
+            # specific entity by setting "pin:<id>" in the settings
+            # table. Honda's case: 壱岐島's record co-occurrence is
+            # AI-research-dominant (Google, Meta, OpenAI, etc. — that's
+            # what he's been *talking to Claude about lately*) but his
+            # actual primary work at 壱岐島 is 壱岐黄金 / MARINE FLIGHT
+            # / 海洋教育, which barely appears in textual records. A pin
+            # lets the user say "ignore what the records imply — this is
+            # what 壱岐島 actually IS."
+            pin_text = _get_setting(conn, f"pin:entity:{entity_id}") or ""
+            if pin_text.strip():
+                user_context_label = (
+                    f"{user_context_label} | ユーザー指定: {pin_text.strip()}"
+                )
+
             ename = entity["name"]
             etype = entity.get("type")
 
@@ -12090,8 +12106,19 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     tasks.append(("claude", lambda: _describe_via_claude(
                         ename, etype, user_context_label, api_key
                     )))
+            # v0.10.28: stitch the pin into the local-LLM prompt's
+            # samples block so the local model also sees it. Without
+            # this, only the Claude/judge branches get the pin.
+            samples_with_pin = samples
+            if pin_text.strip():
+                samples_with_pin = (
+                    f"[ユーザー指定の固定コンテキスト] {pin_text.strip()}\n"
+                    f"(このコンテキストは記録ベースの抜粋より優先して反映してください)\n"
+                    f"\n---\n"
+                    f"{samples}"
+                )
             tasks.append(("local", lambda: _describe_via_local_llm(
-                ename, etype, samples, top_relations=top_relations_label,
+                ename, etype, samples_with_pin, top_relations=top_relations_label,
             )))
 
             candidates: list[dict] = []
