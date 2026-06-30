@@ -216,9 +216,44 @@ OCR on the photo set recovered, among other things, an entire DJI T25P quote she
 
 - [`docs/SETUP.md`](docs/SETUP.md) — Full setup guide
 - [`docs/COMMANDS.md`](docs/COMMANDS.md) — All CLI commands
+- [`docs/CLEANUP.md`](docs/CLEANUP.md) — Weekly DB maintenance cheatsheet
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Internal design
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — Common issues
 - [`CHANGELOG.md`](CHANGELOG.md) — Release notes
+
+---
+
+## What's new in v0.10 (35 releases, single day)
+
+The current minor version line is unusually deep — a tight feedback
+loop with a single power user produced 35 patch releases in a day.
+Headline themes:
+
+- **Bunshin Memory rename** (v0.10.27) — disambiguates from the
+  similarly-named [bunshin.app](https://bunshin.app/) (a
+  Tauri-based Claude Code wrapper, different category). The CLI
+  binary stays `bunshin` for backwards compatibility.
+- **Pin-context** (v0.10.28–32) — user-authored hard constraint
+  on an entity's AI description, reachable from CLI / relationships
+  tab / settings panel / MCP. Solves "the records reflect what I've
+  been talking *about*, not what this entity actually *is*."
+- **Nominatim geocoder + photos-relabel-places** (v0.10.23–26) —
+  GPS-based place entities now use modern admin names (諫早市) instead
+  of historical Wikipedia article titles (小栗村 (長崎県)) or building
+  names (Barcelona City Hall).
+- **Entity hygiene trio** (v0.10.18–19, v0.10.21) — `find-duplicates`
+  detects NER variants, `merge-entities` collapses them, `doctor`
+  surfaces the count so you know when cleanup is due.
+- **MCP self-introspection** (v0.10.22) — `get_server_info`
+  exposes record / entity / source counts so a connecting LLM can
+  decide whether to lean on `search_memory` at all.
+- **Entity-extraction prompt revamp** (v0.10.11–12) — startup
+  migration heals existing miscategorized entities (websites flagged
+  as places, software features flagged as places, ML concepts
+  flagged as places).
+- **Hidden Honda-DB cleanups already applied** — 8 photo place
+  entities renamed via Nominatim, 5 merged into canonical forms,
+  6 main-business entities pinned with off-screen reality.
 
 ---
 
