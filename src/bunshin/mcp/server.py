@@ -199,17 +199,62 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                     "content_truncated": truncated,  # Fix 2 transparency
                     "content": content,
                 })
-            return json.dumps(
-                {
-                    "query": query,
-                    "count": len(formatted),
-                    "min_relevance_applied": eff_min_rel,
-                    "content_max_chars": eff_max_chars,
-                    "results": formatted,
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
+            # v0.10.35: surface pinned entities the user has explicitly
+            # annotated. A connecting LLM can use this to "anchor"
+            # downstream reasoning — e.g. if the query is "壱岐島" and
+            # the user has pinned 壱岐島 with "壱岐黄金 / MARINE FLIGHT
+            # / 海洋教育 の活動拠点", the LLM should treat that as the
+            # user's declared reality rather than inferring from
+            # record snippets.
+            pinned_entities = []
+            try:
+                pin_rows = conn.execute(
+                    "SELECT e.id, e.name, e.type, s.value "
+                    "FROM settings s "
+                    "JOIN entities e ON s.key = 'pin:entity:' || e.id "
+                    "WHERE s.key LIKE 'pin:entity:%' "
+                    "  AND s.value IS NOT NULL AND TRIM(s.value) <> '' "
+                    "  AND EXISTS ("
+                    "    SELECT 1 FROM entities e2 "
+                    "    WHERE e2.id = e.id "
+                    "    AND (LOWER(e2.name) LIKE '%' || LOWER(?) || '%' "
+                    "         OR EXISTS ("
+                    "           SELECT 1 FROM record_entities re "
+                    "           JOIN records r ON r.id = re.record_id "
+                    "           WHERE re.entity_id = e.id "
+                    "           AND r.content LIKE '%' || ? || '%' "
+                    "           LIMIT 1"
+                    "         )"
+                    "    )"
+                    "  ) "
+                    "LIMIT 5",
+                    (query, query),
+                ).fetchall()
+                for r in pin_rows:
+                    pinned_entities.append({
+                        "entity_id": r[0],
+                        "entity_name": r[1],
+                        "entity_type": r[2],
+                        "pinned_context": r[3],
+                    })
+            except Exception:
+                pass
+            payload = {
+                "query": query,
+                "count": len(formatted),
+                "min_relevance_applied": eff_min_rel,
+                "content_max_chars": eff_max_chars,
+                "results": formatted,
+            }
+            if pinned_entities:
+                payload["pinned_entities"] = pinned_entities
+                payload["pinned_entities_note"] = (
+                    "These entities have user-authored pinned context that "
+                    "describes off-screen reality not captured in the "
+                    "records. Treat these as the user's declared truth "
+                    "when answering — outrank what record snippets imply."
+                )
+            return json.dumps(payload, ensure_ascii=False, indent=2)
         finally:
             conn.close()
 

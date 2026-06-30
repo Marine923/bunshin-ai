@@ -5,6 +5,33 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.35] - 2026-07-01
+
+### Added — MCP `search_memory` 結果に **`pinned_entities`** ブロックを surface
+- クエリ文字列に entity 名が含まれる、または query で hit する records に
+  紐付く entity に **pin 済 context が存在する場合**、結果 JSON に
+  `pinned_entities` を含める (最大 5 件)
+- 各 entity に `entity_id` / `entity_name` / `entity_type` /
+  `pinned_context` (フルテキスト)
+- 並列で `pinned_entities_note` フィールドで LLM に「これはユーザー
+  declared truth = record snippets の implication より優先せよ」と明示
+
+### 実測 (本田 DB)
+```
+search_memory("壱岐島") →
+  Count: 0
+  Pinned entities: 5
+    - #1  壱岐黄金プロジェクト       (project)
+    - #17 MARINE FLIGHT             (organization)
+    - #18 AIR Flight                (organization)
+    - #19 リーフボールジャパン         (organization)
+    - #22 壱岐島                    (place)
+```
+
+→ records hit が 0 件でも、ユーザーの「declared truth」を 5 件 surface。
+LLM が「壱岐島 = 壱岐黄金プロジェクト / MARINE FLIGHT / 海洋教育の活動拠点」
+を anchor として会話を組み立てられる。
+
 ## [0.10.34] - 2026-07-01
 
 ### Added — `bunshin doctor` に **pin count surface**
