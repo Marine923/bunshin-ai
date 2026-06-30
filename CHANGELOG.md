@@ -5,6 +5,28 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.38] - 2026-07-01
+
+### Added — pin surfacing logic に **regression tests**
+- v0.10.35-37 で MCP 4 つの surface (settings list / search_memory /
+  get_today_hero / list_top_entities) で pin を返すようにしたが、
+  CI でカバーされてなかった
+- 4 tests 追加:
+  - `test_pin_list_endpoint_query_returns_only_active_pins` (settings JOIN +
+    NULL/空文字/orphan 除外)
+  - `test_search_memory_pinned_entities_query_substring_match` (name LIKE
+    %query%, 関連なし entity は除外)
+  - `test_get_today_hero_pinned_anchors_query_caps_at_8_alphabetical`
+    (LIMIT 8 + COLLATE NOCASE)
+  - `test_list_top_entities_pinned_field_batched_query` (batched IN-clause
+    + 改行で preview cut)
+
+### Fixed — macOS DMG ビルドが `hdiutil detach` で fail していた
+- DMG title が "Bunshin ${version}" でスペース含み →
+  `/Volumes/Bunshin 0.10.37` のパスで hdiutil detach に失敗
+- title を **"Bunshin-Memory-${version}"** (hyphen 区切り) に変更
+- volume name にスペースがなくなり hdiutil で安定動作
+
 ## [0.10.37] - 2026-07-01
 
 ### Added — MCP `list_top_entities` の各 entity に **`pinned`** フィールド

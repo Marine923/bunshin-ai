@@ -1,6 +1,6 @@
 {
   "name": "bunshin-desktop",
-  "version": "0.10.37",
+  "version": "0.10.38",
   "description": "Bunshin Memory — personal memory engine (desktop wrapper)",
   "main": "src/main.js",
   "author": {
@@ -81,7 +81,7 @@
       }
     },
     "dmg": {
-      "title": "Bunshin ${version}",
+      "title": "Bunshin-Memory-${version}",
       "background": "build/background.png",
       "icon": "build/icon.icns",
       "iconSize": 96,
