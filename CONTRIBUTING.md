@@ -1,7 +1,7 @@
-# Contributing to Bunshin
+# Contributing to Bunshin Memory
 
-Thanks for thinking about contributing — Bunshin only gets useful if more
-people can read its code, file good bug reports, and ship improvements.
+Thanks for thinking about contributing — Bunshin Memory only gets useful if
+more people can read its code, file good bug reports, and ship improvements.
 
 This document is the shortest possible "how do I get my change in?" guide.
 If anything here is wrong or unclear, please open an issue or a PR fixing

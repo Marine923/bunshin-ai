@@ -1,13 +1,13 @@
 # 壱岐の友人向け配布テンプレ
 
-このファイルは「Bunshin を友人に渡すときに使う、コピペで送れる文章」をまとめたものです。
+このファイルは「Bunshin Memory を友人に渡すときに使う、コピペで送れる文章」をまとめたものです。
 
 ---
 
 ## LINE / メッセージ用（短いやつ）
 
 ```
-分身（Bunshin）っていう、自分の Mac の中だけで動く記憶 AI を作ったから試してみて！
+Bunshin Memory（分身メモリー）っていう、自分の Mac の中だけで動く記憶 AI を作ったから試してみて！
 
 メール / 写真 / メモ / Claude の会話を全部読み込んで、
 「あの時のあれ何だっけ」を一発で思い出せるアプリ。
@@ -15,8 +15,8 @@
 ダウンロード:
 https://github.com/Marine923/bunshin-ai/releases/latest
 
-→ "Bunshin-X.Y.Z-arm64.dmg"（M1/M2/M3/M4 Mac）か
-   "Bunshin-X.Y.Z.dmg"（Intel Mac）を落として、開いてアプリをドラッグ。
+→ "Bunshin Memory-X.Y.Z-arm64.dmg"（M1/M2/M3/M4 Mac）か
+   "Bunshin Memory-X.Y.Z.dmg"（Intel Mac）を落として、開いてアプリをドラッグ。
    ※ X.Y.Z は最新版番号
 
 ⚠ 「開発元未確認」って言われたら → 右クリック → 開く
@@ -29,12 +29,12 @@ https://github.com/Marine923/bunshin-ai/releases/latest
 
 ## メール用（少しちゃんとした版）
 
-件名: **分身（Bunshin）試してみてください**
+件名: **Bunshin Memory（分身メモリー）試してみてください**
 
 ```
 ○○さん、
 
-最近作ってる "分身（Bunshin）" っていう Mac アプリをお試しで触ってもらえたら嬉しいです。
+最近作ってる "Bunshin Memory" っていう Mac アプリをお試しで触ってもらえたら嬉しいです。
 
 【何をするアプリか】
 あなたが Mac で扱っているメール・写真・メモ・Claude との会話 —

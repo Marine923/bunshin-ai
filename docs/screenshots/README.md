@@ -1,7 +1,7 @@
 # Screenshots for the README hero
 
 The README's hero strip embeds three images from this folder. They
-should all show **real, populated** Bunshin (no Lorem ipsum), at
+should all show **real, populated** Bunshin Memory (no Lorem ipsum), at
 **Retina resolution**, in **light mode**, with the user's personal
 data redacted only if absolutely necessary (the whole point of the
 hero is to show "this thing remembers everything").

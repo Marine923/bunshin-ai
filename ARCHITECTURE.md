@@ -1,8 +1,8 @@
-# Bunshin Architecture
+# Bunshin Memory Architecture
 
-A 10-minute read for anyone who wants to understand how Bunshin works
-end-to-end, where to land a change, and why the design landed the way
-it did.
+A 10-minute read for anyone who wants to understand how Bunshin Memory
+works end-to-end, where to land a change, and why the design landed
+the way it did.
 
 ## The 30-second summary
 
@@ -61,7 +61,7 @@ class="pane">` has its own block of HTML, CSS, and JS.
 
 ### `src/bunshin/storage.py`
 SQLite schema + every read/write helper. The `records` table is the
-heart of Bunshin — every memory ends up here, regardless of source.
+heart of Bunshin Memory — every memory ends up here, regardless of source.
 Vectors live in a separate `vec_records` virtual table (sqlite-vec).
 Migrations are idempotent in `init_db()` — adding a column is safe.
 

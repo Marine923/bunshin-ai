@@ -27,9 +27,9 @@ labels: enhancement
 
 <!-- 今これに近いことをやるにはどうしてる？ なぜそれだと不十分？ -->
 
-## Bunshin の 4 条件との整合
+## 設計原則との整合 (Bunshin Memory)
 
 <!--
-Local-first / AI-Agnostic / Offline / Omni-source のどれかに反する可能性があれば書いてください。
-反しないなら「すべて維持される」と一言で OK。
+Local-first / AI-Agnostic / Offline-capable / Omni-source — このどれかに反する
+可能性があれば書いてください。反しないなら「すべて維持される」と一言で OK。
 -->

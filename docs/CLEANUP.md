@@ -65,7 +65,7 @@ reclassify が動きます。`_TOOL_KEYWORDS` / `_CONCEPT_KEYWORDS` / `_ORG_KEYW
 を見て type を矯正します。
 
 ```bash
-# Bunshin.app を一度終了して再起動
+# Bunshin Memory.app を一度終了して再起動
 # → 起動時マイグレで該当 entity の type が自動的に直る
 ```
 
@@ -105,7 +105,7 @@ bunshin find-duplicates
 するようになったので、関連先が変われば description も意味のある形で変わります。
 
 ```bash
-# Bunshin.app または bunshin web を起動した状態で:
+# Bunshin Memory.app または bunshin web を起動した状態で:
 bunshin re-describe-all --limit 200 --min-mentions 2
 
 # 単独 entity を refresh するなら、関係性タブで対象 entity を開いて
