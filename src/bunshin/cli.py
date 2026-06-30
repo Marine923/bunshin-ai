@@ -2154,8 +2154,22 @@ def photos_relabel_places_cmd(db: Path, dry_run: bool):
                         f"— skipping rename. Run [cyan]bunshin merge-entities {eid} {clash['id']}[/cyan] to collapse."
                     )
                     continue
+                # Update name AND refresh the geocoder-source label in the
+                # description — leaving "Wikipedia から逆ジオコーディング" in
+                # the description after renaming via Nominatim was a
+                # subtle lie. Keep the GPS coordinates intact (they're
+                # what photos-relabel-places re-reads next time).
+                cur_desc = conn.execute(
+                    "SELECT description FROM entities WHERE id = ?", (eid,),
+                ).fetchone()
+                desc = cur_desc[0] if cur_desc and cur_desc[0] else ""
+                new_desc = desc.replace(
+                    "(Wikipedia から逆ジオコーディング)",
+                    "(Nominatim から逆ジオコーディング)",
+                )
                 conn.execute(
-                    "UPDATE entities SET name = ? WHERE id = ?", (new, eid),
+                    "UPDATE entities SET name = ?, description = ? WHERE id = ?",
+                    (new, new_desc, eid),
                 )
         console.print(f"[green]✓ Renamed {len(renames)} entit{'y' if len(renames)==1 else 'ies'}[/green]")
         # After rename, several entities likely collapse to the same city

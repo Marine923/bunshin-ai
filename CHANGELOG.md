@@ -5,6 +5,16 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.25] - 2026-06-29
+
+### Changed — `photos-relabel-places` で description の geocoder ラベルも更新
+- v0.10.24 までは **name だけ更新** していたので、description に
+  「(Wikipedia から逆ジオコーディング)」が残り続けていた
+- Nominatim で rename したのに「Wikipedia から取った」と書いてあるのは
+  subtle な嘘 → 「(Nominatim から逆ジオコーディング)」に書き換え
+- GPS 座標 ("GPS座標 32.83, 130.06") はそのまま保持 (次回 relabel で
+  再読する)
+
 ## [0.10.24] - 2026-06-29
 
 v0.10.23 で実装した Nominatim + photos-relabel-places の **clean handoff** 仕上げ。
