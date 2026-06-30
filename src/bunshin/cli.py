@@ -1492,6 +1492,35 @@ def doctor_cmd(db: Path):
                     )
             except Exception:
                 pass
+
+            # v0.10.33: pin候補。describe が短すぎる (= record-derived では
+            # 中身が薄い) けど mentions が多い entity は、user の off-screen
+            # な実生活が反映されてない可能性が高い → pin 推奨。pin
+            # 済 entity は除外。
+            try:
+                pin_candidate_rows = conn.execute(
+                    "SELECT e.id, e.name, "
+                    "       (SELECT COUNT(*) FROM record_entities re WHERE re.entity_id = e.id) AS m "
+                    "FROM entities e "
+                    "WHERE e.type IN ('place', 'project', 'organization') "
+                    "  AND (e.description IS NULL OR LENGTH(e.description) < 40) "
+                    "  AND NOT EXISTS (SELECT 1 FROM settings s WHERE s.key = 'pin:entity:' || e.id "
+                    "                  AND s.value IS NOT NULL AND TRIM(s.value) <> '')"
+                ).fetchall()
+                # high-signal filter: mentions >= 50
+                pin_candidates = [r for r in pin_candidate_rows if (r[2] or 0) >= 50]
+                if pin_candidates:
+                    sample = ", ".join(
+                        f"{r[1]} ({r[2]})"
+                        for r in sorted(pin_candidates, key=lambda x: -(x[2] or 0))[:3]
+                    )
+                    issues.append(
+                        ("ℹ", "pin 候補 entity",
+                         f"{len(pin_candidates)} 件の主要 entity に description / pin が不足 (例: {sample})",
+                         "関係性タブで該当 entity を開き「📌 ユーザー指定コンテキスト」を保存")
+                    )
+            except Exception:
+                pass
         conn.close()
     except Exception:
         pass

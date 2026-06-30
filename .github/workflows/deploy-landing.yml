@@ -35,6 +35,8 @@ jobs:
             cp docs/landing/CNAME _site/CNAME
           fi
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true   # Auto-enable Pages on first run (no manual repo setting needed)
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

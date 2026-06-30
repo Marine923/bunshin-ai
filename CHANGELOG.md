@@ -5,6 +5,23 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.33] - 2026-07-01
+
+### Added — `bunshin doctor` に「pin 候補 entity」検出
+- description が 40 文字未満 + mentions ≥ 50 + 既存 pin なし の
+  place / project / organization を「pin 推奨」として flag
+- 例: 「ℹ pin 候補 entity: 12 件の主要 entity に description /
+  pin が不足 (例: 壱岐島 (626), MARINE FLIGHT (101))」
+- pin が記録に出ない off-screen reality をカバーする手段である事を
+  ユーザーに思い出させる
+- 本田 DB (v0.10.33 時点) は description 充実なので候補ゼロ。
+  新規 β テスターで効果を発揮
+
+### Fixed — `Deploy landing page` workflow を auto-enable Pages に
+- 初回実行で「Get Pages site failed」エラーで failure になっていた
+- `actions/configure-pages@v5` に `enablement: true` 追加で
+  リポジトリの Pages 設定を自動有効化
+
 ## [0.10.32] - 2026-07-01
 
 ### Added — MCP に **`pin_entity_context`** tool 追加
