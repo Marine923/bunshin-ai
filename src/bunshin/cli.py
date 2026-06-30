@@ -1493,6 +1493,22 @@ def doctor_cmd(db: Path):
             except Exception:
                 pass
 
+            # v0.10.34: pin count surface — positive signal showing how
+            # much off-screen reality the user has explicitly captured.
+            try:
+                pin_count = conn.execute(
+                    "SELECT COUNT(*) FROM settings "
+                    "WHERE key LIKE 'pin:entity:%' "
+                    "AND value IS NOT NULL AND TRIM(value) <> ''"
+                ).fetchone()[0]
+                if pin_count > 0:
+                    console.print(
+                        f"[green]✓[/green] 固定コンテキスト: "
+                        f"{pin_count} 件の entity に pin 済 (describe 時に最優先反映)"
+                    )
+            except Exception:
+                pass
+
             # v0.10.33: pin候補。describe が短すぎる (= record-derived では
             # 中身が薄い) けど mentions が多い entity は、user の off-screen
             # な実生活が反映されてない可能性が高い → pin 推奨。pin

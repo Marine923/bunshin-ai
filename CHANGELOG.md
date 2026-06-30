@@ -5,6 +5,22 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.34] - 2026-07-01
+
+### Added — `bunshin doctor` に **pin count surface**
+- 既存 pin の数を「✓」ラインで positive 表示:
+  `✓ 固定コンテキスト: 6 件の entity に pin 済 (describe 時に最優先反映)`
+- 「issue」ではなく「成果」として見せる = ユーザーが pin の効果を視覚化
+
+### Changed — `Deploy landing page` workflow を manual-only に
+- v0.10.33 で `continue-on-error` を入れたが、build job が中途半端に成功
+  しても deploy job が失敗する構造で結局 red X が出てた
+- `on: push` を削除して `workflow_dispatch` のみに → push 時の自動実行
+  が無くなり red X 解消
+- 本田さんが repo Settings → Actions → Workflow permissions を
+  「Read and write」に有効化後、Actions UI / `gh workflow run` で
+  初回 manual trigger すれば auto-bootstrap → 以降は安定
+
 ## [0.10.33] - 2026-07-01
 
 ### Added — `bunshin doctor` に「pin 候補 entity」検出

@@ -5,11 +5,11 @@ name: Deploy landing page
 # pages の Custom domain にも反映される (CNAME ファイル参照)。
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/landing/**"
-      - ".github/workflows/deploy-landing.yml"
+  # Manual-only until Honda enables "Read and write permissions" at
+  # repo Settings → Actions → General → Workflow permissions. After
+  # that, the first manual run via Actions UI / `gh workflow run
+  # "Deploy landing page"` succeeds and we can switch this back to
+  # a push trigger.
   workflow_dispatch:
 
 permissions:
