@@ -93,7 +93,10 @@ LLM-extracted entities (people, projects, organizations) with specificity-scored
 File watcher catches edits in seconds. launchd / systemd / cron syncs every hour. Automatic daily backups (`VACUUM INTO`).
 
 ### 🤖 MCP for any AI
-Claude Code, Claude Desktop, or any MCP-aware LLM can call `search_memory` and `recall_session` against your records.
+Claude Code, Claude Desktop, or any MCP-aware LLM can call **8 MCP tools** against your records: `search_memory`, `recall_session`, `get_flashback`, `list_top_entities`, `get_today_hero`, `get_recent_chat`, `pin_entity_context`, `get_server_info`.
+
+### 📌 Pin off-screen reality
+Some entities have a real-life role that doesn't show up in textual records (e.g. an island that hosts your e-commerce + drone services + ocean-education businesses, but your records mostly capture AI research chat). **Pin** a 1–2 sentence override on that entity from the relationships tab, settings list, CLI (`bunshin pin-context`), or MCP (`pin_entity_context`) — describe will treat it as a **hard constraint** on the next regeneration.
 
 ---
 
