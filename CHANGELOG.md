@@ -5,6 +5,23 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.39] - 2026-07-01
+
+### Added — `bunshin export-pins` / `import-pins` CLI
+- pin の backup & migration を可能にする pair CLI:
+  - `bunshin export-pins -o pins.json` → 全 pin を JSON で出力
+    (entity name + type + context のみ、ID は環境依存なので除外)
+  - `bunshin import-pins pins.json [--overwrite] [--dry-run]` →
+    同名 entity に pin を復元
+- entity NAME マッチ (IDs は新 DB で別になるため不採用)
+- 既存 pin の上書きには `--overwrite` 明示 (default skip)
+- `--dry-run` で実行前確認
+
+### 用途
+- 新しい Mac への移行
+- DB リセット後の復旧
+- 友人へ「主要事業 entity の pin」を分けてあげる
+
 ## [0.10.38] - 2026-07-01
 
 ### Added — pin surfacing logic に **regression tests**

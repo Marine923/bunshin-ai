@@ -314,6 +314,116 @@ def merge_entities_cmd(source: str, target: str, dry_run: bool):
         conn.close()
 
 
+@main.command("export-pins")
+@click.option("--out", "-o", type=click.Path(path_type=Path), default=None,
+              help="Output file (default: stdout).")
+@click.option("--db", type=click.Path(path_type=Path), default=DEFAULT_DB_PATH,
+              help="Bunshin DB path.")
+def export_pins_cmd(out: Path | None, db: Path):
+    """Export all pinned contexts as JSON for backup or migration.
+
+    Format: [{"entity_name": "壱岐島", "entity_type": "place",
+              "context": "..."}]
+
+    Entity ID is intentionally omitted because IDs depend on import
+    order — names are the portable identifier. On a destination DB
+    that has the same entity names (rebuilt from the same sources),
+    `bunshin import-pins` round-trips this cleanly.
+    """
+    import json as _json
+    import sqlite3 as _sql
+    conn = init_db(db)
+    conn.row_factory = _sql.Row
+    try:
+        rows = conn.execute(
+            "SELECT e.name, e.type, s.value "
+            "FROM settings s "
+            "JOIN entities e ON s.key = 'pin:entity:' || e.id "
+            "WHERE s.key LIKE 'pin:entity:%' "
+            "  AND s.value IS NOT NULL AND TRIM(s.value) <> '' "
+            "ORDER BY e.name COLLATE NOCASE"
+        ).fetchall()
+        data = [
+            {"entity_name": r["name"], "entity_type": r["type"], "context": r["value"]}
+            for r in rows
+        ]
+        text = _json.dumps(data, ensure_ascii=False, indent=2)
+        if out:
+            out.write_text(text + "\n")
+            console.print(f"[green]✓[/green] {len(data)} pins → {out}")
+        else:
+            print(text)
+    finally:
+        conn.close()
+
+
+@main.command("import-pins")
+@click.argument("in_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--db", type=click.Path(path_type=Path), default=DEFAULT_DB_PATH,
+              help="Bunshin DB path.")
+@click.option("--overwrite", is_flag=True,
+              help="Replace existing pins on entities that match (default: skip).")
+@click.option("--dry-run", is_flag=True,
+              help="Show what would change without writing.")
+def import_pins_cmd(in_file: Path, db: Path, overwrite: bool, dry_run: bool):
+    """Restore pins from a JSON file produced by `export-pins`.
+
+    Matches by entity NAME (exact). Entities not found in the
+    destination DB are skipped with a warning. By default, entities
+    that already have a pin are skipped — pass --overwrite to replace.
+
+    Use this when migrating to a new machine or restoring after a
+    DB reset.
+    """
+    import json as _json
+    import sqlite3 as _sql
+    conn = init_db(db)
+    conn.row_factory = _sql.Row
+    try:
+        data = _json.loads(in_file.read_text())
+        if not isinstance(data, list):
+            console.print(f"[red]✗ {in_file}: expected a JSON array[/red]")
+            return
+        applied = skipped = missing = 0
+        for item in data:
+            name = (item.get("entity_name") or "").strip()
+            ctx = (item.get("context") or "").strip()
+            if not name or not ctx:
+                continue
+            row = conn.execute(
+                "SELECT id FROM entities WHERE name = ?", (name,)
+            ).fetchone()
+            if not row:
+                console.print(f"  [yellow]?[/yellow] {name!r}: not in destination DB — skip")
+                missing += 1
+                continue
+            eid = row["id"]
+            key = f"pin:entity:{eid}"
+            existing = conn.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
+            if existing and (existing[0] or "").strip() and not overwrite:
+                console.print(f"  [yellow]·[/yellow] {name!r}: already has pin — skip (--overwrite to replace)")
+                skipped += 1
+                continue
+            if dry_run:
+                console.print(f"  [cyan]→[/cyan] {name!r} ← {ctx[:60]}…")
+            else:
+                with conn:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                        (key, ctx),
+                    )
+            applied += 1
+        action = "would apply" if dry_run else "applied"
+        console.print(
+            f"\n[bold]{action}:[/bold] {applied}, skipped: {skipped}, "
+            f"missing: {missing}"
+        )
+    finally:
+        conn.close()
+
+
 @main.command("pin-context")
 @click.argument("entity")
 @click.argument("context", required=False)
