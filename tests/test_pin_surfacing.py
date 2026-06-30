@@ -163,3 +163,108 @@ def test_list_top_entities_pinned_field_batched_query(conn):
         "preview must stop at first newline so multi-line pins don't bleed"
     )
     assert len(preview_e1) <= 120
+
+
+def test_export_pins_round_trips_through_import(conn, tmp_path):
+    """v0.10.39 export-pins / import-pins: round-trip on name match.
+    Names (not IDs) are the portable identifier — exported on machine
+    A, imported on machine B where IDs are different but names match,
+    pins land on the correct entity."""
+    import json as _json
+    from bunshin.knowledge_graph import init_kg_schema
+    init_kg_schema(conn)
+
+    # Simulate source DB: 3 entities, 2 pinned
+    e_iki = _seed_entity(conn, "壱岐島", "place")
+    _seed_entity(conn, "Unrelated", "topic")
+    e_air = _seed_entity(conn, "AIR Flight", "organization")
+    _pin(conn, e_iki, "main business hub")
+    _pin(conn, e_air, "drone subsidiary")
+
+    # Export: same query the CLI uses, no JSON ID
+    rows = conn.execute(
+        "SELECT e.name, e.type, s.value "
+        "FROM settings s "
+        "JOIN entities e ON s.key = 'pin:entity:' || e.id "
+        "WHERE s.key LIKE 'pin:entity:%' "
+        "  AND s.value IS NOT NULL AND TRIM(s.value) <> '' "
+        "ORDER BY e.name COLLATE NOCASE"
+    ).fetchall()
+    exported = [
+        {"entity_name": r[0], "entity_type": r[1], "context": r[2]}
+        for r in rows
+    ]
+    out = tmp_path / "pins.json"
+    out.write_text(_json.dumps(exported, ensure_ascii=False))
+    assert len(exported) == 2, "only the 2 pinned entities export"
+    assert {p["entity_name"] for p in exported} == {"壱岐島", "AIR Flight"}
+
+    # Wipe pins to simulate a fresh destination DB; entities stay.
+    conn.execute("DELETE FROM settings WHERE key LIKE 'pin:entity:%'")
+    conn.commit()
+    assert conn.execute(
+        "SELECT COUNT(*) FROM settings WHERE key LIKE 'pin:entity:%'"
+    ).fetchone()[0] == 0
+
+    # Import: same logic as the CLI — match by name, skip-if-exists
+    # default. Here nothing exists, so all should land.
+    data = _json.loads(out.read_text())
+    applied = 0
+    for item in data:
+        row = conn.execute(
+            "SELECT id FROM entities WHERE name = ?", (item["entity_name"],)
+        ).fetchone()
+        assert row, f"{item['entity_name']} should be present in dest DB"
+        key = f"pin:entity:{row[0]}"
+        existing = conn.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        ).fetchone()
+        if existing and (existing[0] or "").strip():
+            continue  # default skip
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (key, item["context"]),
+        )
+        applied += 1
+    conn.commit()
+    assert applied == 2, "fresh dest DB → both pins should apply"
+
+    # Verify the pins landed on the correct entities by name
+    iki_pin = conn.execute(
+        "SELECT s.value FROM settings s "
+        "JOIN entities e ON s.key = 'pin:entity:' || e.id "
+        "WHERE e.name = ?", ("壱岐島",),
+    ).fetchone()
+    assert iki_pin[0] == "main business hub"
+
+
+def test_import_pins_skips_missing_entities(conn, tmp_path):
+    """Items whose entity name isn't in the destination DB are
+    skipped without error — the import-pins CLI logs a warning but
+    keeps going."""
+    import json as _json
+    from bunshin.knowledge_graph import init_kg_schema
+    init_kg_schema(conn)
+
+    _seed_entity(conn, "壱岐島", "place")
+    # Note: "GhostEntity" is NOT seeded
+    data = [
+        {"entity_name": "壱岐島", "entity_type": "place", "context": "ok"},
+        {"entity_name": "GhostEntity", "entity_type": "project", "context": "should skip"},
+    ]
+    applied = missing = 0
+    for item in data:
+        row = conn.execute(
+            "SELECT id FROM entities WHERE name = ?", (item["entity_name"],)
+        ).fetchone()
+        if not row:
+            missing += 1
+            continue
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (f"pin:entity:{row[0]}", item["context"]),
+        )
+        applied += 1
+    conn.commit()
+    assert applied == 1
+    assert missing == 1

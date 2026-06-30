@@ -245,6 +245,26 @@ ENTITY は ID か **完全一致名** どちらでも OK。pin 後に
 `bun re-describe-all --limit 1` か、関係性タブで「✨やり直し」を
 クリックすると新しい description に反映される。
 
+### `bunshin export-pins [-o FILE]`
+全 pin を JSON で出力。entity name + type + context を含む
+(ID は環境依存なので除外)。`-o` 省略で stdout。
+
+```bash
+bun export-pins -o pins.json
+bun export-pins | jq .            # stdout → jq でフィルタ
+```
+
+### `bunshin import-pins <FILE> [--overwrite] [--dry-run]`
+`export-pins` で吐いた JSON を別 DB に復元。entity NAME マッチ。
+
+```bash
+bun import-pins pins.json --dry-run    # 確認
+bun import-pins pins.json               # 既存 pin はスキップ
+bun import-pins pins.json --overwrite   # 上書き
+```
+
+新 Mac への移行 / DB リセット後の復旧 / 友人への pin 共有に。
+
 ---
 
 ## 認証情報セットアップ
