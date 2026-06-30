@@ -179,6 +179,53 @@ bun clean --min-length 30      # 30文字未満を削除
 bun reindex
 ```
 
+### `bunshin doctor`
+セットアップと DB の健康診断。DB / Ollama / Gmail / 自動更新 / MCP /
+Knowledge Graph / Anthropic API キー / web 起動状況 / 古い写真地名 /
+重複候補 entity を一度に診断。週次推奨。
+
+```bash
+bun doctor
+```
+
+### `bunshin find-duplicates [--limit N] [--min-mentions M]`
+NER のゆれで重複した entity を normalize して group 化、
+ready-to-paste の `merge-entities` コマンドを出力。
+
+```bash
+bun find-duplicates                  # default --limit 30 --min-mentions 1
+bun find-duplicates --min-mentions 0 # mention 0 entity も含める
+```
+
+### `bunshin merge-entities <SOURCE> <TARGET> [--dry-run]`
+重複 entity を 1 つに統合。SOURCE / TARGET は ID か **完全一致名**
+どちらでも OK。`record_entities` + `entity_relations` を target に書換、
+source 行を削除。
+
+```bash
+bun merge-entities 105 113 --dry-run    # 確認
+bun merge-entities 105 113              # 実行
+bun merge-entities "MARINE FLIGHT" "MARINE FLIGHT（主催ブランド名）"
+```
+
+### `bunshin photos-relabel-places [--db PATH] [--dry-run]`
+旧 Wikipedia 起点で picked up された photo place entity の name を
+Nominatim ベース (現代の admin) に rename。実行後は同じ city に
+collapse した重複グループを inline で表示 (find-duplicates 不要)。
+
+```bash
+bun photos-relabel-places --dry-run   # 旧名 → 新名 を確認
+bun photos-relabel-places             # rename + 重複グループ表示
+```
+
+### `bunshin re-describe-all [--limit N] [--min-mentions M]`
+全 entity の AI description を再生成。`bunshin web` 起動が必要。
+v0.10.15 以降は describe prompt に top_relations を注入。
+
+```bash
+bun re-describe-all --limit 200 --min-mentions 2
+```
+
 ---
 
 ## 認証情報セットアップ
