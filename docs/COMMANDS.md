@@ -226,6 +226,25 @@ v0.10.15 以降は describe prompt に top_relations を注入。
 bun re-describe-all --limit 200 --min-mentions 2
 ```
 
+### `bunshin pin-context <ENTITY> [CONTEXT] [--clear]`
+記録に出てこない off-screen な実生活コンテキストを entity に pin。
+次回 describe 時に「ユーザー指定コンテキスト」として prompt に注入される。
+
+```bash
+# pin する
+bun pin-context 壱岐島 "壱岐黄金プロジェクト・MARINE FLIGHT・海洋教育の活動拠点"
+
+# 現在の pin を表示
+bun pin-context 壱岐島
+
+# pin を削除
+bun pin-context 壱岐島 --clear
+```
+
+ENTITY は ID か **完全一致名** どちらでも OK。pin 後に
+`bun re-describe-all --limit 1` か、関係性タブで「✨やり直し」を
+クリックすると新しい description に反映される。
+
 ---
 
 ## 認証情報セットアップ

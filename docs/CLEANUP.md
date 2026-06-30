@@ -112,6 +112,26 @@ bunshin re-describe-all --limit 200 --min-mentions 2
 # 「✨ AI に説明させる → やり直し」をクリック。
 ```
 
+### 4-b. 記録に出てこない off-screen な実生活を pin する
+
+**いつ**: describe が「記録ベース」では正しいが「実生活ベース」では
+ズレているとき。例:
+
+- 壱岐島 → 「ドローン関連のビジネス環境や市場分析」(records 反映、
+  だが実際は壱岐黄金 / MARINE FLIGHT / 海洋教育の活動拠点)
+
+```bash
+# pin する (records より優先)
+bunshin pin-context 壱岐島 "壱岐黄金プロジェクト・MARINE FLIGHT・海洋教育の活動拠点"
+
+# 再描述
+bunshin re-describe-all --limit 1
+# または関係性タブで「✨やり直し」
+```
+
+pin は `settings` テーブルに永続化されるので、次回以降の describe
+にも継続反映されます。`--clear` で削除、引数なしで現在の pin を表示。
+
 ---
 
 ## 5. doctor で全体ヘルスチェック
