@@ -5,6 +5,29 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.36] - 2026-07-01
+
+### Added — MCP `get_today_hero` 出力に **`pinned_anchors`** を含める
+- 朝のフラッシュバック / 「今日これだけ」briefing で hero (event /
+  stale_project / recent_file) と並列に、ユーザーが pin した entity
+  最大 8 件を 1 行プレビュー付きで返す
+- 連結 LLM は毎日の briefing で「ユーザーの core projects を必ず思い出す」
+  ことができる → 何の話題でも anchor を保てる
+- pin の最初の改行までを 120 文字でカット (briefing payload を軽く保つ)
+- hero_cache の structure が変わるので初回 call で再計算 (旧 cache 削除)
+
+### 実機検証 (本田 DB)
+```
+hero kind: stale_project
+pinned anchors: 6
+  - AIR Flight                     (organization) — 本田が新規事業プロデューサー…
+  - MARINE FLIGHT                  (organization) — 個人向けドローン体験＋同伴空撮…
+  - リーフボールジャパン              (organization) — 沼津で海洋教育＋藻場再生…
+  - 壱岐島                          (place)        — 壱岐黄金プロジェクト・MARINE FLIGHT…
+  - 壱岐黄金プロジェクト              (project)     — 壱岐島産小粒じゃがいもの高級ブランド化…
+  - 沼津リーフボール海洋教育プロジェクト  (project)     — 沼津で運営する海洋教育＋藻場再生…
+```
+
 ## [0.10.35] - 2026-07-01
 
 ### Added — MCP `search_memory` 結果に **`pinned_entities`** ブロックを surface

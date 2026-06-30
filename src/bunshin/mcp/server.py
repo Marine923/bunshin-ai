@@ -476,7 +476,34 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                 "headline": f.get("name", "?"),
                 "detail": f.get("modified", ""),
             }
-        return {"hero": hero, "generated_at": j.get("generated_at")}
+        # v0.10.36: pull the user's pinned entities into every hero
+        # response. The morning-briefing LLM gets a one-line reminder
+        # of the user's declared core projects, so it stays anchored
+        # even when the hero itself is about a random recent file.
+        pinned_summary = []
+        try:
+            for r in conn.execute(
+                "SELECT e.name, e.type, s.value "
+                "FROM settings s "
+                "JOIN entities e ON s.key = 'pin:entity:' || e.id "
+                "WHERE s.key LIKE 'pin:entity:%' "
+                "  AND s.value IS NOT NULL AND TRIM(s.value) <> '' "
+                "ORDER BY e.name COLLATE NOCASE "
+                "LIMIT 8"
+            ):
+                pinned_summary.append({
+                    "name": r[0], "type": r[1],
+                    # First line of the pin only, capped at 120 chars,
+                    # to keep the briefing payload small.
+                    "context_preview": (r[2].split("\n")[0])[:120],
+                })
+        except Exception:
+            pass
+        return {
+            "hero": hero,
+            "generated_at": j.get("generated_at"),
+            "pinned_anchors": pinned_summary,
+        }
 
     @mcp.tool()
     def get_today_hero() -> str:
