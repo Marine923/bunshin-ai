@@ -5,6 +5,31 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.26] - 2026-06-29
+
+### Changed — `photos-relabel-places` 完了時に **重複グループを inline 表示**
+- v0.10.24 では「Next step: bunshin find-duplicates」と促すだけだったが、
+  ユーザーは別コマンドを叩く必要があった
+- v0.10.26: rename 直後に **find-duplicates 相当のロジックを inline 実行**
+  し、新たに collide した重複グループ + ready-to-paste merge コマンドを
+  そのまま表示:
+  ```
+  ✓ Renamed 8 entities
+
+  3 duplicate group(s) appeared after rename:
+
+    1.  'バルセロナ'
+      → # 204  'バルセロナ'        (place, 7 mentions)
+        # 208  'バルセロナ'        (place, 3 mentions)
+         $ bunshin merge-entities 208 204
+
+    2.  'オルシュティン'
+      → # 203  'オルシュティン'     (place, 5 mentions)
+        # 207  'オルシュティン'     (place, 2 mentions)
+         $ bunshin merge-entities 207 203
+  ```
+- ユーザーは relabel → merge までを 1 セッションで完結できる
+
 ## [0.10.25] - 2026-06-29
 
 ### Changed — `photos-relabel-places` で description の geocoder ラベルも更新

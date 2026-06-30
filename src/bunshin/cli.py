@@ -2172,16 +2172,61 @@ def photos_relabel_places_cmd(db: Path, dry_run: bool):
                     (new, new_desc, eid),
                 )
         console.print(f"[green]✓ Renamed {len(renames)} entit{'y' if len(renames)==1 else 'ies'}[/green]")
-        # After rename, several entities likely collapse to the same city
-        # (e.g. Barcelona City Hall + Nou Sardenya → both バルセロナ).
-        # Tell the user the next step explicitly rather than leaving them
-        # to discover the dups.
-        console.print(
-            "\n[dim]Next step:[/dim] "
-            "[cyan]bunshin find-duplicates[/cyan]  "
-            "[dim](renamed entities may now collide — merge with[/dim] "
-            "[cyan]bunshin merge-entities <src> <tgt>[/cyan][dim])[/dim]"
-        )
+
+        # v0.10.26: after rename, automatically show the new duplicate
+        # groups so the user doesn't have to run find-duplicates by
+        # hand. Most relabel runs create at least one collision
+        # (Barcelona City Hall + Nou Sardenya → both バルセロナ etc.).
+        try:
+            import re as _re_dup
+            def _norm(name):
+                if not name: return ""
+                s = _re_dup.sub(r"\s*[（(].*?[)）]\s*", "", name)
+                s = s.strip().lower()
+                return _re_dup.sub(r"[ \t/・,，、:：·]", "", s)
+            rows = conn.execute(
+                "SELECT e.id, e.name, e.type, "
+                "(SELECT COUNT(*) FROM record_entities re WHERE re.entity_id = e.id) AS m "
+                "FROM entities e"
+            ).fetchall()
+            groups: dict[str, list[dict]] = {}
+            for r in rows:
+                k = _norm(r["name"])
+                if not k or len(k) < 2:
+                    continue
+                groups.setdefault(k, []).append({
+                    "id": r["id"], "name": r["name"], "type": r["type"],
+                    "mentions": r["m"] or 0,
+                })
+            dups = [g for g in groups.values() if len(g) >= 2]
+            if dups:
+                console.print(
+                    f"\n[bold yellow]{len(dups)}[/bold yellow] duplicate group(s) appeared after rename:"
+                )
+                dups.sort(key=lambda g: -max(e["mentions"] for e in g))
+                for i, group in enumerate(dups, 1):
+                    group.sort(key=lambda e: (-e["mentions"], len(e["name"] or "")))
+                    target = group[0]
+                    console.print(f"\n  [bold]{i}.[/bold]  {target['name']!r}")
+                    for e in group:
+                        marker = "→" if e is target else " "
+                        console.print(
+                            f"    {marker} #{e['id']:4d}  {e['name']!r:30s} "
+                            f"({e['type'] or '?':12s}, {e['mentions']:5d} mentions)"
+                        )
+                    for e in group[1:]:
+                        console.print(
+                            f"       [yellow]$ bunshin merge-entities {e['id']} {target['id']}[/yellow]"
+                        )
+            else:
+                console.print(
+                    "\n[green]No duplicates after rename. Database is clean.[/green]"
+                )
+        except Exception:
+            console.print(
+                "\n[dim]Next step:[/dim] "
+                "[cyan]bunshin find-duplicates[/cyan]"
+            )
     finally:
         conn.close()
 
