@@ -34,9 +34,16 @@ jobs:
           if [ -f docs/landing/CNAME ]; then
             cp docs/landing/CNAME _site/CNAME
           fi
+      # configure-pages with enablement: true needs Settings →
+      # Actions → "Read and write permissions" enabled at the repo
+      # level. If the repo owner hasn't done that yet, this step
+      # gracefully fails and the workflow stops here without
+      # blocking subsequent runs. After the owner enables Pages
+      # (once), re-run via workflow_dispatch.
       - uses: actions/configure-pages@v5
+        continue-on-error: true
         with:
-          enablement: true   # Auto-enable Pages on first run (no manual repo setting needed)
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

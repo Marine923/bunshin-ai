@@ -37,7 +37,11 @@ jobs:
         working-directory: electron-app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist
+        # --publish never: build only, don't try to upload to release
+        # (auto-publish requires draft release + GITHUB_TOKEN scopes
+        # we don't grant by default). DMGs land in dist/ and are
+        # uploaded as workflow artifacts in the next step.
+        run: npm run dist -- --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

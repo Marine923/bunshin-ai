@@ -14,6 +14,7 @@ choose read it, *locally*. Japanese-first.
 > Code desktop wrapper — different category, same anime root).
 
 [![Latest release](https://img.shields.io/github/v/release/Marine923/bunshin-ai?style=for-the-badge&color=818cf8)](https://github.com/Marine923/bunshin-ai/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/Marine923/bunshin-ai/ci.yml?branch=main&style=for-the-badge&label=CI&color=5fbf6f)](https://github.com/Marine923/bunshin-ai/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/macOS-11%2B-lightgrey?style=for-the-badge)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-fbbf24?style=for-the-badge)](LICENSE)
 [![Local-first](https://img.shields.io/badge/local--first-100%25-5fbf6f?style=for-the-badge)]()
