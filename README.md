@@ -259,6 +259,19 @@ Headline themes:
 
 ---
 
+## Testing
+
+64 pytest cases run on every push against a matrix of Ubuntu × macOS × Python 3.10/3.11/3.12 (see the CI badge above). New v0.10 features have dedicated regression suites:
+
+- `test_entity_hygiene.py` (4) — merge-entities SQL, find-duplicates normalize, pin round-trip, tool-keyword reclassify
+- `test_pin_surfacing.py` (6) — pin-list endpoint, search_memory substring match, get_today_hero LIMIT+sort, list_top_entities batched lookup, export/import round-trip
+- `test_photos_place_regex.py` (4) — v0.10.14 dab-tail regex regression protection
+- `test_doctor_json.py` (4) — public `--json` output contract
+
+Plus the existing 46 covering storage, chunking, iMessage, PDF OCR, insights, notes, scheduler, knowledge graph. Run locally: `uv run pytest`.
+
+---
+
 ## Status
 
 ```
