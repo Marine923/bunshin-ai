@@ -5,6 +5,38 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.42] - 2026-07-01
+
+Honda 100 テスト評価の残課題 STEP 1-3 対応。
+
+### Fixed — MCP entity の description 誤り (STEP 2)
+- **MCP** (id=161): 「マイクロソフト認定プロフェッショナル」→
+  「人工知能と外部ツールが通信するための標準的なプロトコル。
+  Anthropic 社が作成」 (Model Context Protocol) ✅
+- **Adversarial Claim Verifier** (id=136): 「初学者向けの
+  第二種電気工事士参考書プロジェクト」→ 「Bunshin Memory 内の
+  主張検証エージェント」 ✅
+- pin-context CLI で修正 → 起動時 describe 再生成
+
+### Added — MCP `search_memory` cascade retrieval (STEP 3, Honda A)
+- default `min_relevance=20` が一般名詞 (じゃがいも, ドローン等) を
+  全滅させていた問題を解消
+- **hit ゼロなら threshold を自動 fallback**: 20 → 10 → 0 の順で retry
+- caller が明示的に低 threshold (< 10) を指定した場合は cascade 発動
+  しない (opt-in 尊重)
+- 応答に `cascade_used: [20, 10]` と `cascade_note` を含めて透明性確保
+
+### 実機検証 (本田 DB)
+```
+q='じゃがいも'      count=1  cascade=[20, 10]     (以前 0 hit)
+q='ドローン'       count=3  cascade=[20, 10, 0]  (以前 0 hit)
+q='壱岐黄金 じゃがいも'  count=3  cascade=[20]         (primary で hit)
+```
+
+### Verified — Deck A type=place/tool 重複 (STEP 1)
+Honda 100 テスト時点 (v0.10.29 相当) では重複表示があったが、v0.10.41
+時点で entities テーブルに id=122 の 1 行のみ (type='tool')。既に解消。
+
 ## [0.10.41] - 2026-07-01
 
 ### Added — `bunshin doctor` に iMessage 取り込み状態チェック

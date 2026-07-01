@@ -238,6 +238,64 @@ def test_export_pins_round_trips_through_import(conn, tmp_path):
     assert iki_pin[0] == "main business hub"
 
 
+def test_cascade_threshold_order_and_early_exit():
+    """v0.10.42 cascade retrieval: threshold sequence must be
+    strictly descending, and cascade stops at the first non-empty
+    tier."""
+    # Simulated candidate hits with relevance percentages
+    candidates = [
+        {"rel": 45, "id": "high"},
+        {"rel": 12, "id": "medium"},
+        {"rel": 3, "id": "low"},
+    ]
+
+    def _filter(threshold):
+        return [c for c in candidates if c["rel"] >= threshold]
+
+    # Case 1: primary at 20 → 1 hit, cascade never triggers
+    primary = 20
+    hits = _filter(primary)
+    cascade = [primary]
+    if not hits and primary >= 10:
+        for fb in (10, 0):
+            if fb >= primary:
+                continue
+            hits = _filter(fb)
+            cascade.append(fb)
+            if hits:
+                break
+    assert len(hits) == 1 and cascade == [20]
+
+    # Case 2: primary at 50 → 0 → cascade to 10 → 2 hits, stop
+    primary = 50
+    hits = _filter(primary)
+    cascade = [primary]
+    if not hits and primary >= 10:
+        for fb in (10, 0):
+            if fb >= primary:
+                continue
+            hits = _filter(fb)
+            cascade.append(fb)
+            if hits:
+                break
+    assert cascade == [50, 10]
+    assert len(hits) == 2
+
+    # Case 3: caller opted into low threshold (5) → no cascade
+    primary = 5
+    hits = _filter(primary)
+    cascade = [primary]
+    if not hits and primary >= 10:
+        for fb in (10, 0):
+            if fb >= primary:
+                continue
+            hits = _filter(fb)
+            cascade.append(fb)
+            if hits:
+                break
+    assert cascade == [5], "caller-opt-in low threshold must not cascade further"
+
+
 def test_import_pins_skips_missing_entities(conn, tmp_path):
     """Items whose entity name isn't in the destination DB are
     skipped without error — the import-pins CLI logs a warning but

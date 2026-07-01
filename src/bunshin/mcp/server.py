@@ -157,6 +157,13 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
         eff_min_rel = max(0, min(int(min_relevance), 100))
         eff_max_chars = max(100, min(int(content_max_chars), 20000))
         try:
+            # v0.10.42 (Honda 100-test finding A): cascade retrieval.
+            # The default min_relevance=20 wipes out common single-noun
+            # queries like "じゃがいも" or "ドローン" — rerank scores
+            # for high-frequency nouns cluster below 20% even when
+            # there are real hits. If the initial pass returns nothing,
+            # transparently retry with a lower threshold rather than
+            # forcing the caller to guess and pass min_relevance=0.
             results = do_search(
                 conn,
                 query,
@@ -169,36 +176,47 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                 # keyword-fallback noise into a real similarity score.
                 rerank=True,
             )
-            formatted = []
-            for r in results:
-                rel = _distance_to_percent(r)
-                # v0.10.8 Honda Patch A: drop sub-threshold hits. Mirrors
-                # the Web UI's auto-filter behaviour so MCP callers don't
-                # get a "0% relevance" hit they'd have to filter out
-                # themselves. None (keyword-fallback) passes through —
-                # we have no quality signal so let the caller judge.
-                if rel is not None and rel < eff_min_rel:
-                    continue
-                content = r.get("content") or ""
-                truncated = len(content) > eff_max_chars
-                if truncated:
-                    content = (
-                        content[:eff_max_chars]
-                        + f"\n\n…[content truncated at {eff_max_chars} chars — "
-                        f"call recall_session(source_id={r['source_id']!r}) for the full session]"
-                    )
-                formatted.append({
-                    "timestamp": _format_timestamp(r["timestamp"]),
-                    "role": (r["metadata"] or {}).get("role"),
-                    "source": r["source"],
-                    "source_id": r["source_id"],
-                    # Fix 3: surface the same 0-100 score the web UI shows
-                    # so the calling LLM can sort/filter on actual quality
-                    # rather than the all-1.0 raw distance.
-                    "relevance_percent": rel,
-                    "content_truncated": truncated,  # Fix 2 transparency
-                    "content": content,
-                })
+
+            def _format_hits(hits, threshold):
+                out = []
+                for r in hits:
+                    rel = _distance_to_percent(r)
+                    if rel is not None and rel < threshold:
+                        continue
+                    content = r.get("content") or ""
+                    truncated = len(content) > eff_max_chars
+                    if truncated:
+                        content = (
+                            content[:eff_max_chars]
+                            + f"\n\n…[content truncated at {eff_max_chars} chars — "
+                            f"call recall_session(source_id={r['source_id']!r}) for the full session]"
+                        )
+                    out.append({
+                        "timestamp": _format_timestamp(r["timestamp"]),
+                        "role": (r["metadata"] or {}).get("role"),
+                        "source": r["source"],
+                        "source_id": r["source_id"],
+                        "relevance_percent": rel,
+                        "content_truncated": truncated,
+                        "content": content,
+                    })
+                return out
+
+            # First pass at the caller-requested threshold.
+            formatted = _format_hits(results, eff_min_rel)
+            cascade_used = [eff_min_rel]
+
+            # Cascade: only trigger if caller left the safety default and
+            # we came up empty. Skip cascade if the caller already asked
+            # for a lower threshold — they've opted in to noisy results.
+            if not formatted and eff_min_rel >= 10:
+                for fallback in (10, 0):
+                    if fallback >= eff_min_rel:
+                        continue
+                    formatted = _format_hits(results, fallback)
+                    cascade_used.append(fallback)
+                    if formatted:
+                        break
             # v0.10.35: surface pinned entities the user has explicitly
             # annotated. A connecting LLM can use this to "anchor"
             # downstream reasoning — e.g. if the query is "壱岐島" and
@@ -246,6 +264,21 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                 "content_max_chars": eff_max_chars,
                 "results": formatted,
             }
+            # v0.10.42: expose the cascade so the caller can tell that
+            # results below the requested threshold were surfaced as a
+            # last-resort. cascade_used=[20] means the primary pass
+            # succeeded; [20, 10] means we fell back to 10; [20, 10, 0]
+            # means even 10 was empty and everything shown is
+            # low-signal.
+            if len(cascade_used) > 1:
+                payload["cascade_used"] = cascade_used
+                payload["cascade_note"] = (
+                    f"Initial min_relevance={cascade_used[0]} returned 0 hits; "
+                    f"automatically retried at lower thresholds "
+                    f"({', '.join(str(t) for t in cascade_used[1:])}). "
+                    f"Results shown are best-effort — quality may be lower "
+                    f"than a strict {cascade_used[0]}% match."
+                )
             if pinned_entities:
                 payload["pinned_entities"] = pinned_entities
                 payload["pinned_entities_note"] = (
