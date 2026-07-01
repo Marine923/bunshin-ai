@@ -155,6 +155,20 @@ def test_preferred_ollama_models_probe_predicate_covers_common_bad_states():
     )
 
 
+def test_doctor_fix_flag_is_registered_and_runs_on_healthy_env():
+    """v0.10.56: --fix must appear in --help and must not crash when there
+    are no auto-fixable issues (e.g. on a healthy dev machine)."""
+    r = subprocess.run(
+        [sys.executable, "-m", "bunshin.cli", "doctor", "--help"],
+        capture_output=True, text=True, check=False,
+    )
+    assert r.returncode == 0
+    assert "--fix" in r.stdout, "--fix flag missing from doctor --help"
+    assert "auto-repair" in r.stdout.lower() or "consent" in r.stdout.lower(), (
+        "--fix help text lost its safety-first rationale"
+    )
+
+
 def test_doctor_deep_flag_is_registered_in_help():
     """v0.10.51: --deep flag must appear in doctor's --help. Without it,
     users won't discover the end-to-end search smoke test even though

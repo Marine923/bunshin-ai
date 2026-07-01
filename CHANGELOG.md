@@ -5,6 +5,33 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.56] - 2026-07-01
+
+### Added — `bunshin doctor --fix` 自動修復フラグ
+
+detect → explain の doctor ワークフローに fix ワンショットを追加。
+safe な修復のみ自動実行し、consent が要る操作 (uv sync / ollama pull) は明示的にコマンド提示。
+
+- **Auto-fix**: 「Embedding モデル未DL」に該当する issue があれば `bunshin warm` の in-process 実行 (embed + rerank 両方)
+- **Manual-only**: sqlite-vec 修復、Ollama モデル pull、Anthropic API キー設定、etc. は destructive/user-choice なので実行せず fix hint だけ再掲
+- Healthy DB では「auto-fixable な issue はありません」明示 + マニュアル項目リスト
+
+### 実行例
+```
+$ bunshin doctor --fix
+
+── 自動修復 (--fix) ──
+
+auto-fixable な issue はありません。 以下は手動で実行が必要:
+   • iMessage 取り込み: bunshin import-imessage
+   • カレンダー取り込み: bunshin setup-calendar 'iCal URL'
+   • Claude Code MCP: docs/SETUP.md → 「オプション：MCP連携」参照
+```
+
+### テスト
+- `test_doctor_fix_flag_is_registered_and_runs_on_healthy_env`
+- 合計 **76 tests pass**
+
 ## [0.10.55] - 2026-07-01
 
 ### Changed — 検索「該当なし」に active filter 表示 + ワンクリック解除

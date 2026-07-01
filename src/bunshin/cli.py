@@ -1350,7 +1350,12 @@ def uninstall_scheduler_cmd():
     help="Run an end-to-end search smoke test (embed + vec + BM25 + rerank). "
          "Catches 'everything looks green but search returns nothing' cases.",
 )
-def doctor_cmd(db: Path, as_json: bool, deep: bool):
+@click.option(
+    "--fix", is_flag=True,
+    help="Auto-repair safely-fixable issues (e.g. run `warm` if models missing). "
+         "For issues needing user consent (uv sync, ollama pull), only surfaces the exact command.",
+)
+def doctor_cmd(db: Path, as_json: bool, deep: bool, fix: bool):
     """Diagnose setup, show what's working and what's missing."""
     import subprocess
 
@@ -1885,10 +1890,58 @@ def doctor_cmd(db: Path, as_json: bool, deep: bool):
         return
 
     console.print("[bold]── 改善できる項目 ──[/bold]\n")
-    for level, label, detail, fix in issues:
+    for level, label, detail, fix_hint in issues:
         color = "red" if level == "❌" else "yellow" if level == "⚠" else "cyan"
         console.print(f"[{color}]{level}[/{color}] [bold]{label}[/bold]: {detail}")
-        console.print(f"   [dim]→[/dim] [cyan]{fix}[/cyan]\n")
+        console.print(f"   [dim]→[/dim] [cyan]{fix_hint}[/cyan]\n")
+
+    # v0.10.56: --fix runs safe auto-repairs. Only "run bunshin warm"
+    # is safe enough to trigger without asking — everything else
+    # (uv sync, ollama pull) touches the system and needs explicit user
+    # consent, so we just print the exact command.
+    if fix:
+        console.print("[bold]── 自動修復 (--fix) ──[/bold]\n")
+        auto_fixable = [
+            i for i in issues
+            if "warm" in i[3] and "モデル未DL" in i[1]
+        ]
+        needs_consent = [
+            i for i in issues
+            if not any("warm" in i[3] and "モデル未DL" in i[1] for _ in [i])
+            and i[3].strip() not in ("—", "")
+        ]
+        if not issues:
+            console.print("[green]全て clean、修復するものはありません。[/green]")
+        elif not auto_fixable:
+            console.print(
+                "[yellow]auto-fixable な issue はありません。[/yellow] "
+                "以下は手動で実行が必要:"
+            )
+            for _, label, _, fix_hint in needs_consent[:5]:
+                console.print(f"   • [bold]{label}[/bold]: [cyan]{fix_hint}[/cyan]")
+        else:
+            for _, label, detail, _ in auto_fixable:
+                console.print(f"[yellow]▶[/yellow] {label} → [cyan]bunshin warm[/cyan] を実行中…")
+            try:
+                # In-process call, avoid subprocess overhead
+                from bunshin.embeddings import get_model, embed_query
+                get_model()
+                _ = embed_query("warmup probe")
+                console.print("[green]✓ Embedding warmup 完了[/green]")
+                try:
+                    from bunshin.rerank import _get_reranker
+                    r = _get_reranker()
+                    if r is not None:
+                        list(r.rerank("test", ["hello world"]))
+                        console.print("[green]✓ Reranker warmup 完了[/green]")
+                except Exception as _re:
+                    console.print(f"[yellow]⚠ Reranker warmup skip: {_re}[/yellow]")
+            except Exception as _e:
+                console.print(f"[red]✗ Embedding warmup 失敗: {_e}[/red]")
+            if needs_consent:
+                console.print("\n[dim]以下は手動で実行が必要:[/dim]")
+                for _, label, _, fix_hint in needs_consent[:5]:
+                    console.print(f"   • [bold]{label}[/bold]: [cyan]{fix_hint}[/cyan]")
 
 
 @main.command("graph")
