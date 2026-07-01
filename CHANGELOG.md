@@ -5,6 +5,20 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.41] - 2026-07-01
+
+### Added — `bunshin doctor` に iMessage 取り込み状態チェック
+- source='imessage' の record 件数を count → 取り込み済なら「✓ iMessage 取り込み: N 件」
+- 未取り込みなら「ℹ iMessage 取り込み: 未取り込み (Mac の Full Disk Access
+  権限が必要)」+ 実行コマンド `bunshin import-imessage` を提示
+- 本田 DB では未取り込み検出 → task #7「iMessage 動作確認」が Pending
+  だった理由が明確に (単純に未実行だった)
+
+### Changed — CONTRIBUTING.md の Release セクションを `scripts/release.sh`
+に更新
+- v0.10.40 で追加した release automation script を primary path に
+- 手動手順は fallback として残し、実際の maintainer は 1 コマンドで release 可能
+
 ## [0.10.40] - 2026-07-01
 
 ### Added — `bunshin doctor --json` モード

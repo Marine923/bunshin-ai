@@ -118,11 +118,40 @@ quickly. If none are open, two safe starting points:
 
 ## Releasing (maintainers only)
 
-1. Bump `pyproject.toml` + `electron-app/package.json`
-2. Add a `## [x.y.z] - YYYY-MM-DD` block to `CHANGELOG.md`
-3. `cd electron-app && npm run dist:mac` builds the two DMGs
-4. `git tag vX.Y.Z && git push origin main vX.Y.Z`
-5. `gh release create vX.Y.Z --notes-file <notes> <dmg-files…>`
+The whole release sequence is automated via `scripts/release.sh`:
+
+```bash
+# 1. Edit CHANGELOG.md — add your ## [x.y.z] - YYYY-MM-DD block
+# 2. Commit the CHANGELOG (or leave it staged — release.sh picks
+#    it up in the release commit)
+# 3. Run:
+scripts/release.sh 0.10.41
+```
+
+`release.sh` will, in order:
+1. Sanity check (on `main`, tree clean, `gh` present)
+2. Bump the version in three files (pyproject.toml, electron-app/package.json, src/bunshin/__init__.py)
+3. Run pytest — abort on failure
+4. Build both DMGs via `scripts/build.sh`
+5. Install to `/Applications/Bunshin Memory.app` for smoke-test
+6. Verify `/api/health` returns the new version
+7. Commit + tag + push
+8. Create the GitHub release with both DMGs attached
+
+Add `--dry-run` to stop after step 4 (builds without touching git).
+
+If you'd rather run the steps manually, the equivalent commands are:
+
+```bash
+sed -i.bak 's/^version = ".*"$/version = "X.Y.Z"/' pyproject.toml
+sed -i.bak 's/"version": ".*"/"version": "X.Y.Z"/' electron-app/package.json
+sed -i.bak 's/__version__ = ".*"/__version__ = "X.Y.Z"/' src/bunshin/__init__.py
+rm -f pyproject.toml.bak electron-app/package.json.bak src/bunshin/__init__.py.bak
+uv run python -m pytest -q
+bash scripts/build.sh
+git tag vX.Y.Z && git push origin main vX.Y.Z
+gh release create vX.Y.Z --notes-file <notes> "./electron-app/dist/Bunshin Memory-X.Y.Z-arm64.dmg" "./electron-app/dist/Bunshin Memory-X.Y.Z.dmg"
+```
 
 ## Questions
 

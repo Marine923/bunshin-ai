@@ -1432,6 +1432,30 @@ def doctor_cmd(db: Path, as_json: bool):
     except Exception:
         pass
 
+    # ── 3.5. iMessage records (v0.10.41: closes long-pending task #7)
+    try:
+        if db.exists():
+            import sqlite3 as _sql3
+            _c = _sql3.connect(str(db))
+            imsg_count = _c.execute(
+                "SELECT COUNT(*) FROM records WHERE source = 'imessage'"
+            ).fetchone()[0]
+            _c.close()
+            if imsg_count > 0:
+                console.print(
+                    f"[green]✓[/green] iMessage 取り込み: {imsg_count:,} 件"
+                )
+            else:
+                # Don't nag — iMessage is optional and Mac-only. Only
+                # surface as info-level "you haven't tried this yet".
+                issues.append(
+                    ("ℹ", "iMessage 取り込み",
+                     "未取り込み (Mac の Full Disk Access 権限が必要)",
+                     "bunshin import-imessage")
+                )
+    except Exception:
+        pass
+
     # ── 4. Calendar
     try:
         from bunshin.ingestion.calendar import load_url as cal_url
