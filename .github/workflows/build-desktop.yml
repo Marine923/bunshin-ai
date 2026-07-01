@@ -24,6 +24,27 @@ jobs:
           cache: npm
           cache-dependency-path: electron-app/package-lock.json
 
+      - name: Set up Python (macOS — needed for PyInstaller bundle)
+        if: matrix.os == 'macos-latest'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv (macOS)
+        if: matrix.os == 'macos-latest'
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Sync Python deps + build PyInstaller bundle (macOS)
+        if: matrix.os == 'macos-latest'
+        env:
+          PATH: "/Users/runner/.cargo/bin:${{ env.PATH }}"
+        run: |
+          uv sync --frozen || uv sync
+          # extraResources in package.json expects ../dist/bunshin —
+          # without this step electron-builder aborts with
+          # "file source doesn't exist"
+          uv run pyinstaller bunshin.spec --clean -y
+
       - name: Install npm deps
         working-directory: electron-app
         run: npm ci
