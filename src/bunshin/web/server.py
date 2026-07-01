@@ -5215,6 +5215,81 @@ async function loadPrivacyStatus() {
   }
 }
 
+function renderModelReadinessPanel() {
+  return `
+    <div class="settings-section">
+      <h2><span class="h2-icon">${icon('cpu', 18)}</span> AI モデル準備</h2>
+      <div class="settings-field" style="grid-template-columns: 1fr 220px;">
+        <div>
+          <div class="settings-label" id="model-readiness-summary">状態確認中…</div>
+          <div class="settings-help">
+            Embedding (~1 GB) と Reranker (~1.1 GB) を事前 DL しておくと、
+            初回検索の 5-10 分固まる silent freeze を回避できます。
+            <br>キャッシュ済ならボタンは即完了 (0.5s 程度)。
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+          <button class="settings-save-btn" id="model-warm-btn" style="min-width:180px;">
+            🔥 モデルを事前 DL
+          </button>
+          <div id="model-warm-status" style="font-size:12px;color:var(--text-3);text-align:right;"></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function loadModelReadinessStatus() {
+  const summary = $('model-readiness-summary');
+  if (!summary) return;
+  try {
+    const r = await fetch('/api/models/status');
+    const j = await r.json();
+    const parts = [];
+    if (j.embedding?.cached) {
+      parts.push(`✓ Embedding (${j.embedding.size_mb} MB)`);
+    } else {
+      parts.push(`✗ Embedding 未DL`);
+    }
+    if (j.reranker?.cached) {
+      parts.push(`✓ Reranker (${j.reranker.size_mb} MB)`);
+    } else {
+      parts.push(`✗ Reranker 未DL`);
+    }
+    summary.textContent = parts.join(' · ');
+  } catch (e) {
+    summary.textContent = '状態取得失敗';
+  }
+}
+
+async function wireModelReadinessPanel() {
+  await loadModelReadinessStatus();
+  const btn = $('model-warm-btn');
+  const status = $('model-warm-status');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = '🔥 DL 中… 数分かかります';
+    status.textContent = '';
+    try {
+      const r = await fetch('/api/models/warm', {method: 'POST'});
+      const j = await r.json();
+      if (j.ok) {
+        const embT = j.embedding_time_s;
+        const rrT = j.reranker_time_s;
+        status.innerHTML = `完了: Embed ${embT}s / Rerank ${rrT}s`;
+        await loadModelReadinessStatus();
+      } else {
+        status.textContent = `失敗: ${j.error || 'unknown'}`;
+      }
+    } catch (e) {
+      status.textContent = `通信失敗: ${e.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🔥 モデルを事前 DL';
+    }
+  });
+}
+
 function renderSchedulerPanel() {
   return `
     <div class="settings-section">
@@ -5586,6 +5661,7 @@ async function loadSettings() {
     html += renderPrivacyPanel();
     html += renderMemoryDiffPanel();
     html += renderCalendarPanel();
+    html += renderModelReadinessPanel();
     html += renderSchedulerPanel();
     html += renderNoiseHygienePanel();
     html += renderPinsPanel();
@@ -5602,6 +5678,7 @@ async function loadSettings() {
     wireBackupPanel();
     wireLearningDashboard();
     wireSchedulerPanel();
+    wireModelReadinessPanel();
     wireTroubleshootPanel();
     wireUninstallPanel();
     wireNoiseHygienePanel();
@@ -10193,6 +10270,67 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
             media_type="application/octet-stream",
             filename=fname,
         )
+
+    @app.get("/api/models/status")
+    def api_models_status():
+        """Return whether the embedding + reranker model caches are populated.
+
+        Fast (< 50 ms) — doesn't load the models, only stat()s the cache dirs.
+        Used by the settings tab and (planned) onboarding wizard to render
+        a "モデル準備完了" badge or a "事前 DL" call-to-action.
+        """
+        import tempfile as _tmp
+        from pathlib import Path as _P
+
+        def _size_mb(p):
+            if not p.exists():
+                return 0
+            return int(sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) / 1024**2)
+
+        fe_cache = _P(_tmp.gettempdir()) / "fastembed_cache"
+        e5_dir = fe_cache / "models--qdrant--multilingual-e5-large-onnx"
+        rr_dir = _P.home() / ".cache/huggingface/hub/models--jinaai--jina-reranker-v2-base-multilingual"
+        e_sz = _size_mb(e5_dir)
+        r_sz = _size_mb(rr_dir)
+        return {
+            "embedding": {"cached": e_sz > 100, "size_mb": e_sz, "path": str(e5_dir)},
+            "reranker": {"cached": r_sz > 100, "size_mb": r_sz, "path": str(rr_dir)},
+        }
+
+    @app.post("/api/models/warm")
+    def api_models_warm(skip_rerank: bool = False):
+        """Trigger the same pre-download logic as `bunshin warm`.
+
+        Blocks up to ~10 min on a fresh install; ~1 s on a cached machine.
+        Returns per-stage timing so the UI can show "モデル DL 完了 (223s)"
+        rather than a bare spinner.
+        """
+        import time as _t
+        result = {"ok": True, "embedding_time_s": 0, "reranker_time_s": 0}
+        try:
+            from bunshin.embeddings import get_model, embed_query
+            t0 = _t.time()
+            get_model()
+            _ = embed_query("warmup probe")
+            result["embedding_time_s"] = round(_t.time() - t0, 2)
+        except Exception as e:
+            return JSONResponse(
+                {"ok": False, "stage": "embedding", "error": str(e)[:200]},
+                status_code=500,
+            )
+        if not skip_rerank:
+            try:
+                from bunshin.rerank import _get_reranker
+                t1 = _t.time()
+                r = _get_reranker()
+                if r is not None:
+                    list(r.rerank("test", ["hello world"]))
+                    result["reranker_time_s"] = round(_t.time() - t1, 2)
+                else:
+                    result["reranker_error"] = "reranker load returned None"
+            except Exception as e:
+                result["reranker_error"] = str(e)[:200]
+        return result
 
     @app.get("/api/ollama/models")
     def api_ollama_models():

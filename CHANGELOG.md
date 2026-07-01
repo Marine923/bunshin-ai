@@ -5,6 +5,29 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.52] - 2026-07-01
+
+### Added — 設定タブに「AI モデル準備」セクション (`bunshin warm` の GUI 化)
+
+CLI 苦手なユーザー向けに、`bunshin warm` を web UI から実行できるようにした。
+設定タブに新セクション:
+
+- **状態表示**: `✓ Embedding (4297 MB) · ✓ Reranker (1095 MB)` のようにキャッシュ状況を即表示
+- **「🔥 モデルを事前 DL」ボタン**: クリックで背景 DL、完了後 `完了: Embed 223.4s / Rerank 198.1s` 表示
+- キャッシュ済ならボタン即完了 (0.5s)、fresh install 時のみ 5-10 分
+
+### 新 endpoint
+
+- `GET /api/models/status`: embed / rerank キャッシュ状態 + サイズ (fast, no model load)
+- `POST /api/models/warm`: `bunshin warm` と同等の同期実行 (`?skip_rerank=1` 対応)
+
+### Rationale
+Honda-100 完了 → v0.10.47-51 の β 配布ポリッシュ arc の総仕上げ。
+CLI (`bunshin warm`) と CLI (`bunshin doctor`) の両輪だけだった β 配布フローが、
+GUI からも完結できる状態に。
+
+- テスト: 既存 75 pass 継続 (UI 側は静的解析のみ)
+
 ## [0.10.51] - 2026-07-01
 
 ### Added — `bunshin doctor --deep` end-to-end 検索 smoke test
