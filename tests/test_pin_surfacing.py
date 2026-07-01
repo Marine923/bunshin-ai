@@ -238,6 +238,59 @@ def test_export_pins_round_trips_through_import(conn, tmp_path):
     assert iki_pin[0] == "main business hub"
 
 
+def test_temporal_router_matches_time_phrases_and_ignores_others():
+    """v0.10.43 temporal router: queries with time phrases must
+    surface a recall_suggestion pointing at the right recall tool.
+    Non-temporal queries must NOT trigger a suggestion (no false
+    positive on entity names)."""
+    import re as _re
+    _patterns = [
+        (r"(昨日|きのう|yesterday)", "get_recent_chat"),
+        (r"(今日|きょう|today)", "get_today_hero"),
+        (r"(先週|last week|1 週間前|一週間前)", "get_flashback"),
+        (r"(1 ?年前|一年前|去年|last year|1yr ago)", "get_flashback"),
+        (r"(3 ?ヶ月前|三ヶ月前|3 months ago)", "get_flashback"),
+        (r"(明日|あした|tomorrow|来週|next week)", "get_today_hero"),
+        (r"(最近|recently|直近|latest chat)", "get_recent_chat"),
+    ]
+
+    def _detect(query):
+        for pat, tool in _patterns:
+            if _re.search(pat, query, _re.IGNORECASE):
+                return tool
+        return None
+
+    # Positive cases — must route
+    positives = [
+        ("昨日何話した", "get_recent_chat"),
+        ("先週の予定", "get_flashback"),
+        ("3ヶ月前の記録", "get_flashback"),
+        ("明日 アラーム", "get_today_hero"),
+        ("最近のチャット", "get_recent_chat"),
+        ("what did I say yesterday", "get_recent_chat"),
+        ("last week meeting", "get_flashback"),
+    ]
+    for q, expected_tool in positives:
+        assert _detect(q) == expected_tool, (
+            f"query {q!r} should route to {expected_tool}, got {_detect(q)}"
+        )
+
+    # Negative cases — must NOT route (real entity names / non-temporal)
+    negatives = [
+        "壱岐黄金プロジェクト",
+        "MARINE FLIGHT",
+        "リーフボールジャパン",
+        "Bunshin Memory",
+        "search_memory usage",
+        "gmail import",
+    ]
+    for q in negatives:
+        assert _detect(q) is None, (
+            f"query {q!r} should NOT trigger temporal routing, "
+            f"got {_detect(q)}"
+        )
+
+
 def test_cascade_threshold_order_and_early_exit():
     """v0.10.42 cascade retrieval: threshold sequence must be
     strictly descending, and cascade stops at the first non-empty

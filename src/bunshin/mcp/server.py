@@ -257,6 +257,44 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                     })
             except Exception:
                 pass
+            # v0.10.43 (Honda 100-test finding B): temporal query
+            # router. Semantic search is the wrong tool when the user
+            # asks "yesterday what did I say?" — the chat-history and
+            # flashback tools are. Detect a temporal cue in the query
+            # and surface a suggestion so the calling LLM can chain to
+            # the right tool instead of returning an empty result.
+            import re as _re
+            recall_suggestion = None
+            _temporal_patterns = [
+                # (regex, tool_name, arg_hint)
+                (r"(昨日|きのう|yesterday)", "get_recent_chat",
+                 "会話履歴を新しい順に取る"),
+                (r"(今日|きょう|today)", "get_today_hero",
+                 "今日の注目イベント / 停滞プロジェクト / 最近ファイル"),
+                (r"(先週|last week|1 週間前|一週間前)", "get_flashback",
+                 "1 週間前の同じ日付の記録"),
+                (r"(1 ?年前|一年前|去年|last year|1yr ago)", "get_flashback",
+                 "1 年前の同じ日付の記録"),
+                (r"(3 ?ヶ月前|三ヶ月前|3 months ago)", "get_flashback",
+                 "3 ヶ月前の同じ日付の記録"),
+                (r"(明日|あした|tomorrow|来週|next week)", "get_today_hero",
+                 "未来の予定なら hero の upcoming_events を確認"),
+                (r"(最近|recently|直近|latest chat)", "get_recent_chat",
+                 "直近の substantive な会話履歴"),
+            ]
+            for pat, tool, hint in _temporal_patterns:
+                if _re.search(pat, query, _re.IGNORECASE):
+                    recall_suggestion = {
+                        "reason": (
+                            f"Query contains temporal phrase — semantic search "
+                            f"often returns 0 hits for time-based queries. "
+                            f"Consider calling `{tool}` instead."
+                        ),
+                        "suggested_tool": tool,
+                        "hint": hint,
+                    }
+                    break
+
             payload = {
                 "query": query,
                 "count": len(formatted),
@@ -264,6 +302,8 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                 "content_max_chars": eff_max_chars,
                 "results": formatted,
             }
+            if recall_suggestion:
+                payload["recall_suggestion"] = recall_suggestion
             # v0.10.42: expose the cascade so the caller can tell that
             # results below the requested threshold were surfaced as a
             # last-resort. cascade_used=[20] means the primary pass

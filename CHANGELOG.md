@@ -5,6 +5,36 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.43] - 2026-07-01
+
+### Added — MCP `search_memory` に **temporal query router** (STEP 4, Honda B)
+- 「昨日」「先週」「3ヶ月前」「明日」「最近」等の時制フレーズを
+  query 内で検出 → 応答に `recall_suggestion` フィールドを追加:
+  ```json
+  {
+    "reason": "Query contains temporal phrase — semantic search often returns 0 hits ...",
+    "suggested_tool": "get_recent_chat",  // or get_flashback / get_today_hero
+    "hint": "会話履歴を新しい順に取る"
+  }
+  ```
+- caller LLM (Claude) が semantic search の 0 hit に fall back せず、
+  適切な想起系 tool に chain できる
+- 非時制 query (「壱岐黄金」「MARINE FLIGHT」等) は suggestion なし = false positive なし
+
+### 実機検証
+```
+q='昨日何話した'      → get_recent_chat suggested
+q='先週の予定'        → get_flashback suggested
+q='3ヶ月前'          → get_flashback suggested
+q='明日 アラーム'      → get_today_hero suggested
+q='最近のチャット'      → get_recent_chat suggested
+q='壱岐黄金'         → (no suggestion, semantic search で通常 hit)
+```
+
+### テスト
++1 case: `test_temporal_router_matches_time_phrases_and_ignores_others`
+→ 7 positive + 6 negative パターンで false positive/negative 両方保護。
+
 ## [0.10.42] - 2026-07-01
 
 Honda 100 テスト評価の残課題 STEP 1-3 対応。
