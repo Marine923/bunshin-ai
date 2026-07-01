@@ -225,12 +225,28 @@ OCR on the photo set recovered, among other things, an entire DJI T25P quote she
 
 ---
 
-## What's new in v0.10 (35 releases, single day)
+## What's new in v0.10 (47 releases, two days)
 
 The current minor version line is unusually deep — a tight feedback
-loop with a single power user produced 35 patch releases in a day.
-Headline themes:
+loop with a single power user produced 47 patch releases across two
+days. The **v0.10.42–46 arc** in particular represents a full
+9-of-9 resolution of a structured 100-query evaluation the same user
+ran against the app. Headline themes:
 
+- **Retrieval quality: Honda 100-test 9/9 solved** (v0.10.42–46):
+  - **Cascade retrieval** (v0.10.42) — auto-retry at min_relevance
+    thresholds 20 → 10 → 0 when hit count is 0
+  - **Temporal query router** (v0.10.43) — 「昨日」「3ヶ月前」等の
+    time phrases がヒットするクエリで get_recent_chat / get_flashback
+    への recall_suggestion を返す
+  - **signal_score filter in flashback** (v0.10.44) — newsletter noise
+    が朝の flashback を汚さないよう floor 30 でカット
+  - **Cross-lingual query expansion** (v0.10.45) — LLM expand prompt
+    が英↔日 相互翻訳を必ず含める形に (Iki Gold potato ↔ 壱岐黄金
+    じゃがいも)
+  - **Partial-match rerank boost** (v0.10.46) — 4+ token queries で
+    ≥50% 一致に比例ブースト (`hits/total * 0.5`)、8-token 自然文で
+    6/8 一致が 0 → +0.375 に
 - **Bunshin Memory rename** (v0.10.27) — disambiguates from the
   similarly-named [bunshin.app](https://bunshin.app/) (a
   Tauri-based Claude Code wrapper, different category). The CLI
@@ -261,10 +277,10 @@ Headline themes:
 
 ## Testing
 
-64 pytest cases run on every push against a matrix of Ubuntu × macOS × Python 3.10/3.11/3.12 (see the CI badge above). New v0.10 features have dedicated regression suites:
+70 pytest cases run on every push against a matrix of Ubuntu × macOS × Python 3.10/3.11/3.12 (see the CI badge above). New v0.10 features have dedicated regression suites:
 
 - `test_entity_hygiene.py` (4) — merge-entities SQL, find-duplicates normalize, pin round-trip, tool-keyword reclassify
-- `test_pin_surfacing.py` (6) — pin-list endpoint, search_memory substring match, get_today_hero LIMIT+sort, list_top_entities batched lookup, export/import round-trip
+- `test_pin_surfacing.py` (12) — pin-list endpoint, search_memory substring match, get_today_hero LIMIT+sort, list_top_entities batched lookup, export/import round-trip, cascade retrieval threshold order, temporal query router, flashback signal filter, bilingual expansion prompt, partial-match boost tiers
 - `test_photos_place_regex.py` (4) — v0.10.14 dab-tail regex regression protection
 - `test_doctor_json.py` (4) — public `--json` output contract
 
