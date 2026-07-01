@@ -4955,7 +4955,11 @@ function renderTroubleshootPanel() {
         うまく動かない時は、下のボタンで診断情報を取得して、開発者にメールで送ってください。
         個人データ（メール本文・写真・記憶）は含まれません。OS バージョン・Bunshin バージョン・Ollama 状態・直近のログ 100 行だけです。
       </div>
+      <div id="doctor-report" style="margin-bottom:14px;"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="settings-save-btn" id="doctor-run-btn" type="button" style="background:var(--bg-2);color:var(--text-1);">
+          🩺 診断を実行 (フル)
+        </button>
         <button class="settings-save-btn" id="diag-fetch-btn" type="button" style="background:var(--bg-2);color:var(--text-1);">
           ${icon('search', 14)} 診断情報を取得
         </button>
@@ -5084,8 +5088,64 @@ async function rebuildEmbeddings() {
   }
 }
 
+async function runDoctor() {
+  const el = document.getElementById('doctor-report');
+  const btn = document.getElementById('doctor-run-btn');
+  if (!el || !btn) return;
+  btn.disabled = true;
+  btn.textContent = '🩺 実行中… (~10-30s)';
+  el.innerHTML = '<div style="color:var(--text-3);font-size:12px;">診断中…</div>';
+  try {
+    const r = await fetch('/api/doctor?deep=1');
+    const j = await r.json();
+    if (!j || j.ok === false) {
+      el.innerHTML = `<div style="color:#ff9b6b;font-size:13px;padding:10px;">診断失敗: ${esc(j?.error || 'unknown')}</div>`;
+      return;
+    }
+    const cleanBadge = j.clean
+      ? `<span style="background:rgba(88,204,110,0.15);color:#5fbf6f;padding:3px 10px;border-radius:12px;font-size:12px;">🎉 全て clean</span>`
+      : `<span style="background:rgba(255,155,107,0.15);color:#ff9b6b;padding:3px 10px;border-radius:12px;font-size:12px;">${j.issues.length} 件 issue</span>`;
+    const rows = (j.issues || []).map(iss => {
+      const color = iss.level === '❌' ? '#ff6b6b' : iss.level === '⚠' ? '#ffb86b' : '#78d0ff';
+      return `
+        <tr>
+          <td style="padding:6px 8px;color:${color};font-size:14px;text-align:center;width:36px;">${iss.level}</td>
+          <td style="padding:6px 8px;font-weight:600;">${esc(iss.label)}</td>
+          <td style="padding:6px 8px;color:var(--text-2);font-size:12px;">${esc(iss.detail)}</td>
+          <td style="padding:6px 8px;color:var(--accent-1,#6a6dff);font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${esc(iss.fix)}</td>
+        </tr>`;
+    }).join('');
+    const table = j.issues.length
+      ? `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;">
+           <thead><tr style="border-bottom:1px solid var(--border-1);color:var(--text-3);">
+             <th style="text-align:center;padding:4px 8px;">レベル</th>
+             <th style="text-align:left;padding:4px 8px;">項目</th>
+             <th style="text-align:left;padding:4px 8px;">状況</th>
+             <th style="text-align:left;padding:4px 8px;">修復コマンド</th>
+           </tr></thead>
+           <tbody>${rows}</tbody>
+         </table>`
+      : '';
+    el.innerHTML = `
+      <div style="padding:10px 12px;border:1px solid var(--border-1);border-radius:8px;background:var(--bg-1);">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:600;">診断結果</span>
+          ${cleanBadge}
+        </div>
+        ${table}
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="color:#ff9b6b;font-size:13px;">通信失敗: ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🩺 再実行';
+  }
+}
+
 function wireTroubleshootPanel() {
   refreshSearchHealth();
+  const doctorBtn = document.getElementById('doctor-run-btn');
+  if (doctorBtn) doctorBtn.addEventListener('click', runDoctor);
   const btn = document.getElementById('diag-fetch-btn');
   const out = document.getElementById('diag-output');
   const copy = document.getElementById('diag-copy-btn');
@@ -11266,6 +11326,49 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
         finally:
             conn.close()
         return {"ok": True, "removed": len(ids)}
+
+    @app.get("/api/doctor")
+    def api_doctor(deep: bool = False):
+        """Run the same 11-probe doctor logic as the CLI and return JSON.
+
+        Frontend uses this to expose the full doctor report inside the
+        troubleshoot panel, so CLI-averse β testers can triage in-app.
+        `deep=1` runs the end-to-end search smoke test too (slower).
+
+        Implementation: invoke doctor via click's testing runner so it
+        works in both `uv run` dev mode (sys.executable = python) AND
+        the PyInstaller-packaged app (sys.executable = bunshin binary,
+        `-m bunshin.cli` unsupported).
+        """
+        import json as _json
+        from click.testing import CliRunner as _CliRunner
+        from bunshin.cli import doctor_cmd as _doctor_cmd
+        args = ["--json"]
+        if deep:
+            args.append("--deep")
+        try:
+            runner = _CliRunner()
+            result = runner.invoke(_doctor_cmd, args, standalone_mode=False)
+            if result.exception:
+                return JSONResponse(
+                    {"ok": False, "error": f"doctor exception: {result.exception!r}"},
+                    status_code=500,
+                )
+            # doctor --json prints raw JSON on stdout as its final line;
+            # earlier `rich.Console(quiet=True)` swallows human banners
+            # but the click runner still captures both. Extract the JSON
+            # object from the last well-formed { … } block.
+            raw = result.output.strip()
+            start = raw.rfind("{")
+            if start >= 0:
+                try:
+                    return _json.loads(raw[start:])
+                except _json.JSONDecodeError:
+                    pass
+            # Fallback: try the whole output
+            return _json.loads(raw)
+        except Exception as e:
+            return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
     @app.get("/api/diagnostics")
     def api_diagnostics():

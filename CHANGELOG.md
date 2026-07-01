@@ -5,6 +5,26 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.57] - 2026-07-01
+
+### Added — Web UI「困った時は」に **🩺 診断を実行 (フル)** ボタン
+
+CLI 未経験の β テスターが GUI 内で `bunshin doctor --deep` の 11 probe を実行できるようにした。
+
+- **新 endpoint**: `GET /api/doctor?deep=1` — CLI にサブプロセス委譲で結果 JSON 返却 (probe 実装重複回避)
+- **UI**: 新ボタン + 結果テーブル表示 (レベル / 項目 / 状況 / 修復コマンド の 4 列)
+- `--deep` フラグで end-to-end 検索 smoke test も実行
+- clean なら 🎉 全て clean バッジ、issue あれば警告バッジ + テーブル展開
+
+### 実機確認 (preview)
+```
+テーブル 4 行表示:
+- ℹ iMessage 取り込み | 未取り込み | bunshin import-imessage
+- ℹ カレンダー取り込み | 未設定 | bunshin setup-calendar ...
+- ℹ Anthropic API キー | 未設定 | 設定タブ → Anthropic API キー ...
+- (他)
+```
+
 ## [0.10.56] - 2026-07-01
 
 ### Added — `bunshin doctor --fix` 自動修復フラグ
