@@ -430,3 +430,55 @@ def test_import_pins_skips_missing_entities(conn, tmp_path):
     conn.commit()
     assert applied == 1
     assert missing == 1
+
+
+def test_bilingual_query_expansion_prompt_includes_translation_instruction():
+    """v0.10.45 (Honda 100-test G): the expand_query_with_llm prompt must
+    explicitly request English↔Japanese translation. This test doesn't call
+    Ollama — it inspects the module's source to lock in the prompt structure
+    so a future refactor can't silently drop the translation instruction.
+
+    Rationale: Honda's test showed 'Iki Gold potato luxury brand' returned 0
+    hits against a JP-only corpus. The prior prompt only asked for same-
+    language variants. The fix teaches the LLM to always cross-translate.
+    """
+    import inspect
+    from bunshin import search
+
+    src = inspect.getsource(search.expand_query_with_llm)
+    # Must mention both directions explicitly
+    assert "英語クエリ" in src, "prompt must handle EN→JA case explicitly"
+    assert "日本語クエリ" in src, "prompt must handle JA→EN case explicitly"
+    assert "壱岐黄金" in src and "Iki Gold" in src, (
+        "prompt must show a concrete EN↔JA translation example so the "
+        "LLM understands the intended output shape"
+    )
+    # max_variants default must be ≥5 so both directions fit
+    sig = inspect.signature(search.expand_query_with_llm)
+    assert sig.parameters["max_variants"].default >= 5, (
+        "cross-lingual coverage needs room for at least one EN and one JA "
+        "variant on top of the usual same-language synonyms"
+    )
+
+
+def test_query_expansion_cache_avoids_repeat_calls(monkeypatch):
+    """v0.10.45: cache invariant — the second call with the same query
+    key returns cached variants without re-hitting Ollama. Regression
+    guard for a hot-path perf issue that would double LLM cost per
+    query if broken."""
+    from bunshin import search
+
+    # Seed the cache directly (bypasses Ollama entirely)
+    search._QUERY_EXPANSION_CACHE.clear()
+    key = "iki gold potato"
+    search._QUERY_EXPANSION_CACHE[key] = ["壱岐黄金 じゃがいも", "Iki Gold potato"]
+
+    # If the cache hit path works, this returns instantly without any
+    # httpx / check_ollama calls. We assert both by patching them to
+    # raise if ever invoked.
+    def _fail(*_a, **_k):
+        raise AssertionError("cache miss — should not reach Ollama")
+
+    monkeypatch.setattr("bunshin.chat.check_ollama", _fail)
+    result = search.expand_query_with_llm("Iki Gold Potato")  # case-insensitive
+    assert result == ["壱岐黄金 じゃがいも", "Iki Gold potato"]

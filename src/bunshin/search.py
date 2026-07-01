@@ -69,7 +69,7 @@ def expand_query_with_llm(
     model: Optional[str] = None,
     host: str = "http://localhost:11434",
     timeout: float = 8.0,
-    max_variants: int = 3,
+    max_variants: int = 5,
 ) -> list[str]:
     """Ask Ollama for 2–3 reword variants of the query.
 
@@ -93,9 +93,19 @@ def expand_query_with_llm(
         if not chosen:
             _QUERY_EXPANSION_CACHE[key] = []
             return []
+        # v0.10.45 (Honda 100-test G): cross-lingual retrieval was
+        # weak because expansion focused on same-language variants
+        # only. If the query is English but records are Japanese
+        # (or vice versa), we need the LLM to produce translated
+        # variants explicitly.
         prompt = (
-            "次の検索クエリの言い換えバリエーションを 2-3 個生成してください。"
-            "同義語、関連語、英語表記、漢字／ひらがな／カタカナの揺れを意識してください。"
+            "次の検索クエリの言い換えバリエーションを 3-5 個生成してください。\n"
+            "重要:\n"
+            "- 同義語、関連語、漢字／ひらがな／カタカナの揺れ\n"
+            "- **英語クエリの場合は必ず日本語訳を 1 つ以上含める** "
+            "(例: 'Iki Gold potato' → '壱岐黄金 じゃがいも')\n"
+            "- **日本語クエリの場合は英語訳や英名も 1 つ含める** "
+            "(例: '壱岐黄金' → 'Iki Gold')\n"
             "余計な説明はせず、バリエーションだけを 1 行に 1 つ書いてください。\n\n"
             f"検索クエリ: {query}\n\nバリエーション:"
         )

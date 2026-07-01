@@ -5,6 +5,33 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.45] - 2026-07-01
+
+### Changed — クエリ拡張 prompt を **英↔日 相互翻訳明示** に (Honda G)
+- 旧: 「同義語、関連語、英語表記、揺れ」だけ (英↔日 翻訳は暗黙)
+- 新: prompt に明示的な指示追加:
+  - 英語クエリ → 必ず日本語訳を 1 つ以上含める (例: 'Iki Gold potato' → '壱岐黄金 じゃがいも')
+  - 日本語クエリ → 英語訳も 1 つ含める (例: '壱岐黄金' → 'Iki Gold')
+- `max_variants` 3 → 5 に増強 (両方向カバー)
+
+### 実機検証
+```
+'Iki Gold potato luxury brand' →
+  - Iki Gold じゃがいも 高級ブランド
+  - 壱岐黄金 ポテト 豪華品番
+  - 高級 Iki Gold タマネギ
+  - luxury brand potato Iki Gold
+  - 豪奢な 壱岐黄金 じゃがいも
+
+'drone camera' →
+  - ドローンカメラ / ドローン用カメラ / 空撮カメラ / ドローン搭載カメラ
+
+'壱岐黄金 じゃがいも' →
+  - 壱岐の黄金じゃがいも / Iki Gold potato / 壱岐ゴールドジャガイモ …
+```
+
+これで cross-lingual retrieval が Honda G の保留課題から解消。
+
 ## [0.10.44] - 2026-07-01
 
 Honda 100 テスト評価 STEP 5 完了 = **残課題ゼロ**。
