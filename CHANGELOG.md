@@ -5,6 +5,17 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.58] - 2026-07-01
+
+### Fixed — /api/doctor が packaged app で動作しない bug
+
+v0.10.57 で追加した `GET /api/doctor` は `sys.executable -m bunshin.cli doctor --json` を叩いていたが、PyInstaller で bundle された bunshin binary は Python interpreter ではないため `-m bunshin.cli` オプションを解釈できず、`doctor exit 2 — Error: No such option '-m'` エラーで詩ぬ。
+
+`click.testing.CliRunner.invoke()` に切り替えることで、`uv run` 開発モードでも packaged app でも同じ経路で動作。
+
+- テストは既存 76 pass 継続
+- preview 実機動作確認: `/api/doctor` で 4 issue JSON 返却 OK
+
 ## [0.10.57] - 2026-07-01
 
 ### Added — Web UI「困った時は」に **🩺 診断を実行 (フル)** ボタン
