@@ -5,6 +5,46 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.44] - 2026-07-01
+
+Honda 100 テスト評価 STEP 5 完了 = **残課題ゼロ**。
+
+### Changed — `search_memory` の `pinned_entities` を name-only match に narrowing (Honda I)
+- 旧: query が entity name の substring **OR** entity の record content
+  に含まれる → 「Claude」検索で 壱岐黄金 pin が surface される問題
+- 新: **query が entity name の substring のみ** で match →
+  「Claude」→ pinned=0, 「壱岐」→ 壱岐黄金 + 壱岐島, 「MARINE」→ MARINE FLIGHT
+- pin card が無関係 query を汚染しなくなった
+
+### Changed — `get_flashback` に signal_score フィルタ追加 (Honda F)
+- 旧: 3ヶ月前 flashback が note.com「あなたの投稿にスキしました」等の
+  通知メールで埋め尽くされていた
+- 新: SQL に `COALESCE(signal_score, 50) >= 30` 追加 → 低 signal の
+  通知メール完全除外
+- 閾値 30 は web UI の flashback パネルと同じ
+
+### テスト
++2 cases:
+- `test_search_memory_pinned_entities_query_substring_match` 拡張:
+  「Claude」query で pin が返らない (record content pollution 防止) を検証
+- `test_flashback_signal_score_filter`: 高 signal (=80) の note と
+  低 signal (=10) のノイズを両方 seed → SQL が高 signal のみ通すことを検証
+
+**9/9 pin surfacing tests green**。
+
+### Honda 100 テスト全課題対応マップ
+| ID | 課題 | 対応 release |
+|---|---|---|
+| A | min_relevance=20 で一般名詞全滅 | ✅ v0.10.42 (cascade retrieval) |
+| B | 時制クエリの全滅 | ✅ v0.10.43 (temporal router) |
+| C | MCP description 誤り | ✅ v0.10.42 (pin + re-describe) |
+| D | Adversarial Claim Verifier 誤り | ✅ v0.10.42 (pin + re-describe) |
+| E | Deck A 重複 | ✅ 既に解消済 (v0.10.29) |
+| F | Gmail ノイズ flashback 流入 | ✅ v0.10.44 (signal_score filter) |
+| G | 英語→日本語 cross-lingual (低優先) | 🟡 保留 (jina-reranker-v2 設定確認要) |
+| H | 8+ 語クエリでスコア低下 (低優先) | 🟡 保留 (現状 2-4 語スイートスポット妥当) |
+| I | pinned_entities が全 query で返る | ✅ v0.10.44 (name-only narrowing) |
+
 ## [0.10.43] - 2026-07-01
 
 ### Added — MCP `search_memory` に **temporal query router** (STEP 4, Honda B)

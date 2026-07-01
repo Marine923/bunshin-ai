@@ -66,9 +66,11 @@ def test_pin_list_endpoint_query_returns_only_active_pins(conn):
 
 
 def test_search_memory_pinned_entities_query_substring_match(conn):
-    """v0.10.35 search_memory's pinned_entities branch: when the query
-    string is a substring of an entity name AND that entity has a
-    non-empty pin, it surfaces — even if no records match."""
+    """v0.10.35 search_memory's pinned_entities branch (v0.10.44
+    narrowing): query surfaces a pin ONLY when query is a substring
+    of the entity name. Record-content matching removed because it
+    was polluting unrelated queries — e.g. "Claude" would surface
+    the 壱岐黄金 pin because Claude co-appears in its records."""
     from bunshin.knowledge_graph import init_kg_schema
     init_kg_schema(conn)
 
@@ -80,20 +82,69 @@ def test_search_memory_pinned_entities_query_substring_match(conn):
     # unrelated has a pin but its name doesn't contain "壱岐"
     _pin(conn, unrelated, "アメリカの飲料会社")
 
-    query = "壱岐"
-    # Same WHERE-clause shape as the MCP server query
+    def _surface(query):
+        rows = conn.execute(
+            "SELECT e.name FROM entities e "
+            "JOIN settings s ON s.key = 'pin:entity:' || e.id "
+            "WHERE s.value IS NOT NULL AND TRIM(s.value) <> '' "
+            "AND LOWER(e.name) LIKE '%' || LOWER(?) || '%'",
+            (query,),
+        ).fetchall()
+        return {r[0] for r in rows}
+
+    surfaced = _surface("壱岐")
+    assert "壱岐島" in surfaced
+    assert "壱岐黄金プロジェクト" in surfaced
+    assert "Coca-Cola" not in surfaced
+
+    # v0.10.44 narrowing: "Claude" query must not surface any pin
+    # even though Claude co-appears in the 壱岐黄金 project's records.
+    surfaced_unrelated = _surface("Claude")
+    assert surfaced_unrelated == set(), (
+        "'Claude' query must not surface any pin — the v0.10.44 name-"
+        "only match prevents record-content pollution"
+    )
+
+
+def test_flashback_signal_score_filter(conn):
+    """v0.10.44 (Honda 100-test finding F): get_flashback SQL filter
+    on COALESCE(signal_score, 50) >= 30 excludes low-signal records
+    (Gmail notification emails, tracking-pixel pings)."""
+    from bunshin.storage import insert_record
+
+    # Insert 2 records at the same timestamp: one high-signal note,
+    # one low-signal notification.
+    ts = 1717000000  # arbitrary
+    insert_record(
+        conn, source="notes", timestamp=ts,
+        content="本田: 壱岐黄金プロジェクトの試作じゃがいも試食会を来週開催予定。"
+                "参加者は 15 名、場所は壱岐島の直売所。準備リストは別途 Notion に。",
+        source_id="note-real-1",
+        metadata={"signal_score": 80},
+    )
+    insert_record(
+        conn, source="gmail", timestamp=ts,
+        content="[note.com] さんがあなたの投稿にスキしました。詳しくはこちら…",
+        source_id="mail-noise-1",
+        metadata={"signal_score": 10},
+    )
+    # Manually populate signal_score column (importer normally does this)
+    conn.execute("UPDATE records SET signal_score = 80 WHERE source_id = ?", ("note-real-1",))
+    conn.execute("UPDATE records SET signal_score = 10 WHERE source_id = ?", ("mail-noise-1",))
+    conn.commit()
+
+    # Same WHERE as MCP get_flashback
     rows = conn.execute(
-        "SELECT e.id, e.name FROM entities e "
-        "JOIN settings s ON s.key = 'pin:entity:' || e.id "
-        "WHERE s.value IS NOT NULL AND TRIM(s.value) <> '' "
-        "AND LOWER(e.name) LIKE '%' || LOWER(?) || '%'",
-        (query,),
+        "SELECT source, content FROM records "
+        "WHERE timestamp BETWEEN ? AND ? "
+        "  AND length(content) >= 50 "
+        "  AND COALESCE(signal_score, 50) >= 30",
+        (ts, ts + 86400),
     ).fetchall()
-    surfaced = {r[1] for r in rows}
-    assert "壱岐島" in surfaced, "exact-name-substring pin should surface"
-    assert "壱岐黄金プロジェクト" in surfaced, "compound-name pin should surface"
-    assert "Coca-Cola" not in surfaced, (
-        "unrelated pinned entity must NOT surface for the '壱岐' query"
+    sources = {r[0] for r in rows}
+    assert "notes" in sources, "high-signal real record must survive"
+    assert "gmail" not in sources, (
+        "low-signal noise (signal_score=10) must be filtered out by the >=30 gate"
     )
 
 

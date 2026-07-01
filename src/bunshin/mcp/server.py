@@ -226,27 +226,21 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
             # record snippets.
             pinned_entities = []
             try:
+                # v0.10.44 (Honda 100-test finding I): pinned_entities
+                # was matching on record-content, which meant a query
+                # for "Claude" surfaced the 壱岐黄金 pin (because Claude
+                # co-appears in its records). Too noisy. Narrow to
+                # **entity name substring match only** — strict but
+                # avoids polluting unrelated queries with pin cards.
                 pin_rows = conn.execute(
                     "SELECT e.id, e.name, e.type, s.value "
                     "FROM settings s "
                     "JOIN entities e ON s.key = 'pin:entity:' || e.id "
                     "WHERE s.key LIKE 'pin:entity:%' "
                     "  AND s.value IS NOT NULL AND TRIM(s.value) <> '' "
-                    "  AND EXISTS ("
-                    "    SELECT 1 FROM entities e2 "
-                    "    WHERE e2.id = e.id "
-                    "    AND (LOWER(e2.name) LIKE '%' || LOWER(?) || '%' "
-                    "         OR EXISTS ("
-                    "           SELECT 1 FROM record_entities re "
-                    "           JOIN records r ON r.id = re.record_id "
-                    "           WHERE re.entity_id = e.id "
-                    "           AND r.content LIKE '%' || ? || '%' "
-                    "           LIMIT 1"
-                    "         )"
-                    "    )"
-                    "  ) "
+                    "  AND LOWER(e.name) LIKE '%' || LOWER(?) || '%' "
                     "LIMIT 5",
-                    (query, query),
+                    (query,),
                 ).fetchall()
                 for r in pin_rows:
                     pinned_entities.append({
@@ -421,9 +415,18 @@ def create_mcp(db_path: Path = DEFAULT_DB_PATH) -> FastMCP:
                 anchor = target - timedelta(days=days_back)
                 day_start = int(_dt.combine(anchor, _dt.min.time()).timestamp())
                 day_end = day_start + 86400
+                # v0.10.44 (Honda 100-test finding F): flashback was
+                # flooding with note.com notification emails from
+                # Gmail on 3-months-ago slices. The signal_score
+                # column is populated by the noise-hygiene pass —
+                # gate flashback on it so newsletter notifications
+                # don't crowd out real memories. Threshold 30 mirrors
+                # the web UI's flashback panel behavior.
                 rows = conn.execute(
                     "SELECT id, source, content, timestamp FROM records "
-                    "WHERE timestamp BETWEEN ? AND ? AND length(content) >= 50 "
+                    "WHERE timestamp BETWEEN ? AND ? "
+                    "  AND length(content) >= 50 "
+                    "  AND COALESCE(signal_score, 50) >= 30 "
                     "ORDER BY COALESCE(signal_score, 50) DESC LIMIT 5",
                     (day_start, day_end),
                 ).fetchall()
