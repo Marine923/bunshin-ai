@@ -99,6 +99,8 @@ Claude Code, Claude Desktop, or any MCP-aware LLM can call **8 MCP tools** again
 ### 📌 Pin off-screen reality
 Some entities have a real-life role that doesn't show up in textual records (e.g. an island that hosts your e-commerce + drone services + ocean-education businesses, but your records mostly capture AI research chat). **Pin** a 1–2 sentence override on that entity from the relationships tab, settings list, CLI (`bunshin pin-context`), or MCP (`pin_entity_context`) — describe will treat it as a **hard constraint** on the next regeneration.
 
+**Why it exists.** Bunshin Memory's describe pass reads what the records *say*, not what you actually *do*. If you spend Monday–Friday talking to Claude about AI research and Saturday–Sunday running your farm, your "farm" entity's records will be dominated by AI research context — the describe reflects that lopsidedness. A pin says "regardless of what the records imply, this entity is X" and every downstream consumer (relationships graph description, MCP `search_memory`, `get_today_hero` briefing, `list_top_entities` metadata) inherits your framing. Pins **round-trip** via `bunshin export-pins` / `import-pins` so you can carry your declared reality between machines.
+
 ---
 
 ## Ingestion sources (11 paths)
