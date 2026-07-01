@@ -5,6 +5,25 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.40] - 2026-07-01
+
+### Added — `bunshin doctor --json` モード
+- 従来の human-friendly Rich 出力 + 新規 **machine-readable JSON**
+  出力を選択可能
+- `--json` 指定時は Rich console を quiet 化 → 最終的に単一 JSON
+  オブジェクトを stdout に emit
+- スキーマ:
+  ```json
+  {
+    "clean": bool,
+    "issues": [
+      {"level": "ℹ", "label": "...", "detail": "...", "fix": "..."}
+    ]
+  }
+  ```
+- CI / cron / shell pipeline から健康診断結果を parse できる
+- `bunshin doctor --json | jq '.issues | length'` で残 issue 数取得
+
 ## [0.10.39] - 2026-07-01
 
 ### Added — `bunshin export-pins` / `import-pins` CLI

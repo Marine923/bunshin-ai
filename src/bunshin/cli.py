@@ -1340,11 +1340,26 @@ def uninstall_scheduler_cmd():
     type=click.Path(path_type=Path),
     default=DEFAULT_DB_PATH,
 )
-def doctor_cmd(db: Path):
+@click.option(
+    "--json", "as_json", is_flag=True,
+    help="Emit machine-readable JSON instead of the human-friendly report. "
+         "Useful in CI and shell pipelines.",
+)
+def doctor_cmd(db: Path, as_json: bool):
     """Diagnose setup, show what's working and what's missing."""
     import subprocess
 
-    console.print("\n[bold]🩺 分身 セットアップ診断[/bold]\n")
+    # v0.10.40: --json mode suppresses the pretty report and emits a
+    # single JSON object at the end. Cheapest way to silence Rich
+    # without touching every console.print in the flow: swap in a
+    # quiet console for the duration.
+    if as_json:
+        from rich.console import Console as _RichConsole
+        _real_console = console
+        _quiet = _RichConsole(quiet=True)
+        globals()["console"] = _quiet
+    else:
+        console.print("\n[bold]🩺 分身 セットアップ診断[/bold]\n")
 
     issues = []  # (level, label, detail, fix)
 
@@ -1652,6 +1667,21 @@ def doctor_cmd(db: Path):
         pass
 
     # ── Summary
+    if as_json:
+        import json as _json
+        # Restore the real console for the final JSON emit.
+        globals()["console"] = _real_console
+        payload = {
+            "clean": not issues,
+            "issues": [
+                {"level": lvl, "label": lbl, "detail": det, "fix": fx}
+                for lvl, lbl, det, fx in issues
+            ],
+        }
+        # Plain print (stdout, no Rich formatting) so pipes get raw JSON.
+        print(_json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
     console.print()
     if not issues:
         console.print("[bold green]🎉 すべて整っています！[/bold green]")
