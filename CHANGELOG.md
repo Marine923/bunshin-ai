@@ -5,6 +5,22 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.50] - 2026-07-01
+
+### Added — doctor に「推奨 Ollama モデル未DL」probe
+
+Ollama は稼働中でモデルもいくつかあるが、そのどれもが `PREFERRED_MODELS` に含まれない (例: `dolphin-phi:latest` だけ入れてる) ケース。
+チャット自体は動くが日本語品質が期待に届かない silent UX 劣化を検知し、`ollama pull qwen2.5:3b` を info-level で提示。
+
+- fire 条件: `not any(p in installed for p in PREFERRED_MODELS)`
+- 既存 preferred (qwen2.5 / llama3.x / phi3:mini 等) が 1 つでもあれば silent
+- 既存の「モデル未インストール ⚠」probe と重複しない (models=[] のケースは既存が拾う)
+
+### テスト
+- `test_preferred_ollama_models_probe_predicate_covers_common_bad_states`: 
+  空 / off-list / min-preferred / 複数 preferred の 4 パターン網羅
+- 合計 74 tests pass
+
 ## [0.10.49] - 2026-07-01
 
 ### Changed — doctor が sqlite-vec 拡張ロード失敗を **❌ 明示** で報告

@@ -1428,6 +1428,22 @@ def doctor_cmd(db: Path, as_json: bool):
             )
         else:
             console.print(f"[green]✓[/green] Ollama: {len(models)} モデル ({', '.join(models[:3])})")
+            # v0.10.50: Ollama にモデルはあるが PREFERRED_MODELS のどれとも
+            # マッチしない場合 (例: tinydolphin / dolphin-phi など) は、
+            # 日本語チャット品質が期待に届かない可能性が高い。info-level
+            # で推奨モデルを提示 (nag しない、silent-fail もしない)。
+            try:
+                from bunshin.chat import PREFERRED_MODELS
+                available_set = set(models)
+                if not any(p in available_set for p in PREFERRED_MODELS):
+                    issues.append(
+                        ("ℹ", "推奨 Ollama モデル未DL",
+                         f"インストール済 {', '.join(models[:2])}… は "
+                         "PREFERRED_MODELS に無し (日本語チャット品質低下の可能性)",
+                         "ollama pull qwen2.5:3b  # 軽量、日本語◎")
+                    )
+            except Exception:
+                pass
     except Exception as e:
         issues.append(("⚠", "Ollama", f"確認失敗: {e}", "ollama 確認"))
 

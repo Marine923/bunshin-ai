@@ -126,6 +126,35 @@ def test_doctor_json_surfaces_sqlite_vec_failure_when_extension_broken(tmp_path,
     )
 
 
+def test_preferred_ollama_models_probe_predicate_covers_common_bad_states():
+    """v0.10.50: doctor's 「推奨 Ollama モデル未DL」probe should fire when
+    Ollama is running but only serves models outside PREFERRED_MODELS
+    (e.g. dolphin-phi, mistral-tiny). This test asserts the predicate
+    logic in isolation — the subprocess-level doctor test would require
+    a stub Ollama server."""
+    from bunshin.chat import PREFERRED_MODELS
+
+    # Sanity: the constant hasn't been renamed/emptied
+    assert len(PREFERRED_MODELS) >= 5, (
+        "PREFERRED_MODELS collapsed to <5 entries — probe would flag "
+        "healthy installs as broken"
+    )
+    # Predicate under test (mirrors the doctor block)
+    def _needs_pull(installed):
+        return not any(p in set(installed) for p in PREFERRED_MODELS)
+
+    assert _needs_pull([]) is True, "empty install → needs pull"
+    assert _needs_pull(["dolphin-phi:latest", "mistral-tiny"]) is True, (
+        "off-list models only → needs pull"
+    )
+    assert _needs_pull(["qwen2.5:3b"]) is False, (
+        "smallest recommended present → probe silent"
+    )
+    assert _needs_pull(["qwen2.5:32b", "llama3.2:3b"]) is False, (
+        "multiple preferred present → probe silent"
+    )
+
+
 def test_warm_command_is_registered_and_has_help_text():
     """v0.10.48: `bunshin warm` must be a registered subcommand with
     help text describing its purpose. We don't run it end-to-end here
