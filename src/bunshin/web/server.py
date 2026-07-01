@@ -4965,6 +4965,9 @@ function renderTroubleshootPanel() {
         <a class="settings-save-btn" id="diag-mail-btn" href="#" hidden style="text-decoration:none;text-align:center;">
           ${icon('mail', 14)} メールで送る
         </a>
+        <a class="settings-save-btn" id="diag-issue-btn" href="#" hidden target="_blank" rel="noopener" style="text-decoration:none;text-align:center;">
+          ${icon('external-link', 14)} GitHub Issue に貼付済で開く
+        </a>
         <a class="settings-save-btn" href="https://github.com/Marine923/bunshin-ai/issues/new/choose" target="_blank" rel="noopener" style="background:var(--bg-2);color:var(--text-1);text-decoration:none;text-align:center;">
           ${icon('external-link', 14)} GitHub Issues
         </a>
@@ -5102,6 +5105,35 @@ function wireTroubleshootPanel() {
         const subj = `Bunshin 困りごと (v${j.bunshin_version || '?'})`;
         const body = '下記の問題が起きました：\\n\\n[ここに状況を書いてください — 何をしたら、何が起きたか]\\n\\n--- 診断情報（自動生成） ---\\n' + text;
         mail.href = `mailto:?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+      }
+      // v0.10.54: pre-fill GitHub Issue body with diagnostics so the user
+      // just types the "what happened" line — no copy/paste round-trip.
+      // GitHub caps URL length at ~8000 chars; diagnostics can exceed that
+      // (log tails). Truncate the code block if needed and note it in the
+      // body so the user can attach full JSON manually.
+      const issue = document.getElementById('diag-issue-btn');
+      if (issue) {
+        issue.hidden = false;
+        const title = `[Bug] Bunshin v${j.bunshin_version || '?'} で ...`;
+        // Reserve ~1500 chars for prose/title, target ~6000 chars for the code block
+        const CODE_LIMIT = 6000;
+        let codeBlock = text;
+        let truncNote = '';
+        if (codeBlock.length > CODE_LIMIT) {
+          codeBlock = codeBlock.slice(0, CODE_LIMIT) + '\\n... (truncated, full JSON はコメント欄に貼付してください)';
+          truncNote = '\\n\\n> ⚠ 診断情報が長すぎるため一部省略しています。全文は下のテキストエリアからコピーして issue コメントに貼ってください。';
+        }
+        const issueBody = [
+          '### 状況',
+          '[ここに書いてください — 何をしたら / 何が起きたか / 期待していた挙動]',
+          '',
+          '### 診断情報 (自動生成)',
+          '```json',
+          codeBlock,
+          '```',
+          truncNote,
+        ].join('\\n');
+        issue.href = `https://github.com/Marine923/bunshin-ai/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(issueBody)}`;
       }
     } catch (e) {
       if (out) { out.value = '取得に失敗しました。Bunshin を再起動してもう一度お試しください。'; out.hidden = false; }

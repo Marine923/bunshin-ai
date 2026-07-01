@@ -5,6 +5,23 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.54] - 2026-07-01
+
+### Added — 「困った時は」に **GitHub Issue に貼付済で開く** ボタン
+
+これまで β テスターが issue を上げる時、`診断情報を取得` → `コピー` → `GitHub Issues` タブへ移動 → 手動貼り付け → 状況説明を追記、の 5 手順が必要だった。
+
+- **新ボタン**: 診断情報を取得後、GitHub Issue 作成画面が **title + body 埋込済** で開く
+- 状況説明の穴埋め文だけ書けば投稿できる (2 手順に短縮)
+- 診断 JSON が 6000 文字超なら本文で truncate、下のテキストエリアからフル JSON を追記できる誘導文つき
+
+### 実機確認 (preview)
+```
+diag-issue-btn hidden: false
+href len: 9458  ← title + body 埋込済
+URL: https://github.com/.../issues/new?title=[Bug]%20Bunshin%20v0.10.53%20で...&body=...
+```
+
 ## [0.10.53] - 2026-07-01
 
 ### Added — Onboarding wizard 最終ステップに warm ボタン統合
