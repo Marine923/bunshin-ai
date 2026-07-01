@@ -225,7 +225,9 @@ OCR on the photo set recovered, among other things, an entire DJI T25P quote she
 
 ---
 
-## What's new in v0.10 (51 releases, two days)
+## What's new in v0.10 (54 releases, two days)
+
+> **Curated summary**: [docs/RELEASE_HIGHLIGHTS.md](docs/RELEASE_HIGHLIGHTS.md) — the two arcs (Honda 9/9 + β polish 10-strong) narrated as a story.
 
 The current minor version line is unusually deep — a tight feedback
 loop with a single power user produced 51 patch releases across two
