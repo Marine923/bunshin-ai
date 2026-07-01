@@ -94,3 +94,26 @@ def test_doctor_default_mode_surfaces_v0_10_47_probes(tmp_path):
         assert topic in out, (
             f"doctor never mentioned {topic!r} — probe removed or crashed silently"
         )
+
+
+def test_warm_command_is_registered_and_has_help_text():
+    """v0.10.48: `bunshin warm` must be a registered subcommand with
+    help text describing its purpose. We don't run it end-to-end here
+    because it downloads ~2 GB — the help check is enough to catch
+    accidental deletion / rename regressions."""
+    r = subprocess.run(
+        [sys.executable, "-m", "bunshin.cli", "warm", "--help"],
+        capture_output=True, text=True, check=False,
+    )
+    assert r.returncode == 0, (
+        f"`bunshin warm --help` failed: exit={r.returncode}, "
+        f"stderr={r.stderr[:300]}"
+    )
+    # The help output should describe the fresh-install pre-warm intent
+    # so a maintainer landing on `--help` can tell it apart from `embed`.
+    assert "--skip-rerank" in r.stdout
+    for hint in ("embed", "rerank", "warm"):
+        assert hint.lower() in r.stdout.lower(), (
+            f"help text lost the {hint!r} keyword — command may have "
+            f"been reduced or renamed"
+        )

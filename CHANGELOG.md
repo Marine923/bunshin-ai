@@ -5,6 +5,36 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.48] - 2026-07-01
+
+### Added — `bunshin warm` サブコマンド
+
+Fresh install 時に silent DL される Embedding (~1 GB) と Reranker (~1.1 GB) を明示的に
+事前 DL する CLI コマンド。β テスターに「今 5 分待たせている」ことを可視化。
+
+```
+$ bunshin warm
+🔥 モデル事前ウォームアップ
+
+1/2 Embedding model (multilingual-e5-large, ~1 GB)
+     初回は 3-8 分かかる場合あり…
+     ✓ 完了 (223.4s)
+
+2/2 Reranker model (jina-reranker-v2, ~1.1 GB)
+     初回は 2-5 分かかる場合あり…
+     ✓ 完了 (198.1s)
+
+全モデル準備完了。検索を試してみてください。
+```
+
+- `--skip-rerank` フラグで rerank OFF 運用ユーザー向けに DL を省略可
+- v0.10.47 で doctor に「Embedding モデル未DL」issue の fix を `bunshin warm` に変更
+- pytest: `test_warm_command_is_registered_and_has_help_text` (--help 動作確認)
+
+### Rationale
+新規ユーザーが DMG install 直後に初回検索を試すと、無反応で 5-10 分固まる。
+このコマンドを onboarding docs / README quickstart に組み込むことで、待ちを能動的な作業に変換。
+
 ## [0.10.47] - 2026-07-01
 
 ### Added — `bunshin doctor` β-tester diagnostics 4 項目

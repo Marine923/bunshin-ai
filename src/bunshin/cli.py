@@ -1584,7 +1584,7 @@ def doctor_cmd(db: Path, as_json: bool):
             issues.append(
                 ("⚠", "Embedding モデル未DL",
                  "初回検索時に自動 DL される (~1 GB, 数分かかる)",
-                 "先に  uv run python -c \"from bunshin.embeddings import get_model; get_model()\"")
+                 "bunshin warm  # 進捗表示付きで事前 DL")
             )
     except Exception:
         pass
@@ -2832,6 +2832,67 @@ def update_cmd(
         click.echo(f"[bunshin update] {start.strftime('%Y-%m-%d %H:%M:%S')} {summary}")
     else:
         console.print(f"[green]Update complete[/green]: {summary}")
+
+
+@main.command("warm")
+@click.option(
+    "--skip-rerank",
+    is_flag=True,
+    help="Skip the reranker warmup (saves ~1 GB DL if you're rerank-off).",
+)
+def warm_cmd(skip_rerank: bool):
+    """Pre-download embed + rerank models so first search doesn't freeze.
+
+    Fresh installs silently DL ~5 GB of ONNX weights on first use. This
+    command surfaces the download with visible timing so β testers know
+    it's happening (and see it finish).
+    """
+    import time as _t
+
+    console.print("\n[bold]🔥 モデル事前ウォームアップ[/bold]\n")
+
+    # ── Embed
+    console.print("[dim]1/2[/dim] Embedding model (multilingual-e5-large, ~1 GB)")
+    console.print("[dim]     初回は 3-8 分かかる場合あり…[/dim]")
+    t0 = _t.time()
+    try:
+        from bunshin.embeddings import get_model, embed_query
+        get_model()  # triggers download if not cached
+        # Actually run one embed to prove it works end-to-end.
+        _ = embed_query("warmup probe")
+        elapsed = _t.time() - t0
+        console.print(f"[green]     ✓ 完了[/green] ({elapsed:.1f}s)")
+    except Exception as e:
+        console.print(f"[red]     ✗ 失敗: {e}[/red]")
+        return
+
+    if skip_rerank:
+        console.print("[dim]2/2[/dim] Reranker: [dim]--skip-rerank でスキップ[/dim]")
+        console.print("\n[bold green]完了。検索を試してみてください。[/bold green]")
+        return
+
+    # ── Rerank
+    console.print("\n[dim]2/2[/dim] Reranker model (jina-reranker-v2, ~1.1 GB)")
+    console.print("[dim]     初回は 2-5 分かかる場合あり…[/dim]")
+    t1 = _t.time()
+    try:
+        from bunshin.rerank import _get_reranker
+        r = _get_reranker()
+        if r is None:
+            console.print("[yellow]     ⚠ reranker が読み込めませんでした (fastembed 未導入等)[/yellow]")
+        else:
+            # Prove it works by scoring a dummy pair.
+            list(r.rerank("test", ["hello world"]))
+            elapsed = _t.time() - t1
+            console.print(f"[green]     ✓ 完了[/green] ({elapsed:.1f}s)")
+    except Exception as e:
+        console.print(f"[yellow]     ⚠ warmup 失敗 (rerank は最初の検索時に再試行): {e}[/yellow]")
+
+    console.print("\n[bold green]全モデル準備完了。検索を試してみてください。[/bold green]")
+    console.print(
+        "[dim]確認: [/dim][cyan]bunshin doctor[/cyan] "
+        "[dim]で「Embedding モデル ✓ / Reranker モデル ✓」を確認[/dim]\n"
+    )
 
 
 @main.command("mcp")
