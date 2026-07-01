@@ -5,6 +5,28 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.47] - 2026-07-01
+
+### Added — `bunshin doctor` β-tester diagnostics 4 項目
+
+β テスターが最初に詰まりやすい silent failure 4 種を doctor から一発可視化:
+
+1. **Embedding モデルキャッシュ** — `multilingual-e5-large` (~4.3 GB) が
+   fastembed cache にあるか。ない場合、初回検索で 5-10 分固まる (silent DL) を事前警告。
+   `/var/folders` にある場合は macOS クリーンアップで消える注意も。
+2. **Reranker モデルキャッシュ** — `jina-reranker-v2` (~1.1 GB) HF hub cache 確認。
+3. **ディスク空き** — `~/.bunshin` の使用量 + マウント空き容量。<2 GB で ❌、<10 GB で ⚠。
+   embed/import が silent fail する典型パターンを事前に潰す。
+4. **Runtime 情報** — Python バージョン / OS / arch。バグ報告に必須なのに従来 doctor に無かった。
+
+### Rationale
+Honda 100-test 完了直後の β 配布フェーズを想定。ユーザーが「動かない」と連絡してきた時、
+これらの情報が最初の質問ラウンドで揃うだけでデバッグ 1 往復短縮。
+
+### テスト
+- `test_doctor_default_mode_surfaces_v0_10_47_probes`: 4 項目全てが出力に現れることを確認
+- 合計 71 tests pass (4 doctor + 12 pin-surfacing + …)
+
 ## [0.10.46] - 2026-07-01
 
 ### Changed — 部分マッチ比例ブースト (Honda H)

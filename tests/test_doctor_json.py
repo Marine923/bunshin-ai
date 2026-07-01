@@ -72,3 +72,25 @@ def test_doctor_default_mode_prints_human_banner(tmp_path):
     r = _run_doctor(["--db", str(tmp_db)])
     assert r.returncode == 0
     assert "🩺" in r.stdout, "human-mode banner missing"
+
+
+def test_doctor_default_mode_surfaces_v0_10_47_probes(tmp_path):
+    """v0.10.47 β-tester diagnostics: doctor must probe the four items
+    that cause the most first-run confusion (silent embed download, silent
+    rerank download, disk-full silent failure, and runtime info needed
+    for bug reports). Each item can be a green ✓ or an issue — we just
+    verify the probe ran and emitted a labelled line."""
+    tmp_db = tmp_path / "test.db"
+    r = _run_doctor(["--db", str(tmp_db)])
+    assert r.returncode == 0
+    out = r.stdout
+    # Runtime line always prints (Python version, OS, arch) as a dim footer.
+    assert "Python" in out, (
+        "runtime version footer missing — β testers need this in bug reports"
+    )
+    # Each of the four probes must at least mention its topic word.
+    # "Embedding" / "Reranker" appear as either ✓ line or ⚠/ℹ issue label.
+    for topic in ("Embedding", "Reranker", "ディスク"):
+        assert topic in out, (
+            f"doctor never mentioned {topic!r} — probe removed or crashed silently"
+        )

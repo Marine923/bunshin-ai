@@ -1558,6 +1558,94 @@ def doctor_cmd(db: Path, as_json: bool):
              "Bunshin.app を開く  または  bunshin web")
         )
 
+    # ── 6.7. Embedding model cache (v0.10.47)
+    # If the fastembed cache is missing, the first search silently downloads
+    # ~1 GB — appears to freeze the UI for minutes. Surface this up front.
+    try:
+        import tempfile as _tmp
+        _fe_cache = Path(_tmp.gettempdir()) / "fastembed_cache"
+        # fastembed remaps intfloat/multilingual-e5-large →
+        # qdrant/multilingual-e5-large-onnx internally.
+        _e5_dir = _fe_cache / "models--qdrant--multilingual-e5-large-onnx"
+        if _e5_dir.exists():
+            _sz = sum(f.stat().st_size for f in _e5_dir.rglob("*") if f.is_file())
+            console.print(
+                f"[green]✓[/green] Embedding モデル: multilingual-e5-large "
+                f"({_sz / 1024**2:.0f} MB, {_fe_cache})"
+            )
+            # macOS wipes /var/folders on cleanup — warn.
+            if str(_fe_cache).startswith("/var/folders"):
+                issues.append(
+                    ("ℹ", "Embedding キャッシュ位置",
+                     f"macOS 一時領域 ({_fe_cache}) にあるため再起動やクリーンアップで消える可能性",
+                     "永続化したい場合は環境変数 FASTEMBED_CACHE_DIR を設定")
+                )
+        else:
+            issues.append(
+                ("⚠", "Embedding モデル未DL",
+                 "初回検索時に自動 DL される (~1 GB, 数分かかる)",
+                 "先に  uv run python -c \"from bunshin.embeddings import get_model; get_model()\"")
+            )
+    except Exception:
+        pass
+
+    # ── 6.8. Reranker cache (v0.10.47)
+    try:
+        _rr_dir = Path.home() / ".cache/huggingface/hub/models--jinaai--jina-reranker-v2-base-multilingual"
+        if _rr_dir.exists():
+            _sz = sum(f.stat().st_size for f in _rr_dir.rglob("*") if f.is_file())
+            console.print(
+                f"[green]✓[/green] Reranker モデル: jina-reranker-v2 "
+                f"({_sz / 1024**2:.0f} MB)"
+            )
+        else:
+            issues.append(
+                ("ℹ", "Reranker モデル未DL",
+                 "初回 rerank 呼出時に DL される (~1 GB) — rerank OFF なら不要",
+                 "設定タブ → 検索挙動 → クロスエンコーダー rerank")
+            )
+    except Exception:
+        pass
+
+    # ── 6.9. Disk space in ~/.bunshin (v0.10.47)
+    # DB + backups + logs. When full, embed / import silently fail.
+    try:
+        import shutil as _shutil
+        _bd = Path.home() / ".bunshin"
+        if _bd.exists():
+            _du = _shutil.disk_usage(_bd)
+            free_gb = _du.free / 1024**3
+            used_mb = sum(f.stat().st_size for f in _bd.rglob("*") if f.is_file()) / 1024**2
+            _msg = f"~/.bunshin {used_mb:.0f} MB 使用中、ディスク空き {free_gb:.1f} GB"
+            if free_gb < 2:
+                issues.append(
+                    ("❌", "ディスク空き",
+                     f"{_msg} — embed / import が失敗する恐れ",
+                     "不要ファイルを削除、または `bunshin cleanup`")
+                )
+            elif free_gb < 10:
+                issues.append(
+                    ("⚠", "ディスク空き",
+                     f"{_msg} — 大量取り込み前に確保推奨",
+                     "空き容量を確認")
+                )
+            else:
+                console.print(f"[green]✓[/green] ディスク: {_msg}")
+    except Exception:
+        pass
+
+    # ── 6.10. Runtime info (v0.10.47) — always shown, for bug reports
+    try:
+        import sys as _sys
+        import platform as _plt
+        console.print(
+            f"[dim]   Python {_sys.version.split()[0]} · "
+            f"{_plt.system()} {_plt.release()} · "
+            f"{_plt.machine()}[/dim]"
+        )
+    except Exception:
+        pass
+
     # ── 7. Knowledge Graph
     try:
         from bunshin.knowledge_graph import init_kg_schema
