@@ -57,6 +57,9 @@ https://github.com/Marine923/bunshin-ai/releases/latest
 1. .dmg を開く → Bunshin を Applications フォルダにドラッグ
 2. 初回だけ "開発元未確認" が出るので、Bunshin を **右クリック → 開く**
 3. ウィザードに沿って Gmail / 写真 / メモを接続
+4. 【初回のみ】ターミナルで `~/Applications/Bunshin\ Memory.app/Contents/Resources/bunshin warm`
+   を実行 → AI モデル ~2 GB を事前 DL (5-10 分)。
+   ※ この手順を飛ばすと、初回検索時に無反応で 5-10 分固まります。
 
 【必要環境】
 ・macOS 11 以降
@@ -116,8 +119,10 @@ GitHub Issues も使えます: https://github.com/Marine923/bunshin-ai/issues
 
 ## 配布前チェックリスト
 
-- [ ] 最新リリース DMG を `/Applications/Bunshin.app` で動作確認
+- [ ] 最新リリース DMG を `/Applications/Bunshin Memory.app` で動作確認
 - [ ] 別の Mac で clean install してオンボーディングが完走するか
+- [ ] `bunshin warm` で初回モデル DL が完了するか (別 Mac)
+- [ ] `bunshin doctor` の 4 項目 (embed/rerank/disk/runtime) が clean で緑になるか
 - [ ] Gmail App Password の取得手順を口頭で説明できるようにする
 - [ ] 「困った時は」から診断情報が送れることを再確認
 - [ ] バックアップ機能 (`~/.bunshin/backups/`) が走ってることを確認

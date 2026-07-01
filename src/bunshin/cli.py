@@ -1381,18 +1381,32 @@ def doctor_cmd(db: Path, as_json: bool):
             for src, cnt in sorted(sources.items(), key=lambda x: -x[1]):
                 console.print(f"   [dim]├ {src}: {cnt}[/dim]")
 
+        # v0.10.49: sqlite-vec 拡張がロードできなかった場合は silent 空
+        # ではなく、明示的な ❌ で報告 (どんな `bunshin embed` を回しても
+        # ベクトル検索は死んでいる状態なので、初手 troubleshooting に必要)。
+        _vec_ok = True
+        _vec_err = None
         try:
             init_vector_db(conn)
-        except Exception:
-            pass
+        except Exception as _ve:
+            _vec_ok = False
+            _vec_err = str(_ve)[:120]
+
+        if not _vec_ok:
+            issues.append(
+                ("❌", "sqlite-vec 拡張",
+                 f"ロード失敗: {_vec_err} — ベクトル検索は動きません",
+                 "uv sync でパッケージ再インストール、または  bunshin doctor  を再実行")
+            )
+
         vec_count = count_vectors(conn)
-        if vec_count < total * 0.8:
+        if _vec_ok and vec_count < total * 0.8:
             issues.append(
                 ("⚠", "ベクトル化",
                  f"{vec_count}/{total} のみ (検索品質が下がる)",
                  "bunshin embed")
             )
-        else:
+        elif _vec_ok:
             console.print(f"[green]✓[/green] ベクトル化: {vec_count}/{total}")
         conn.close()
 

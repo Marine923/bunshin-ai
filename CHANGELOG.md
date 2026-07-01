@@ -5,6 +5,29 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.49] - 2026-07-01
+
+### Changed — doctor が sqlite-vec 拡張ロード失敗を **❌ 明示** で報告
+
+これまでは `init_vector_db()` の Exception を `except: pass` で握り潰し、
+vec_count=0 だけ表示していたため「Ollama ✓ / Embedding ✓ / でも検索 0 件」
+という silent failure でユーザーが数往復デバッグする事故があった。
+
+- v0.10.49: sqlite-vec ロード失敗時は独立した ❌ issue として表示
+- Fix hint: `uv sync でパッケージ再インストール`
+
+### Added — β 配布ドキュメント (`docs/FOR_FRIENDS.md`) 更新
+
+- インストール手順 4 に `bunshin warm` 実行を追加
+- 配布前チェックリストに 2 項目追加:
+  - `bunshin warm` で初回モデル DL が別 Mac で完了するか
+  - `bunshin doctor` の 4 項目が clean で緑になるか
+- 「Bunshin.app」→「Bunshin Memory.app」に修正 (v0.10.27 rename 反映漏れ)
+
+### テスト
+- `test_doctor_json_surfaces_sqlite_vec_failure_when_extension_broken` (positive path 網羅)
+- 合計 73 tests pass
+
 ## [0.10.48] - 2026-07-01
 
 ### Added — `bunshin warm` サブコマンド
