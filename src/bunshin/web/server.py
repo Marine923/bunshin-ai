@@ -7944,7 +7944,58 @@ async function doSearch(query) {
     if (_searchPrefs.search_rerank === false) params.set('rerank', 'false');
     if (_searchPrefs.search_expand === true) params.set('expand', 'true');
     const j = await (await fetch(`/api/search?${params}`)).json();
-    if (!j.results?.length) { results.innerHTML = '<div class="empty">該当なし</div>'; return; }
+    if (!j.results?.length) {
+      // v0.10.55: empty state ⇒ show which filters are active + one-click
+      // to clear each. Users often forget they've narrowed to "写真OCR"
+      // or "24時間以内" and blame the search.
+      const activeFilters = [];
+      if (currentSource) {
+        const chip = document.querySelector(`#sources .filter-chip[data-source="${currentSource}"]`);
+        const label = chip?.dataset?.label || currentSource;
+        activeFilters.push({label: `ソース: ${label}`, kind: 'source'});
+      }
+      if (currentPeriod && currentPeriod !== 'all') {
+        const pchip = document.querySelector(`#periods .filter-chip[data-period="${currentPeriod}"]`);
+        const plabel = pchip?.textContent?.trim() || currentPeriod;
+        activeFilters.push({label: `期間: ${plabel}`, kind: 'period'});
+      }
+      const filterHtml = activeFilters.length
+        ? `<div style="margin-top:12px;font-size:13px;color:var(--text-3);">
+             現在のフィルター:
+             ${activeFilters.map(f => `<span class="hidden-chip" style="margin:0 4px;cursor:pointer;" data-clear="${f.kind}" title="このフィルターを外す">${esc(f.label)} ✕</span>`).join('')}
+           </div>`
+        : '';
+      const rerankOff = _searchPrefs.search_rerank === false
+        ? '<div style="margin-top:6px;font-size:12px;color:var(--text-3);">クロスエンコーダー rerank OFF (設定タブで ON にすると近似も拾えます)</div>'
+        : '';
+      results.innerHTML = `
+        <div class="empty">
+          <div>該当なし</div>
+          ${filterHtml}
+          ${rerankOff}
+          <div style="margin-top:14px;font-size:12px;color:var(--text-3);">
+            ヒント: クエリを短く / フィルターを外す / 検索が壊れてる可能性なら
+            <code style="background:var(--bg-2);padding:2px 6px;border-radius:4px;">bunshin doctor --deep</code>
+          </div>
+        </div>`;
+      // Wire ✕ click on each filter chip to clear it and re-search
+      results.querySelectorAll('[data-clear]').forEach(el => {
+        el.addEventListener('click', () => {
+          const kind = el.dataset.clear;
+          if (kind === 'source') {
+            currentSource = '';
+            document.querySelectorAll('#sources .filter-chip').forEach(c => c.classList.remove('active'));
+            document.querySelector('#sources .filter-chip[data-source=""]')?.classList.add('active');
+          } else if (kind === 'period') {
+            currentPeriod = 'all';
+            document.querySelectorAll('#periods .filter-chip').forEach(c => c.classList.remove('active'));
+            document.querySelector('#periods .filter-chip[data-period="all"]')?.classList.add('active');
+          }
+          doSearch(query);
+        });
+      });
+      return;
+    }
     _lastResults = j.results;
     // If the entire result set fell back to keyword search (embedding
     // model busy with backfill), tell the user — otherwise they think

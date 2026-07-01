@@ -5,6 +5,25 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.55] - 2026-07-01
+
+### Changed — 検索「該当なし」に active filter 表示 + ワンクリック解除
+
+これまで 0 hits 時は `該当なし` の 4 文字のみ。ユーザーは自分が過去に「ソース: 写真OCR だけ」「期間: 24時間以内」といったフィルターを付けたことを忘れて空っぽに blame するパターンが多かった。
+
+新 empty state:
+- **現在のフィルター:** 現在アクティブなソース / 期間フィルターを ✕ 付きチップで表示
+- クリック → そのフィルターだけ解除 → 即再検索
+- 「全部」ソースや「all」期間はデフォルトなので active filter として表示しない
+- **ヒント行**: クエリを短く / フィルターを外す / `bunshin doctor --deep`
+
+### 実機確認 (preview)
+```
+テスト: source=LINE, query='xyzq_nonsense_9876' → 0 hits
+結果: "該当なし  現在のフィルター: ソース: LINE ✕  ヒント: クエリを短く …"
+clearChips: [{kind: 'source', label: 'ソース: LINE ✕'}]
+```
+
 ## [0.10.54] - 2026-07-01
 
 ### Added — 「困った時は」に **GitHub Issue に貼付済で開く** ボタン
