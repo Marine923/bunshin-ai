@@ -5,6 +5,25 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.53] - 2026-07-01
+
+### Added — Onboarding wizard 最終ステップに warm ボタン統合
+
+これまで「β テスターに CLI で warm を叩いてもらう」設計だったが、
+onboarding wizard から直接押せるよう統合。ユーザー導線: install → 開く → wizard → **🔥 いま事前 DL する** → 検索。
+
+- 「準備できました」ステップに warn ブロック追加、`bunshin warm` API を叩く
+- キャッシュ状態を pre-check して既 DL 時は「✓ 既に DL 済み」＋容量表示、ボタン disable (nag 防止)
+- DL 中は「🔥 DL 中… 数分かかります」表示、完了後「✓ 完了 · Embed 223.4s / Rerank 198.1s」
+
+### 実機確認
+preview で wizard を強制開いて最終 step 描画確認:
+```
+btnText: "✓ 既に DL 済み"
+statusText: "Embedding 4297 MB · Reranker 1095 MB"
+btnDisabled: true
+```
+
 ## [0.10.52] - 2026-07-01
 
 ### Added — 設定タブに「AI モデル準備」セクション (`bunshin warm` の GUI 化)

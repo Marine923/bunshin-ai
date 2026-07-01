@@ -7397,6 +7397,19 @@ const ONBOARDING_STEPS = [
           <div class="step-stat"><span class="num">${src}</span><span class="label">ソース</span></div>
           ${oldestYear ? `<div class="step-stat"><span class="num">${oldestYear}</span><span class="label">最古</span></div>` : ''}
         </div>
+        <div class="step-warn" id="onboarding-warm-block" style="margin-bottom:14px;">
+          <span class="warn-icon">${icon('cpu', 16)}</span>
+          <span>
+            <b>初回のみ AI モデルの事前 DL を推奨</b> (計 ~2 GB, 5-10 分)。<br>
+            スキップすると初回検索時に無反応で数分固まる可能性があります。
+            <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+              <button type="button" id="onboarding-warm-btn" class="copy-btn" style="padding:8px 14px;">
+                🔥 いま事前 DL する
+              </button>
+              <span id="onboarding-warm-status" style="font-size:12px;color:var(--text-3);"></span>
+            </div>
+          </span>
+        </div>
         <ul class="step-tips">
           <li>${icon('lightbulb', 13)}<span>「<b>覚えといて: ◯◯</b>」とチャットで書くと、AI に聞かずに記憶に追加されます。</span></li>
           <li>${icon('lightbulb', 13)}<span><b>Anthropic API キー（任意）</b>を設定タブに入れると、関係性タブの「AI に説明させる」が Claude 経由になり、entity description の精度が大幅に上がります。<a href="https://console.anthropic.com/" target="_blank" rel="noopener" style="color:var(--accent);">console.anthropic.com</a> でキーを発行できます（無料枠あり）。未設定でもローカル LLM で動きます。</span></li>
@@ -7407,6 +7420,44 @@ const ONBOARDING_STEPS = [
     },
   },
 ];
+
+async function wireOnboardingWarmButton() {
+  const btn = document.getElementById('onboarding-warm-btn');
+  const status = document.getElementById('onboarding-warm-status');
+  if (!btn) return;
+  // Pre-check cache state — if already warmed, mark done immediately
+  // so we don't nag users who re-open the wizard.
+  try {
+    const s = await fetch('/api/models/status').then(r => r.json());
+    if (s.embedding?.cached && s.reranker?.cached) {
+      btn.textContent = '✓ 既に DL 済み';
+      btn.disabled = true;
+      status.textContent = `Embedding ${s.embedding.size_mb} MB · Reranker ${s.reranker.size_mb} MB`;
+      return;
+    }
+  } catch(e) {}
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = '🔥 DL 中… 数分かかります';
+    status.textContent = '';
+    try {
+      const r = await fetch('/api/models/warm', {method: 'POST'});
+      const j = await r.json();
+      if (j.ok) {
+        btn.textContent = '✓ 完了';
+        status.textContent = `Embed ${j.embedding_time_s}s / Rerank ${j.reranker_time_s}s`;
+      } else {
+        btn.textContent = '🔥 いま事前 DL する';
+        btn.disabled = false;
+        status.textContent = `失敗: ${j.error || 'unknown'}`;
+      }
+    } catch(e) {
+      btn.textContent = '🔥 いま事前 DL する';
+      btn.disabled = false;
+      status.textContent = `通信失敗: ${e.message}`;
+    }
+  });
+}
 
 let _onboardingIdx = 0;
 
@@ -7581,6 +7632,11 @@ function renderOnboarding() {
   $('onboarding-back').style.display = _onboardingIdx === 0 ? 'none' : '';
   $('onboarding-next').textContent =
     _onboardingIdx === ONBOARDING_STEPS.length - 1 ? '使ってみる →' : '次へ →';
+
+  // v0.10.53: on the final "準備できました" step, wire the warm button.
+  if (_onboardingIdx === ONBOARDING_STEPS.length - 1) {
+    wireOnboardingWarmButton();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
