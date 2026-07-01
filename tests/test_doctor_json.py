@@ -155,6 +155,25 @@ def test_preferred_ollama_models_probe_predicate_covers_common_bad_states():
     )
 
 
+def test_doctor_deep_flag_is_registered_in_help():
+    """v0.10.51: --deep flag must appear in doctor's --help. Without it,
+    users won't discover the end-to-end search smoke test even though
+    it's the most useful "silent-fail" catcher."""
+    r = subprocess.run(
+        [sys.executable, "-m", "bunshin.cli", "doctor", "--help"],
+        capture_output=True, text=True, check=False,
+    )
+    assert r.returncode == 0
+    assert "--deep" in r.stdout, (
+        "--deep flag missing from doctor --help — end-to-end probe was "
+        "accidentally removed or renamed"
+    )
+    # The help blurb should hint that this is the silent-failure catcher.
+    assert "end-to-end" in r.stdout.lower() or "smoke" in r.stdout.lower(), (
+        "--deep help text lost its silent-fail rationale"
+    )
+
+
 def test_warm_command_is_registered_and_has_help_text():
     """v0.10.48: `bunshin warm` must be a registered subcommand with
     help text describing its purpose. We don't run it end-to-end here

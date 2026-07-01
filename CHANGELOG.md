@@ -5,6 +5,30 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.51] - 2026-07-01
+
+### Added — `bunshin doctor --deep` end-to-end 検索 smoke test
+
+デフォルトの doctor は「モデルはある / DB はある / ベクトルはある」まで見るが、
+実際に search() を叩いていない。ユーザーの中には
+「Ollama ✓ / Embedding ✓ / vec ✓ でも検索 0 件」を報告するケースがまだあるので、
+`--deep` フラグで end-to-end 検索を smoke test:
+
+- embed_query → vec search → BM25 → rerank を実際に回す
+- 'メール' クエリで populated DB からの取得を確認 (JP records 前提)
+- 0 hit → ⚠ 「未ベクトル化がある可能性」
+- 5s 超え → ℹ 「cold start の可能性、2回目再確認」
+- 例外 → ❌ 「issue に doctor --json を添付」
+
+### 変更 — README What's new arc 拡張
+
+- 45 releases → **51 releases** に更新
+- v0.10.47-50 β 配布ポリッシュ arc を Honda 100-test arc と並列で narrative
+
+### テスト
+- `test_doctor_deep_flag_is_registered_in_help`: --deep が --help に出るか
+- 合計 **75 tests pass** (`test_doctor_json.py` は 9 cases)
+
 ## [0.10.50] - 2026-07-01
 
 ### Added — doctor に「推奨 Ollama モデル未DL」probe

@@ -1345,7 +1345,12 @@ def uninstall_scheduler_cmd():
     help="Emit machine-readable JSON instead of the human-friendly report. "
          "Useful in CI and shell pipelines.",
 )
-def doctor_cmd(db: Path, as_json: bool):
+@click.option(
+    "--deep", is_flag=True,
+    help="Run an end-to-end search smoke test (embed + vec + BM25 + rerank). "
+         "Catches 'everything looks green but search returns nothing' cases.",
+)
+def doctor_cmd(db: Path, as_json: bool, deep: bool):
     """Diagnose setup, show what's working and what's missing."""
     import subprocess
 
@@ -1807,6 +1812,55 @@ def doctor_cmd(db: Path, as_json: bool):
         conn.close()
     except Exception:
         pass
+
+    # ── 8. Deep probe: end-to-end search smoke test (v0.10.51)
+    # Only when --deep is set — otherwise doctor completes in <1 s.
+    # This is the "everything looks green but search returns nothing"
+    # detector: it wires up embed_query + vec + FTS5 BM25 + rerank on
+    # the real DB and reports timing. Empty hit-count on a populated
+    # DB is escalated to a warning.
+    if deep and db.exists():
+        try:
+            import time as _t2
+            from bunshin.search import search as _bs_search
+            _conn2 = init_db(db)
+            _rc = count_records(_conn2)
+            if _rc > 0:
+                console.print("\n[bold]🔬 Deep probe: end-to-end 検索[/bold]")
+                # Use a common Japanese stopword-ish query so any DB with
+                # real content will match. If it doesn't, that's exactly
+                # the signal we want.
+                probe_query = "メール"
+                t0 = _t2.time()
+                try:
+                    hits = _bs_search(_conn2, probe_query, limit=3, rerank=True)
+                    elapsed = _t2.time() - t0
+                    if not hits:
+                        issues.append(
+                            ("⚠", "Deep probe (検索)",
+                             f"'{probe_query}' で 0 件 — {_rc:,} 件の DB があるのに何もヒットしない",
+                             "bunshin embed --backfill  # 未ベクトル化がある可能性")
+                        )
+                    else:
+                        console.print(
+                            f"[green]✓[/green] 検索 end-to-end: '{probe_query}' → "
+                            f"{len(hits)} 件 ({elapsed:.2f}s)"
+                        )
+                        if elapsed > 5.0:
+                            issues.append(
+                                ("ℹ", "Deep probe (速度)",
+                                 f"'{probe_query}' が {elapsed:.1f}s (< 5s が望ましい)",
+                                 "初回のみ遅い場合あり (モデル cold start)、2回目以降を再確認")
+                            )
+                except Exception as _pe:
+                    issues.append(
+                        ("❌", "Deep probe (検索)",
+                         f"search() が例外: {str(_pe)[:120]}",
+                         "bunshin doctor --json 出力を issue に添付")
+                    )
+            _conn2.close()
+        except Exception:
+            pass
 
     # ── Summary
     if as_json:

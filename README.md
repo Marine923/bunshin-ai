@@ -225,13 +225,24 @@ OCR on the photo set recovered, among other things, an entire DJI T25P quote she
 
 ---
 
-## What's new in v0.10 (47 releases, two days)
+## What's new in v0.10 (51 releases, two days)
 
 The current minor version line is unusually deep — a tight feedback
-loop with a single power user produced 47 patch releases across two
-days. The **v0.10.42–46 arc** in particular represents a full
-9-of-9 resolution of a structured 100-query evaluation the same user
-ran against the app. Headline themes:
+loop with a single power user produced 51 patch releases across two
+days. The **v0.10.42–46 arc** solved a structured 9-of-9 evaluation;
+the **v0.10.47–50 arc** hardened the β-distribution path so silent
+failures (undownloaded models, broken sqlite-vec, off-list Ollama)
+show up loud in `bunshin doctor` instead of leaving the user
+confused. Headline themes:
+
+- **β-distribution polish** (v0.10.47–50):
+  - **doctor 4 項目** (v0.10.47) — embed cache / rerank cache / disk
+    free / Python version 追加
+  - **`bunshin warm`** (v0.10.48) — 5-10 分の silent モデル DL を進捗表示付きの明示的作業に変換
+  - **sqlite-vec ❌ escalation** (v0.10.49) — `except: pass` を削除、
+    ベクトル検索が死んでる状態を doctor で ❌ 表示
+  - **Off-list Ollama models flag** (v0.10.50) — dolphin-phi など
+    PREFERRED に無いモデルだけ入れてる silent 品質崩壊を info 提示
 
 - **Retrieval quality: Honda 100-test 9/9 solved** (v0.10.42–46):
   - **Cascade retrieval** (v0.10.42) — auto-retry at min_relevance
