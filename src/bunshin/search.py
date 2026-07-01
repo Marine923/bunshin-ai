@@ -524,11 +524,27 @@ def search(
             for r in results:
                 content = (r.get("content") or "").lower()
                 hits = sum(1 for t in _q_tokens if t.lower() in content)
-                if hits == len(_q_tokens):
+                total = len(_q_tokens)
+                if hits == total:
                     r["rerank_score"] = r.get("rerank_score", 0.0) + 0.5
                     sc = r.setdefault("score_components", {})
                     sc["rerank"] = r["rerank_score"]
                     sc["all_terms_match"] = True
+                elif total >= 4 and hits / total >= 0.5:
+                    # v0.10.46 (Honda 100-test H): long queries (≥4 tokens)
+                    # rarely hit 100% of tokens because natural sentences
+                    # add descriptors that no document phrases the same
+                    # way. Without partial credit, an 8-token query with
+                    # 6/8 hits gets zero boost and rerank raw logits win
+                    # — often negative → user sees "hits but 0% match".
+                    # Linear proportional boost (max +0.5 at hits==total)
+                    # keeps the all-match tier strictly ahead while
+                    # letting near-matches out-rank unrelated candidates.
+                    partial = (hits / total) * 0.5
+                    r["rerank_score"] = r.get("rerank_score", 0.0) + partial
+                    sc = r.setdefault("score_components", {})
+                    sc["rerank"] = r["rerank_score"]
+                    sc["partial_match_ratio"] = round(hits / total, 2)
             results.sort(key=lambda r: -r.get("rerank_score", 0.0))
     else:
         results = results[:limit]

@@ -5,6 +5,35 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.46] - 2026-07-01
+
+### Changed — 部分マッチ比例ブースト (Honda H)
+- 従来: `all_terms_match` (全トークン一致) だけ +0.5、それ以外は 0
+- 新規: 4トークン以上のクエリで **50%以上マッチ**時 `hits/total * 0.5` の比例ブースト
+- 8トークンクエリで 6/8 一致 → +0.375 (これまで 0 だった)
+- 短いクエリ (2-3トークン) は従来通り strict 判定 (proper-noun ペアの precision 保護)
+
+### Rationale
+Honda 100-test 発見 H:「長文クエリで score 崩れる」。原因は自然文で表現ゆれが多いため、
+全一致がほぼ発生せず → jina-reranker の生 logits (時に負値) がそのまま採用 → relevance_percent 0% になっていた。
+比例ブーストで、全一致 tier を厳格に上位に置きつつ近似一致にも部分点。
+
+### テスト
+- `test_partial_match_boost_scales_for_long_queries`: 4つのケース (full/partial 0.75/below 50%/short) を全網羅
+- 合計 70 tests pass
+
+### Honda 100-test 発見 一覧の到達点
+- A (min_relevance): v0.10.42 cascade retrieval ✅
+- B (temporal): v0.10.43 recall_suggestion router ✅
+- C, D (wrong descriptions): v0.10.29-32 pin + re-describe ✅
+- E (Deck A duplicate): 既に修正済み確認 ✅
+- F (Gmail noise): v0.10.44 signal_score filter ✅
+- G (cross-lingual): v0.10.45 bilingual query expansion ✅
+- H (long query decay): **v0.10.46 partial match boost ✅**
+- I (pinned pollution): v0.10.44 name-only match ✅
+
+**9/9 全解消**。
+
 ## [0.10.45] - 2026-07-01
 
 ### Changed — クエリ拡張 prompt を **英↔日 相互翻訳明示** に (Honda G)

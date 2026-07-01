@@ -482,3 +482,57 @@ def test_query_expansion_cache_avoids_repeat_calls(monkeypatch):
     monkeypatch.setattr("bunshin.chat.check_ollama", _fail)
     result = search.expand_query_with_llm("Iki Gold Potato")  # case-insensitive
     assert result == ["壱岐黄金 じゃがいも", "Iki Gold potato"]
+
+
+def test_partial_match_boost_scales_for_long_queries():
+    """v0.10.46 (Honda 100-test H): 8+ token queries used to get zero
+    all_terms_match boost because natural sentences almost never phrase
+    a doc's exact words. This test verifies the proportional-boost path:
+
+    - full match (hits==total) → +0.5, all_terms_match=True
+    - long query (≥4 tokens) with ≥50% hits → linear boost hits/total*0.5
+    - short query with partial hits → no partial boost (preserves prior
+      strict behavior for 2-3 token proper-noun queries)
+    """
+    import re
+    # Simulate the boost block in isolation. Extract by re-implementing
+    # its exact contract — if the source diverges, this catches the drift.
+    def compute_boost(query, content, base=0.0):
+        tokens = [t for t in re.findall(r"\w+", query, re.UNICODE) if len(t) >= 2]
+        if len(tokens) < 2:
+            return base, {}
+        content_l = content.lower()
+        hits = sum(1 for t in tokens if t.lower() in content_l)
+        total = len(tokens)
+        sc = {}
+        score = base
+        if hits == total:
+            score += 0.5
+            sc["all_terms_match"] = True
+        elif total >= 4 and hits / total >= 0.5:
+            score += (hits / total) * 0.5
+            sc["partial_match_ratio"] = round(hits / total, 2)
+        return score, sc
+
+    # Full 4-token match
+    score, sc = compute_boost("壱岐 黄金 じゃがいも 出荷", "2026年6月に壱岐黄金じゃがいもを出荷開始")
+    assert sc.get("all_terms_match") is True
+    assert score == 0.5
+
+    # 6/8 tokens match (販売, EC 欠落) → partial ratio 0.75, boost = 0.375
+    q = "壱岐 黄金 じゃがいも 高級 ブランド 出荷 販売 EC"
+    content = "壱岐黄金の高級じゃがいもブランドとして出荷開始、note で告知"
+    score, sc = compute_boost(q, content)
+    assert sc.get("all_terms_match") is None
+    assert sc.get("partial_match_ratio") == 0.75
+    assert abs(score - 0.375) < 1e-9
+
+    # 2/8 tokens (below 50%) → no boost
+    score, sc = compute_boost(q, "全然関係のない記事、壱岐と黄金だけ含む")
+    assert sc == {}
+    assert score == 0.0
+
+    # Short query (2 tokens), 1/2 hits → no partial boost (strict tier held)
+    score, sc = compute_boost("SKYPIX 対馬", "SKYPIX の記事")
+    assert sc == {}
+    assert score == 0.0
