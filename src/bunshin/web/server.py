@@ -7502,6 +7502,21 @@ const ONBOARDING_STEPS = [
             </div>
           </span>
         </div>
+        <div class="step-warn" id="onboarding-anthropic-block" style="margin-bottom:14px;display:none;">
+          <span class="warn-icon">${icon('sparkles', 16)}</span>
+          <span>
+            <b>関係性タブの説明品質を上げる (任意):</b> Anthropic API キーを入れると
+            entity の要約が Claude 経由になり、ローカル LLM 比で大幅に賢くなります。
+            未設定でもローカル LLM で動きます。<br>
+            <a href="https://console.anthropic.com/" target="_blank" rel="noopener" style="color:var(--accent);">console.anthropic.com</a> でキーを発行 (無料枠あり) → 設定タブに貼付。
+            <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+              <button type="button" id="onboarding-anthropic-open" class="copy-btn" style="padding:8px 14px;">
+                🔑 設定タブへ移動
+              </button>
+              <span id="onboarding-anthropic-status" style="font-size:12px;color:var(--text-3);"></span>
+            </div>
+          </span>
+        </div>
         <ul class="step-tips">
           <li>${icon('lightbulb', 13)}<span>「<b>覚えといて: ◯◯</b>」とチャットで書くと、AI に聞かずに記憶に追加されます。</span></li>
           <li>${icon('lightbulb', 13)}<span><b>Anthropic API キー（任意）</b>を設定タブに入れると、関係性タブの「AI に説明させる」が Claude 経由になり、entity description の精度が大幅に上がります。<a href="https://console.anthropic.com/" target="_blank" rel="noopener" style="color:var(--accent);">console.anthropic.com</a> でキーを発行できます（無料枠あり）。未設定でもローカル LLM で動きます。</span></li>
@@ -7548,6 +7563,42 @@ async function wireOnboardingWarmButton() {
       btn.disabled = false;
       status.textContent = `通信失敗: ${e.message}`;
     }
+  });
+}
+
+async function wireOnboardingAnthropicButton() {
+  const block = document.getElementById('onboarding-anthropic-block');
+  const openBtn = document.getElementById('onboarding-anthropic-open');
+  const status = document.getElementById('onboarding-anthropic-status');
+  if (!block || !openBtn) return;
+  // Show the block only if the API key is unset (silent when already set).
+  try {
+    const s = await (await fetch('/api/settings')).json();
+    const key = (s.settings?.anthropic_api_key || '').trim();
+    if (key) {
+      // Already configured — keep block hidden (nag-free)
+      return;
+    }
+  } catch(e) {
+    // On error, err on the side of showing the block (user might benefit)
+  }
+  block.style.display = '';
+  openBtn.addEventListener('click', () => {
+    closeOnboarding();
+    // Jump to settings tab; focus the anthropic key input if reachable.
+    const tab = Array.from(document.querySelectorAll('.sidebar-nav button'))
+      .find(b => b.getAttribute('aria-label') === '設定');
+    if (tab) tab.click();
+    setTimeout(() => {
+      const input = document.querySelector('input[data-setting="anthropic_api_key"], #anthropic_api_key, input[name="anthropic_api_key"]');
+      if (input) {
+        input.scrollIntoView({behavior: 'smooth', block: 'center'});
+        input.focus();
+        input.style.outline = '3px solid var(--accent-1, #6a6dff)';
+        input.style.outlineOffset = '4px';
+        setTimeout(() => { input.style.outline = ''; input.style.outlineOffset = ''; }, 2500);
+      }
+    }, 400);
   });
 }
 
@@ -7728,6 +7779,7 @@ function renderOnboarding() {
   // v0.10.53: on the final "準備できました" step, wire the warm button.
   if (_onboardingIdx === ONBOARDING_STEPS.length - 1) {
     wireOnboardingWarmButton();
+    wireOnboardingAnthropicButton();
   }
 }
 

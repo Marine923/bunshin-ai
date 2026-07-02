@@ -5,6 +5,20 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.59] - 2026-07-01
+
+### Added — Onboarding wizard 最終ステップに Anthropic API キー hint block
+
+warm ブロックと並列で「関係性タブの説明品質を上げる (任意)」ブロックを追加。既に API キーが設定済ならブロックは非表示 (nag-free)。
+
+- **未設定時**: 
+  - 説明文 + `console.anthropic.com` link + 「🔑 設定タブへ移動」ボタン
+  - ボタンクリック → wizard を閉じて設定タブへ jump → 該当 input を focus + outline highlight
+- **設定済時**: ブロック非表示 (毎回 wizard を開いても nag しない)
+- `/api/settings` の `anthropic_api_key` を pre-check
+
+これで β テスターが CLI ゼロで install → wizard → warm → API キー設定 → 検索まで到達可能。
+
 ## [0.10.58] - 2026-07-01
 
 ### Fixed — /api/doctor が packaged app で動作しない bug
