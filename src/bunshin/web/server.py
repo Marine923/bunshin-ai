@@ -9616,8 +9616,10 @@ function appendMsg(role, content, contextList) {
               .filter(t => t.length >= 2)
           )).slice(0, 8);
           if (terms.length) {
+            // Escape regex specials before joining. Python's non-raw
+            // triple-quoted string turns \\\\ into \\ served to JS.
             const pattern = terms
-              .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\\\$&'))
+              .map(t => t.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'))
               .join('|');
             const re = new RegExp('(' + pattern + ')', 'gi');
             bodyHtml = bodyHtml.replace(re, '<mark style="background:rgba(255,220,80,0.35);color:inherit;border-radius:2px;padding:0 2px;">$1</mark>');

@@ -71,7 +71,7 @@ wheels = [
 
 [[package]]
 name = "bunshin"
-version = "0.10.60"
+version = "0.10.61"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
