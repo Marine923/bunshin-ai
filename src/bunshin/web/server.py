@@ -9167,6 +9167,7 @@ let currentSessionId = null;
 // nuking the live respMsg DOM when the user clicks around mid-answer.
 let _chatStreaming = false;
 let _chatStreamingSession = null;
+let _lastChatQuery = '';  // v0.10.61: for citation preview term-highlight
 
 async function loadSessionList(searchQuery) {
   try {
@@ -9602,8 +9603,28 @@ function appendMsg(role, content, contextList) {
         prev.className = 'citation-preview';
         prev.id = 'cit-prev-active';
         const ts = rec.timestamp ? new Date(rec.timestamp * 1000).toLocaleString('ja-JP') : '';
+        // v0.10.61: highlight query terms in preview body so user can see
+        // which words matched. Split on whitespace, dedupe, ≥2 chars, cap
+        // 8 terms (keep the marker cost bounded).
+        const rawBody = (rec.content || '').slice(0, 360);
+        let bodyHtml = esc(rawBody);
+        try {
+          const terms = Array.from(new Set(
+            (_lastChatQuery || '')
+              .split(/[\s、。,.]+/)
+              .map(t => t.trim())
+              .filter(t => t.length >= 2)
+          )).slice(0, 8);
+          if (terms.length) {
+            const pattern = terms
+              .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\\\$&'))
+              .join('|');
+            const re = new RegExp('(' + pattern + ')', 'gi');
+            bodyHtml = bodyHtml.replace(re, '<mark style="background:rgba(255,220,80,0.35);color:inherit;border-radius:2px;padding:0 2px;">$1</mark>');
+          }
+        } catch(e) { /* keep unhighlighted body */ }
         prev.innerHTML = '<div class="cp-head">[' + num + '] ' + esc(rec.source || '') + ' · ' + esc(ts) + '</div>' +
-                         '<div class="cp-body">' + esc((rec.content || '').slice(0, 360)) + '</div>';
+                         '<div class="cp-body">' + bodyHtml + '</div>';
         document.body.appendChild(prev);
         const rect = a.getBoundingClientRect();
         prev.style.top = (rect.bottom + 6) + 'px';
@@ -9657,6 +9678,7 @@ chatForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const query = chatInput.value.trim();
   if (!query) return;
+  _lastChatQuery = query;
 
   // Detect memo intent
   const memoContent = detectMemo(query);

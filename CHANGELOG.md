@@ -5,6 +5,19 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.61] - 2026-07-01
+
+### Added — チャット引用元プレビューにクエリ term-highlight
+
+チャットの `[1]` `[2]` シタチップにホバーすると出る floating preview で、直前のユーザー質問文中の単語 (≥2 文字) を preview 本文中で `<mark>` ハイライトするようにした。
+
+- **効果**: なぜこの記憶が引用されたか (どのキーワードが match したか) が一目で分かる
+- **実装**: `_lastChatQuery` を submit 時にキャプチャ → citation の mouseenter 時に空白/句読点で split、dedup、最大 8 terms、regex escape で <mark> 置換
+- **視覚**: `background:rgba(255,220,80,0.35)` 系の淡い黄色
+
+### Rationale
+検索タブの結果ハイライトは既にあったがチャットタブは preview がプレーンテキストだった。「これって関係ある記憶？」の直感的判断を高速化。
+
 ## [0.10.60] - 2026-07-01
 
 ### Fixed — `/api/doctor` の JSON parse ロジック bug
