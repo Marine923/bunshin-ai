@@ -11406,19 +11406,20 @@ def create_app(db_path: Path = DEFAULT_DB_PATH) -> FastAPI:
                     {"ok": False, "error": f"doctor exception: {result.exception!r}"},
                     status_code=500,
                 )
-            # doctor --json prints raw JSON on stdout as its final line;
-            # earlier `rich.Console(quiet=True)` swallows human banners
-            # but the click runner still captures both. Extract the JSON
-            # object from the last well-formed { … } block.
+            # doctor --json prints raw JSON on stdout; rich Console is
+            # quieted so no banners leak. Full parse first (correct for
+            # a single top-level dict); if that fails, walk backward
+            # for a leaked banner tail.
             raw = result.output.strip()
-            start = raw.rfind("{")
-            if start >= 0:
-                try:
-                    return _json.loads(raw[start:])
-                except _json.JSONDecodeError:
-                    pass
-            # Fallback: try the whole output
-            return _json.loads(raw)
+            try:
+                return _json.loads(raw)
+            except _json.JSONDecodeError:
+                # Fall through: strip trailing non-JSON content until
+                # the last '}' balances. This handles rare rich leaks.
+                last_close = raw.rfind("}")
+                if last_close > 0:
+                    return _json.loads(raw[: last_close + 1])
+                raise
         except Exception as e:
             return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 

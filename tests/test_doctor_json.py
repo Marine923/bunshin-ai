@@ -155,6 +155,33 @@ def test_preferred_ollama_models_probe_predicate_covers_common_bad_states():
     )
 
 
+def test_doctor_invocable_via_click_cli_runner():
+    """v0.10.58 regression guard: the /api/doctor web endpoint uses
+    click.testing.CliRunner.invoke(doctor_cmd, ["--json"]) because the
+    PyInstaller-packaged bunshin binary can't handle `-m bunshin.cli`.
+
+    This test verifies the same path works: CliRunner returns valid JSON
+    that the endpoint can parse. The v0.10.57 shipped bug (subprocess
+    approach failing in the packaged app) got caught by post-install
+    curl only — no unit test. This locks that in.
+    """
+    import json
+    from click.testing import CliRunner
+    from bunshin.cli import doctor_cmd
+
+    runner = CliRunner()
+    result = runner.invoke(doctor_cmd, ["--json"], standalone_mode=False)
+    assert result.exception is None, f"doctor_cmd raised: {result.exception!r}"
+    # Full-parse first (matches the endpoint's fast path)
+    raw = result.output.strip()
+    payload = json.loads(raw)
+    assert "clean" in payload
+    assert "issues" in payload
+    assert isinstance(payload["issues"], list)
+    for issue in payload["issues"]:
+        assert set(issue.keys()) >= {"level", "label", "detail", "fix"}
+
+
 def test_doctor_fix_flag_is_registered_and_runs_on_healthy_env():
     """v0.10.56: --fix must appear in --help and must not crash when there
     are no auto-fixable issues (e.g. on a healthy dev machine)."""

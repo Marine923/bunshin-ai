@@ -5,6 +5,26 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.60] - 2026-07-01
+
+### Fixed — `/api/doctor` の JSON parse ロジック bug
+
+v0.10.58 hotfix で `rfind('{')` を使って rich banner を除去する fallback を組み込んでいたが、
+実際は最後の `{` が **inner issue block の開き括弧** に該当し、外側の top-level dict を切り捨てていた。
+
+- 修正: full parse を fast path に、fallback は `rfind('}')` で末尾 balance を取る方式に
+- 実 doctor output は既に quiet console で banner leak なし → fast path で完結
+
+### Added — regression pytest
+
+- `test_doctor_invocable_via_click_cli_runner`: 
+  `click.testing.CliRunner.invoke(doctor_cmd, ["--json"])` の output が
+  そのまま `json.loads()` で parse できることを保証
+- v0.10.57 hotfix (subprocess -m 経路 fail) と v0.10.60 (parse bug) の両方をロックイン
+
+### テスト
+- **77 tests pass** (12 doctor + 12 pin + 4 hygiene + ... + 46 existing)
+
 ## [0.10.59] - 2026-07-01
 
 ### Added — Onboarding wizard 最終ステップに Anthropic API キー hint block
