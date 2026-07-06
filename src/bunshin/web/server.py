@@ -1983,6 +1983,31 @@ INDEX_HTML = """<!DOCTYPE html>
     border-color: rgba(248, 113, 113, 0.30);
     opacity: 1 !important;
   }
+  /* v0.10.64: mirror of record-delete-btn styling but green on copy. */
+  .record-copy-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-4);
+    border-radius: 5px;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .record-copy-btn svg { width: 13px; height: 13px; }
+  .result:hover .record-copy-btn { opacity: 0.7; }
+  .record-copy-btn:hover {
+    color: #86efac;
+    background: rgba(88, 204, 110, 0.12);
+    border-color: rgba(88, 204, 110, 0.30);
+    opacity: 1 !important;
+  }
+  .record-copy-btn.done { color: #58cc6e; opacity: 1 !important; }
   .result-content {
     white-space: pre-wrap;
     word-wrap: break-word;
@@ -8332,6 +8357,9 @@ function renderResult(r, idx) {
         ${whyChips}
         ${more}
         <span class="expand-hint">クリックで会話全体 ▾</span>
+        <button class="record-copy-btn" title="この記録をコピー" aria-label="コピー">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
         <button class="record-delete-btn" title="この記録を削除" aria-label="削除">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
@@ -8353,6 +8381,29 @@ document.addEventListener('click', (e) => {
   if (!body) return;
   const expanded = body.classList.toggle('expanded');
   btn.textContent = expanded ? '閉じる ▴' : 'もっと見る ▾';
+});
+
+// v0.10.64: Per-record copy — grabs the visible content of the result
+// card as plain text (strips highlight <mark> spans). Cheap way for the
+// user to quote one specific record into Claude / ChatGPT / notes
+// without dragging the whole bundle.
+document.addEventListener('click', async (e) => {
+  const cbtn = e.target.closest && e.target.closest('.record-copy-btn');
+  if (!cbtn) return;
+  e.stopPropagation();
+  const card = cbtn.closest('.result');
+  if (!card) return;
+  const body = card.querySelector('[data-result-content]');
+  const meta = card.querySelector('.result-meta');
+  const ts = meta?.querySelector('span')?.textContent?.trim() || '';
+  const badge = meta?.querySelector('.source-badge')?.textContent?.trim() || '';
+  const text = (body?.textContent || '').trim();
+  const bundle = `[${ts}] ${badge}\n${text}`.trim();
+  try {
+    await navigator.clipboard.writeText(bundle);
+    cbtn.classList.add('done');
+    setTimeout(() => cbtn.classList.remove('done'), 1200);
+  } catch {}
 });
 
 // Record deletion (with confirmation).

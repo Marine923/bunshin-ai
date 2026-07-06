@@ -5,6 +5,47 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.64] - 2026-07-03
+
+### Added — 検索結果カード個別 **コピー** ボタン
+
+各 result カード meta 行に、既存の削除 (🗑) ボタンと並べて緑系の copy (📋) ボタン追加。ホバー時に表示 (delete と同じ pattern)。
+
+- **クリック挙動**: `[YYYY/MM/DD HH:MM] source-badge\n<record 本文 plain-text>` をクリップボードへ
+- **Bundle button (既存)** はページ全体、この新ボタンは 1 record 単位
+- Visual: 緑 hover (#86efac / rgba(88,204,110,0.12)), `.done` class で 1.2s フィードバック
+
+### Rationale
+これまで 1 record 単位のコピーは「クリックで会話全体展開 → テキスト範囲選択 → ⌘C」の 3-4 手順。ワンクリックで Claude/ChatGPT/メモに引用貼付可能に。
+
+### 検証
+- Preview で render 確認: hasCard/hasCopyBtn/hasDeleteBtn 全 true, title = "この記録をコピー"
+- Clipboard API は headless preview で focus block されるが Electron 実機は問題なし
+- JS lint ✅、pytest 77 pass
+
+## [0.10.63] - 2026-07-03
+
+### Changed — build.sh fail-fast 強化 (v0.10.61 post-mortem)
+
+v0.10.61 で発生した「lint fail → build 中断 → dist/ に古い v0.10.60 DMG 残留 → install ステップが stale DMG を掴む」の再発を封鎖。
+
+- **prior artifact clean**: `Bunshin-*` (旧) と `Bunshin Memory-*` (現行) 両方のパターンで DMG + blockmap を build 開始時に全削除
+- **current version 抽出**: `pyproject.toml` から `$CURRENT_VERSION` を読む
+- **post-build assertion**: build 終了時に Intel + arm64 の `Bunshin Memory-${VERSION}.dmg` が両方存在することを確認、無ければ exit 2
+- **成功メッセージも version 込み**: 「✅ Build complete. DMGs verified for v0.10.63」
+
+これで「build 成功 = 期待通りの DMG が両 arch 揃った」が保証される。
+
+### 教訓
+DMG のクリーンアップパターンは product name rename (`Bunshin` → `Bunshin Memory`, v0.10.27) を反映していなかった。以後、rename する時は build/CI/deploy 系スクリプトの grep + 更新を必ずセットで。
+
+## [0.10.62] - 2026-07-01
+
+### Fixed — v0.10.61 の regex escape bug hotfix
+- `bodyHtml.replace` で使う regex char class の `\` 用エスケープが Python `\\` → JS `\` になるため、char class が閉じずに `SyntaxError: Invalid regular expression: missing /`
+- 結果 build lint fail → DMG 生成が abort、install ステップが古い v0.10.60 DMG を silently 再利用 (v0.10.63 の build fail-fast で恒久ガード)
+- **修正**: Python 側 `\\\\` にして JS `\\` を確実に届ける
+
 ## [0.10.61] - 2026-07-01
 
 ### Added — チャット引用元プレビューにクエリ term-highlight
