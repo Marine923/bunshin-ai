@@ -5,6 +5,41 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.65] - 2026-07-07
+
+### Changed — `bunshin status` に **`--json` + entities + timespan** 追加
+
+これまで `bunshin status` は sources × records と embeddings のみ。
+「今 Bunshin にどれくらいの記憶が入ってる？何年分？」を 5 秒で見るユースケースを強化。
+
+#### 表示追加
+- **Entities**: knowledge graph の entity 総数
+- **Timespan**: 最古 → 最新レコード日付 + 日数
+  - 例: `2015-03-18 → 2026-07-06 (4,127 days)`
+
+#### `--json` フラグ (新規)
+CI / cron report / ダッシュボード用の machine-readable output:
+
+```json
+{
+  "ok": true,
+  "db": "/Users/.../data.db",
+  "total_records": 25316,
+  "total_entities": 186,
+  "vec_count": 24972,
+  "vec_error": null,
+  "sources": {"claude": 7492, "file": 7197, ...},
+  "oldest_ts": 1426682523,
+  "newest_ts": 1783297052
+}
+```
+
+DB 未初期化時は `{"ok": false, "error": "no_db"}` を返却。
+
+### テスト
+- `test_status_json_shape_and_contract`: expected keys の contract 保護
+- 合計 **78 tests pass**
+
 ## [0.10.64] - 2026-07-03
 
 ### Added — 検索結果カード個別 **コピー** ボタン

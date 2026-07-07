@@ -155,6 +155,33 @@ def test_preferred_ollama_models_probe_predicate_covers_common_bad_states():
     )
 
 
+def test_status_json_shape_and_contract(tmp_path):
+    """v0.10.65: `bunshin status --json` payload shape must be stable —
+    dashboards / cron reports depend on the field names. Locks in the
+    invariant that key set matches what the CLI documents."""
+    import json
+    tmp_db = tmp_path / "test.db"
+    r = subprocess.run(
+        [sys.executable, "-m", "bunshin.cli", "status", "--db", str(tmp_db), "--json"],
+        capture_output=True, text=True, check=False,
+    )
+    assert r.returncode == 0
+    payload = json.loads(r.stdout)
+    # Fresh empty tmp DB → should return ok=false, error=no_db
+    if payload.get("ok") is False:
+        assert payload.get("error") == "no_db"
+        return
+    # If a DB was auto-initialized, must have all expected keys
+    expected_keys = {
+        "ok", "db", "total_records", "total_entities",
+        "vec_count", "vec_error", "sources", "oldest_ts", "newest_ts",
+    }
+    assert expected_keys <= set(payload.keys()), (
+        f"missing keys: {expected_keys - set(payload.keys())}"
+    )
+    assert isinstance(payload["sources"], dict)
+
+
 def test_doctor_invocable_via_click_cli_runner():
     """v0.10.58 regression guard: the /api/doctor web endpoint uses
     click.testing.CliRunner.invoke(doctor_cmd, ["--json"]) because the

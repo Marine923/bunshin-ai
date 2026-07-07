@@ -594,33 +594,97 @@ def find_duplicates_cmd(limit: int, min_mentions: int):
     default=DEFAULT_DB_PATH,
     help="Database file path",
 )
-def status_cmd(db: Path):
-    """Show database stats."""
+@click.option(
+    "--json", "as_json", is_flag=True,
+    help="Emit machine-readable JSON for shell pipelines / cron reports."
+)
+def status_cmd(db: Path, as_json: bool = False):
+    """Show database stats (records / entities / timespan / embeddings)."""
     if not db.exists():
-        console.print(
-            f"[red]No database found at {db}. Run [bold]bunshin init[/bold] first.[/red]"
-        )
+        if as_json:
+            import json as _json
+            print(_json.dumps({"ok": False, "error": "no_db", "db": str(db)}))
+        else:
+            console.print(
+                f"[red]No database found at {db}. Run [bold]bunshin init[/bold] first.[/red]"
+            )
         return
 
     conn = init_db(db)
     total = count_records(conn)
+    sources = dict(list_sources_with_counts(conn))
+
+    # v0.10.65: additional pulse-check fields.
+    entities = 0
+    try:
+        from bunshin.knowledge_graph import init_kg_schema
+        init_kg_schema(conn)
+        entities = conn.execute(
+            "SELECT COUNT(*) FROM entities"
+        ).fetchone()[0]
+    except Exception:
+        pass
+
+    oldest_ts = newest_ts = None
+    try:
+        row = conn.execute(
+            "SELECT MIN(timestamp), MAX(timestamp) FROM records "
+            "WHERE timestamp IS NOT NULL AND timestamp > 0"
+        ).fetchone()
+        if row:
+            oldest_ts, newest_ts = row[0], row[1]
+    except Exception:
+        pass
+
+    vec_count = 0
+    vec_err = None
+    try:
+        init_vector_db(conn)
+        vec_count = count_vectors(conn)
+    except Exception as e:
+        vec_err = str(e)[:120]
+
+    conn.close()
+
+    if as_json:
+        import json as _json
+        payload = {
+            "ok": True,
+            "db": str(db),
+            "total_records": total,
+            "total_entities": entities,
+            "vec_count": vec_count,
+            "vec_error": vec_err,
+            "sources": sources,
+            "oldest_ts": oldest_ts,
+            "newest_ts": newest_ts,
+        }
+        print(_json.dumps(payload, ensure_ascii=False, indent=2))
+        return
 
     table = Table(title=f"分身 status — {db}")
     table.add_column("Source", style="cyan")
     table.add_column("Records", justify="right")
-    for source, count in list_sources_with_counts(conn):
+    for source, count in sources.items():
         table.add_row(source, str(count))
-    table.add_row("[bold]Total records[/bold]", f"[bold]{total}[/bold]")
+    table.add_row("[bold]Total records[/bold]", f"[bold]{total:,}[/bold]")
+    table.add_row("[bold]Entities[/bold]", f"[bold]{entities:,}[/bold]")
+    if vec_err:
+        table.add_row("[bold]Embeddings[/bold]", f"[red]error: {vec_err}[/red]")
+    else:
+        table.add_row("[bold]Embeddings[/bold]", f"[bold]{vec_count:,}[/bold]")
 
-    try:
-        init_vector_db(conn)
-        vcount = count_vectors(conn)
-        table.add_row("[bold]Embeddings[/bold]", f"[bold]{vcount}[/bold]")
-    except Exception as e:
-        table.add_row("[bold]Embeddings[/bold]", f"[red]error: {e}[/red]")
+    if oldest_ts and newest_ts:
+        from datetime import datetime as _dt
+        oldest_str = _dt.fromtimestamp(oldest_ts).strftime("%Y-%m-%d")
+        newest_str = _dt.fromtimestamp(newest_ts).strftime("%Y-%m-%d")
+        span_days = (newest_ts - oldest_ts) // 86400
+        table.add_row(
+            "[bold]Timespan[/bold]",
+            f"{oldest_str} → {newest_str} ([dim]{span_days:,} days[/dim])",
+        )
 
     console.print(table)
-    conn.close()
 
 
 @main.command("embed")
