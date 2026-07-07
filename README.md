@@ -225,19 +225,34 @@ OCR on the photo set recovered, among other things, an entire DJI T25P quote she
 
 ---
 
-## What's new in v0.10 (54 releases, two days)
+## What's new in v0.10 (65 releases across a week)
 
-> **Curated summary**: [docs/RELEASE_HIGHLIGHTS.md](docs/RELEASE_HIGHLIGHTS.md) — the two arcs (Honda 9/9 + β polish 10-strong) narrated as a story.
+> **Curated summary**: [docs/RELEASE_HIGHLIGHTS.md](docs/RELEASE_HIGHLIGHTS.md) — the arcs narrated as a story.
 
 The current minor version line is unusually deep — a tight feedback
-loop with a single power user produced 51 patch releases across two
-days. The **v0.10.42–46 arc** solved a structured 9-of-9 evaluation;
-the **v0.10.47–50 arc** hardened the β-distribution path so silent
-failures (undownloaded models, broken sqlite-vec, off-list Ollama)
-show up loud in `bunshin doctor` instead of leaving the user
+loop with a single power user produced 65 patch releases. The
+**v0.10.42–46 arc** solved a structured 9-of-9 evaluation; the
+**v0.10.47–65 arc** hardened the β-distribution path so silent
+failures (undownloaded models, broken sqlite-vec, off-list Ollama,
+stale build artifacts) show up loud instead of leaving the user
 confused. Headline themes:
 
-- **β-distribution polish** (v0.10.47–50):
+- **UX polish + observability** (v0.10.61–65):
+  - **Chat citation term-highlight** (v0.10.61, hotfixed v0.10.62) —
+    hover a `[1]` chip in chat, get a floating preview with the last
+    user-query's words `<mark>`-highlighted so "why is this cited" is
+    instantly readable
+  - **build.sh fail-fast** (v0.10.63) — post-build DMG assertion +
+    prefix-agnostic dist/ clean, so a lint fail can no longer let a
+    stale prior-version DMG masquerade as the new build
+  - **Per-record copy button** (v0.10.64) — green icon on each search
+    result card, one-click writes `[timestamp] source\n<body>` to the
+    clipboard (Claude / ChatGPT / notes quote extraction)
+  - **`bunshin status --json` + entities + timespan** (v0.10.65) —
+    pulse-check without doctor's 11 probes; adds entity count and
+    oldest→newest span (e.g. `2015-03-18 → 2026-07-06 (4,127 days)`)
+
+- **CLI-less β-distribution polish** (v0.10.47–60):
   - **doctor 4 項目** (v0.10.47) — embed cache / rerank cache / disk
     free / Python version 追加
   - **`bunshin warm`** (v0.10.48) — 5-10 分の silent モデル DL を進捗表示付きの明示的作業に変換
@@ -245,6 +260,14 @@ confused. Headline themes:
     ベクトル検索が死んでる状態を doctor で ❌ 表示
   - **Off-list Ollama models flag** (v0.10.50) — dolphin-phi など
     PREFERRED に無いモデルだけ入れてる silent 品質崩壊を info 提示
+  - **doctor --deep** (v0.10.51) — end-to-end search smoke test
+  - **Settings tab warm GUI + wizard warm integration** (v0.10.52–53)
+  - **GitHub Issue prefill** (v0.10.54) — 診断情報 URL 埋込みで 5→2 手順
+  - **Search empty-state active filter chips** (v0.10.55)
+  - **doctor --fix** (v0.10.56) — safe in-process auto-repair
+  - **/api/doctor endpoint + GUI 診断ボタン** (v0.10.57 broken → v0.10.58 hotfix)
+  - **Wizard Anthropic API key hint** (v0.10.59)
+  - **/api/doctor parse fix + regression pytest** (v0.10.60)
 
 - **Retrieval quality: Honda 100-test 9/9 solved** (v0.10.42–46):
   - **Cascade retrieval** (v0.10.42) — auto-retry at min_relevance
@@ -290,12 +313,12 @@ confused. Headline themes:
 
 ## Testing
 
-70 pytest cases run on every push against a matrix of Ubuntu × macOS × Python 3.10/3.11/3.12 (see the CI badge above). New v0.10 features have dedicated regression suites:
+78 pytest cases run on every push against a matrix of Ubuntu × macOS × Python 3.10/3.11/3.12 (see the CI badge above). New v0.10 features have dedicated regression suites:
 
 - `test_entity_hygiene.py` (4) — merge-entities SQL, find-duplicates normalize, pin round-trip, tool-keyword reclassify
 - `test_pin_surfacing.py` (12) — pin-list endpoint, search_memory substring match, get_today_hero LIMIT+sort, list_top_entities batched lookup, export/import round-trip, cascade retrieval threshold order, temporal query router, flashback signal filter, bilingual expansion prompt, partial-match boost tiers
 - `test_photos_place_regex.py` (4) — v0.10.14 dab-tail regex regression protection
-- `test_doctor_json.py` (4) — public `--json` output contract
+- `test_doctor_json.py` (9) — `doctor --json/--deep/--fix` output contracts, `status --json` shape, CliRunner path (v0.10.58 regression guard), off-list Ollama predicate
 
 Plus the existing 46 covering storage, chunking, iMessage, PDF OCR, insights, notes, scheduler, knowledge graph. Run locally: `uv run pytest`.
 
