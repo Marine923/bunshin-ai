@@ -5,6 +5,31 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.67] - 2026-07-07
+
+### Added — `scripts/publish_release.sh` (idempotent GH release publish)
+
+v0.10.57 → v0.10.66 で 3 回発生した「release published だが assets 0」
+「upload 途中でタイムアウト → 手動修復」を根絶する fail-fast スクリプト。
+
+#### 保証すること
+1. **Version cross-check**: `$TAG` と `pyproject.toml` の version 一致
+2. **Pre-flight DMG assertion**: Intel + arm64 両方が `electron-app/dist/` に存在
+3. **Idempotent draft create**: 既存 tag は re-use
+4. **`--clobber` upload**: retry 安全
+5. **Post-upload assertion**: 両 DMG が release assets に居ることを確認、無ければ exit 2
+6. **公開**: draft → false + URL 印字
+
+使い方:
+```
+scripts/publish_release.sh v0.10.67 "タイトル" path/to/notes.md
+```
+
+### 教訓
+`gh release create + gh release upload + gh release edit` を chain で叩いていたが、
+network flake / GitHub API 400 / timeout に対する回復シナリオが揃っていなかった。
+publish 全体をスクリプト化して exit code 1 本に集約。
+
 ## [0.10.66] - 2026-07-07
 
 ### Added — Timeline タブに **ソース filter chip 行**
