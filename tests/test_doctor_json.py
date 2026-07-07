@@ -155,6 +155,22 @@ def test_preferred_ollama_models_probe_predicate_covers_common_bad_states():
     )
 
 
+def test_status_brief_no_db_message(tmp_path):
+    """v0.10.68: `bunshin status --brief` returns a stable one-line
+    string. Test the no-db path (safe since no populated fixture DB
+    needed) — verifies the flag is wired and the fallback string is
+    stable for shell prompt consumers."""
+    tmp_db = tmp_path / "test.db"
+    r = subprocess.run(
+        [sys.executable, "-m", "bunshin.cli", "status", "--db", str(tmp_db), "--brief"],
+        capture_output=True, text=True, check=False,
+    )
+    assert r.returncode == 0
+    assert r.stdout.strip() == "bunshin: no db", (
+        f"unexpected --brief no-db output: {r.stdout!r}"
+    )
+
+
 def test_status_json_shape_and_contract(tmp_path):
     """v0.10.65: `bunshin status --json` payload shape must be stable —
     dashboards / cron reports depend on the field names. Locks in the

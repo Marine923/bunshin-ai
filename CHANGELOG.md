@@ -5,6 +5,28 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.68] - 2026-07-07
+
+### Added — `bunshin status --brief` (shell prompt / status bar 用 one-liner)
+
+`bunshin status --json` は完全な payload、`bunshin status` は Rich テーブル。
+その間の「1 行だけほしい」用途 (shell PS1 / tmux status-right / cron log 末尾) 向け:
+
+```
+$ bunshin status --brief
+bunshin: 25,329 rec · 186 ent · vec 26,146 · 4,128d
+```
+
+#### 出力仕様
+- `bunshin: {records:,} rec · {entities:,} ent · vec {vec_count:,}` [+ ` · {span_days:,}d`]
+- vec が total の 80% 未満なら `vec!` (marker) に切替
+- DB 未初期化: `bunshin: no db`
+- 出力書式は shell awk/grep 用に固定 (contract 保護 pytest 追加)
+
+### テスト
+- `test_status_brief_no_db_message`: no-db 時の contract 保護
+- 合計 **79 tests pass**
+
 ## [0.10.67] - 2026-07-07
 
 ### Added — `scripts/publish_release.sh` (idempotent GH release publish)

@@ -598,9 +598,16 @@ def find_duplicates_cmd(limit: int, min_mentions: int):
     "--json", "as_json", is_flag=True,
     help="Emit machine-readable JSON for shell pipelines / cron reports."
 )
-def status_cmd(db: Path, as_json: bool = False):
+@click.option(
+    "--brief", is_flag=True,
+    help="One-line output for shell prompts / status bars (no Rich box)."
+)
+def status_cmd(db: Path, as_json: bool = False, brief: bool = False):
     """Show database stats (records / entities / timespan / embeddings)."""
     if not db.exists():
+        if brief:
+            print("bunshin: no db")
+            return
         if as_json:
             import json as _json
             print(_json.dumps({"ok": False, "error": "no_db", "db": str(db)}))
@@ -645,6 +652,19 @@ def status_cmd(db: Path, as_json: bool = False):
         vec_err = str(e)[:120]
 
     conn.close()
+
+    if brief:
+        # One-line for shell prompts / status bars. Format is stable so
+        # shell scripts can grep/awk. Vec indicator: 'v' green if
+        # vec_count >= total*0.8, else 'v!' red.
+        vec_hint = "vec!" if vec_count < total * 0.8 else "vec"
+        span_str = ""
+        if oldest_ts and newest_ts:
+            from datetime import datetime as _dt
+            span_days = (newest_ts - oldest_ts) // 86400
+            span_str = f" · {span_days:,}d"
+        print(f"bunshin: {total:,} rec · {entities:,} ent · {vec_hint} {vec_count:,}{span_str}")
+        return
 
     if as_json:
         import json as _json
