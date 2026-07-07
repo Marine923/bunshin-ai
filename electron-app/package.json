@@ -1,6 +1,6 @@
 {
   "name": "bunshin-desktop",
-  "version": "0.10.65",
+  "version": "0.10.66",
   "description": "Bunshin Memory — personal memory engine (desktop wrapper)",
   "main": "src/main.js",
   "author": {

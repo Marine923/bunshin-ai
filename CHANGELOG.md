@@ -5,6 +5,27 @@ roughly [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.66] - 2026-07-07
+
+### Added — Timeline タブに **ソース filter chip 行**
+
+期間 chip の下に新設した「ソース:」行で、Gmail だけ / 写真だけ / notes だけの時系列表示に絞り込み可能に。
+
+- ソース chip は現在の期間内で **実在するソースのみ** 表示 (dead options 無し)、件数多い順 sort
+- 「全部」チップ (初期 active) + 個別 source chip
+- 選択時: `d.sources[src]` を持つ日だけ表示、なければ empty state 「このソースはこの期間に無いようです」
+- Heatmap view では filter row 非表示 (heatmap は日単位集計、source 分割の意味なし)
+- ソース種類が 2 未満の場合は行そのものを非表示
+
+### 検証 (preview)
+```
+switch to timeline tab → row displays with 9 chips
+[全部, ファイル, Claude, ブラウザ, Gmail, 写真OCR, クイックメモ, Apple メモ, 写真ライブラリ]
+
+click Gmail → _timelineSource = 'gmail', freshGmailActive = true,
+30 days shown, all days have gmail entry (filterRespected: true)
+```
+
 ## [0.10.65] - 2026-07-07
 
 ### Changed — `bunshin status` に **`--json` + entities + timespan** 追加

@@ -3947,6 +3947,15 @@ INDEX_HTML = """<!DOCTYPE html>
         <button class="timeline-view-btn" data-view="heatmap" type="button">ヒートマップ</button>
       </div>
     </div>
+    <!-- v0.10.66: source filter row. Populated client-side after
+         /api/timeline responds so we only show sources that actually
+         appear in the current window. -->
+    <div class="timeline-controls" id="timeline-source-row" style="display:none;">
+      <span>ソース:</span>
+      <div class="chips-row" id="timeline-sources">
+        <span class="filter-chip active" data-tl-source="">全部</span>
+      </div>
+    </div>
     <div id="timeline-content">
       <div class="loading">読み込み中…</div>
     </div>
@@ -6545,6 +6554,7 @@ const TIMELINE_SOURCE_ICONS = {
 };
 let _timelineDays = 30;
 let _timelineView = 'list';  // 'list' | 'heatmap'
+let _timelineSource = '';    // v0.10.66: '' = 全部、それ以外は source key
 async function loadTimeline(days) {
   if (typeof days === 'number') _timelineDays = days;
   const c = $('timeline-content');
@@ -6561,13 +6571,57 @@ async function loadTimeline(days) {
     if (_timelineView === 'heatmap') {
       c.innerHTML = renderTimelineHeatmap(j.days);
       wireTimelineHeatmap(c);
+      document.getElementById('timeline-source-row').style.display = 'none';
     } else {
-      c.innerHTML = j.days.map(renderTimelineDay).join('');
+      populateTimelineSourceChips(j.days);
+      const filteredDays = _timelineSource
+        ? j.days.filter(d => (d.sources || {})[_timelineSource])
+        : j.days;
+      if (!filteredDays.length) {
+        c.innerHTML = `<div class="empty">このソースはこの期間に無いようです</div>`;
+      } else {
+        c.innerHTML = filteredDays.map(renderTimelineDay).join('');
+      }
     }
   } catch (e) {
     c.innerHTML = `<div class="empty">エラー: ${esc(String(e))}</div>`;
   }
 }
+
+// v0.10.66: Build/refresh the timeline source-filter chips from the
+// current /api/timeline response. Only shows sources that appear in
+// this window — no dead options.
+function populateTimelineSourceChips(days) {
+  const row = document.getElementById('timeline-source-row');
+  const chipsEl = document.getElementById('timeline-sources');
+  if (!row || !chipsEl) return;
+  const counts = new Map();
+  for (const d of days || []) {
+    for (const [src, cnt] of Object.entries(d.sources || {})) {
+      counts.set(src, (counts.get(src) || 0) + cnt);
+    }
+  }
+  if (counts.size < 2) {
+    row.style.display = 'none';
+    return;
+  }
+  row.style.display = '';
+  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  const parts = [`<span class="filter-chip${_timelineSource === '' ? ' active' : ''}" data-tl-source="">全部</span>`];
+  for (const [src, cnt] of sorted) {
+    const lbl = SOURCE_LABEL_JA[src] || src;
+    const cls = _timelineSource === src ? ' active' : '';
+    parts.push(`<span class="filter-chip${cls}" data-tl-source="${src}" title="${cnt} 件">${lbl}</span>`);
+  }
+  chipsEl.innerHTML = parts.join('');
+}
+
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest && e.target.closest('#timeline-sources .filter-chip');
+  if (!chip) return;
+  _timelineSource = chip.dataset.tlSource || '';
+  loadTimeline();
+});
 
 // GitHub-style 365-day heatmap. Reviewer 21 G-1.
 function renderTimelineHeatmap(days) {
