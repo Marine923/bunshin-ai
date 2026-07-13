@@ -258,6 +258,36 @@ def test_doctor_deep_flag_is_registered_in_help():
     )
 
 
+def test_doctor_skips_update_probe_when_env_var_set(tmp_path):
+    """v0.10.72: BUNSHIN_SKIP_UPDATE_CHECK=1 must disable the doctor
+    GitHub-release probe. Guards CI runs / offline devs from paying the
+    network round-trip and from failing when GitHub is unreachable.
+
+    We can't easily prove no HTTP happened from a subprocess test, but
+    we can prove doctor still exits 0 and returns valid JSON — the
+    probe body catches any exception, so a broken raise-path would just
+    silent-skip anyway. This test is a smoke check that the env var
+    doesn't crash the whole `doctor --json` command."""
+    import json
+    import os
+    tmp_db = tmp_path / "test.db"
+    env = os.environ.copy()
+    env["BUNSHIN_SKIP_UPDATE_CHECK"] = "1"
+    r = subprocess.run(
+        [sys.executable, "-m", "bunshin.cli", "doctor", "--db", str(tmp_db), "--json"],
+        capture_output=True, text=True, check=False, env=env,
+    )
+    assert r.returncode == 0, f"exit={r.returncode}, stderr={r.stderr[:300]}"
+    payload = json.loads(r.stdout)
+    assert "issues" in payload
+    # If any update-check issue leaks in with the env var set, the
+    # opt-out isn't honored.
+    update_issues = [i for i in payload["issues"] if "アップデート" in i.get("label", "")]
+    assert not update_issues, (
+        f"BUNSHIN_SKIP_UPDATE_CHECK=1 did not skip: {update_issues}"
+    )
+
+
 def test_latest_command_help_lists_repo_and_json_flag():
     """v0.10.70: `bunshin latest` must be registered with help text
     documenting --repo and --json. Regression guard so the update-check

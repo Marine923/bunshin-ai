@@ -1951,13 +1951,20 @@ def doctor_cmd(db: Path, as_json: bool, deep: bool, fix: bool):
         except Exception:
             pass
 
-    # ── 9. Update-available probe (v0.10.71)
+    # ── 9. Update-available probe (v0.10.71, opt-out v0.10.72)
     # Best-effort GitHub Releases API check (timeout 4s). We keep this
     # off `deep` gating on purpose: it's a network call but not slow,
     # and the info is genuinely useful for β testers running doctor as
     # their first troubleshooting step. Any failure is silent-skip —
     # doctor doesn't fail just because GitHub is down.
+    #
+    # v0.10.72: honor BUNSHIN_SKIP_UPDATE_CHECK=1 for CI / offline dev
+    # who want a deterministic doctor with no outbound HTTP.
+    import os as _os_up
+    _skip_update = _os_up.environ.get("BUNSHIN_SKIP_UPDATE_CHECK", "").strip() in ("1", "true", "yes")
     try:
+        if _skip_update:
+            raise RuntimeError("skipped")
         import json as _json_up
         from urllib.request import Request, urlopen
         try:
