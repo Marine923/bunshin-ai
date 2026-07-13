@@ -258,6 +258,25 @@ def test_doctor_deep_flag_is_registered_in_help():
     )
 
 
+def test_latest_command_help_lists_repo_and_json_flag():
+    """v0.10.70: `bunshin latest` must be registered with help text
+    documenting --repo and --json. Regression guard so the update-check
+    subcommand can't be accidentally deleted or renamed without
+    surfacing in CI."""
+    r = subprocess.run(
+        [sys.executable, "-m", "bunshin.cli", "latest", "--help"],
+        capture_output=True, text=True, check=False,
+    )
+    assert r.returncode == 0
+    assert "--repo" in r.stdout
+    assert "--json" in r.stdout
+    for hint in ("github", "latest", "installed"):
+        assert hint.lower() in r.stdout.lower(), (
+            f"help text lost the {hint!r} keyword — command may have "
+            f"been reduced or renamed"
+        )
+
+
 def test_warm_command_is_registered_and_has_help_text():
     """v0.10.48: `bunshin warm` must be a registered subcommand with
     help text describing its purpose. We don't run it end-to-end here

@@ -2910,6 +2910,90 @@ def re_describe_all_cmd(limit: int, server: str, timeout: int, min_mentions: int
     console.print(table)
 
 
+@main.command("latest")
+@click.option(
+    "--repo",
+    default="Marine923/bunshin-ai",
+    help="GitHub owner/repo to query (default: Marine923/bunshin-ai)",
+)
+@click.option(
+    "--json", "as_json", is_flag=True,
+    help="Emit machine-readable JSON: {installed, latest, update_available, url}",
+)
+def latest_cmd(repo: str, as_json: bool):
+    """Compare installed version with the latest GitHub release.
+
+    Emits: "v0.10.68 → v0.10.70 available" or "v0.10.70 (latest)".
+    Network required. Fails soft on offline / rate-limit / repo change.
+    """
+    import json as _json
+    from urllib.error import URLError, HTTPError
+    from urllib.request import Request, urlopen
+    try:
+        from bunshin import __version__ as installed
+    except Exception:
+        installed = "unknown"
+
+    url = f"https://api.github.com/repos/{repo}/releases/latest"
+    req = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": f"bunshin/{installed}"})
+    try:
+        with urlopen(req, timeout=6) as r:
+            body = _json.loads(r.read())
+    except HTTPError as e:
+        msg = f"HTTP {e.code}"
+        if as_json:
+            print(_json.dumps({"ok": False, "error": msg, "installed": installed}, ensure_ascii=False))
+        else:
+            console.print(f"[red]✗[/red] 最新版取得失敗: {msg}")
+        return
+    except (URLError, TimeoutError, Exception) as e:
+        msg = str(e)[:120]
+        if as_json:
+            print(_json.dumps({"ok": False, "error": msg, "installed": installed}, ensure_ascii=False))
+        else:
+            console.print(f"[yellow]⚠ 最新版取得失敗 (オフライン?):[/yellow] {msg}")
+        return
+
+    tag = (body.get("tag_name") or "").lstrip("v")
+    if not tag:
+        if as_json:
+            print(_json.dumps({"ok": False, "error": "no tag_name in response", "installed": installed}))
+        else:
+            console.print("[yellow]⚠ tag_name 不明なレスポンス[/yellow]")
+        return
+
+    def _tuple(v):
+        parts = []
+        for p in v.split("."):
+            try:
+                parts.append(int(p))
+            except ValueError:
+                parts.append(0)
+        return tuple(parts)
+
+    update_available = _tuple(tag) > _tuple(installed) if installed != "unknown" else False
+    release_url = body.get("html_url", f"https://github.com/{repo}/releases/latest")
+
+    if as_json:
+        print(_json.dumps({
+            "ok": True,
+            "installed": installed,
+            "latest": tag,
+            "update_available": update_available,
+            "url": release_url,
+        }, ensure_ascii=False, indent=2))
+        return
+
+    if update_available:
+        console.print(f"[bold yellow]v{installed}[/bold yellow] → [bold green]v{tag}[/bold green] available")
+        console.print(f"   [dim]→[/dim] [cyan]{release_url}[/cyan]")
+    elif installed == tag:
+        console.print(f"[bold green]v{installed}[/bold green] [dim](latest)[/dim]")
+    else:
+        # local ahead of GitHub (dev checkout)
+        console.print(f"[dim]v{installed} (local) · v{tag} (github latest)[/dim]")
+
+
 @main.command("update")
 @click.option(
     "--claude-path",
