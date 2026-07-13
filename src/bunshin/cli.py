@@ -1951,6 +1951,46 @@ def doctor_cmd(db: Path, as_json: bool, deep: bool, fix: bool):
         except Exception:
             pass
 
+    # ── 9. Update-available probe (v0.10.71)
+    # Best-effort GitHub Releases API check (timeout 4s). We keep this
+    # off `deep` gating on purpose: it's a network call but not slow,
+    # and the info is genuinely useful for β testers running doctor as
+    # their first troubleshooting step. Any failure is silent-skip —
+    # doctor doesn't fail just because GitHub is down.
+    try:
+        import json as _json_up
+        from urllib.request import Request, urlopen
+        try:
+            from bunshin import __version__ as _installed
+        except Exception:
+            _installed = "unknown"
+        req = Request(
+            "https://api.github.com/repos/Marine923/bunshin-ai/releases/latest",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": f"bunshin/{_installed}",
+            },
+        )
+        with urlopen(req, timeout=4) as _r:
+            _body = _json_up.loads(_r.read())
+        _tag = (_body.get("tag_name") or "").lstrip("v")
+        def _t2(v):
+            out = []
+            for p in v.split("."):
+                try:
+                    out.append(int(p))
+                except ValueError:
+                    out.append(0)
+            return tuple(out)
+        if _tag and _installed != "unknown" and _t2(_tag) > _t2(_installed):
+            issues.append(
+                ("ℹ", "アップデート可能",
+                 f"v{_installed} → v{_tag} が公開されています",
+                 f"{_body.get('html_url', 'https://github.com/Marine923/bunshin-ai/releases/latest')} からダウンロード")
+            )
+    except Exception:
+        pass
+
     # ── Summary
     if as_json:
         import json as _json
