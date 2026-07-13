@@ -1,6 +1,6 @@
 # Release Highlights — v0.10 series
 
-The v0.10 minor version line was unusually deep — 54 patch releases across two days, driven by a tight feedback loop with a single power user. This document distills the arcs that mattered most.
+The v0.10 minor version line ran deep — 68 patch releases so far, driven by a tight feedback loop with a single power user. This document distills the arcs that mattered most.
 
 ---
 
@@ -53,12 +53,27 @@ Result: users go **install → wizard 5 steps → 1 click warm → search** with
 
 ---
 
-## By the numbers (v0.10 line, 2026-06-30 – 2026-07-01)
+## Arc 3: Chat / search / observability polish (v0.10.61 – v0.10.68)
 
-- **54 patch releases** over 2 days
-- **75 pytest tests** (up from 46 pre-arc)
-- **9 signed retrieval failure modes** resolved
-- **10 β-distribution polish releases** stacked on top
+Ergonomic wins after the CLI-less β-distribution path was solid.
+
+- **v0.10.61 → v0.10.62 (hotfix)**: chat citation preview highlights the last user-query's terms with `<mark>`. Regex escape bug in .61 (JS char class not closing) caught by the build's `node --check` step but shipped anyway because the build script's post-lint DMG production silently retained stale `v0.10.60` artifacts. Fixed the regex in .62.
+- **v0.10.63**: **build.sh fail-fast** — clean both `Bunshin-*` and `Bunshin Memory-*` prefixes before build; extract `$CURRENT_VERSION` from `pyproject.toml`; **assert both arch DMGs for that version exist** at the end. No more silent stale DMGs.
+- **v0.10.64**: per-record 📋 copy button on each search card, one-click writes `[timestamp] source\n<body>` to clipboard. Cuts 3-4 step quote extraction (expand → select → ⌘C) to 1 click.
+- **v0.10.65**: `bunshin status --json` gains **entity count** and **`oldest → newest (days)` timespan** — a real "how much memory across how long" pulse-check, distinct from `doctor`'s 11-probe deep report.
+- **v0.10.66**: Timeline tab **source filter chips** — populated from the actual response window (dead options excluded), sorted by frequency, hidden when only one source is present. Same UX pattern as search-tab period chips.
+- **v0.10.67**: `scripts/publish_release.sh` — draft → upload (both DMGs with `--clobber`) → asset verify → publish, with fail-fast at every phase. History showed the ad-hoc `gh release create && gh release upload` flow silently produced 0-asset or single-DMG releases (v0.10.57, .66). Now every release goes through one exit-code.
+- **v0.10.68**: `bunshin status --brief` — one-line output for shell prompts / status bars (`bunshin: 25316 rec / 186 ent / 24972 vec`). Rounds out the 3-tier status contract (brief / default table / `--json`).
+
+---
+
+## By the numbers (v0.10 line, 2026-06-30 – 2026-07-07)
+
+- **68 patch releases** across a week
+- **79 pytest tests** (up from 46 pre-arc)
+- **9 signed retrieval failure modes** resolved (Arc 1)
+- **~17 β-distribution + UX polish releases** (Arc 2, 3)
+- **Release infrastructure hardened**: `build.sh` fail-fast + `publish_release.sh` idempotent — zero-asset / stale-DMG events root-caused and closed
 - **Every release**: dual-architecture DMG (Intel + Apple Silicon) attached to GitHub Releases
 
 ---
