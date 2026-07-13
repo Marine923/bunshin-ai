@@ -258,6 +258,29 @@ def test_doctor_deep_flag_is_registered_in_help():
     )
 
 
+def test_latest_command_honors_skip_env_var():
+    """v0.10.73: `bunshin latest` must be symmetric with the doctor
+    probe (v0.10.72) — a single `BUNSHIN_SKIP_UPDATE_CHECK=1` should
+    short-circuit both. Verifies no network round-trip AND that --json
+    emits `skipped: "BUNSHIN_SKIP_UPDATE_CHECK"`, `latest: null`,
+    `update_available: false` — the contract CI cron jobs / dashboards
+    can gate on."""
+    import json
+    import os
+    env = os.environ.copy()
+    env["BUNSHIN_SKIP_UPDATE_CHECK"] = "1"
+    r = subprocess.run(
+        [sys.executable, "-m", "bunshin.cli", "latest", "--json"],
+        capture_output=True, text=True, check=False, env=env, timeout=6,
+    )
+    assert r.returncode == 0, f"exit={r.returncode}, stderr={r.stderr[:300]}"
+    payload = json.loads(r.stdout)
+    assert payload["ok"] is True
+    assert payload["update_available"] is False
+    assert payload["latest"] is None
+    assert payload["skipped"] == "BUNSHIN_SKIP_UPDATE_CHECK"
+
+
 def test_doctor_skips_update_probe_when_env_var_set(tmp_path):
     """v0.10.72: BUNSHIN_SKIP_UPDATE_CHECK=1 must disable the doctor
     GitHub-release probe. Guards CI runs / offline devs from paying the

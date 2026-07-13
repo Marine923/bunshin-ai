@@ -2972,14 +2972,33 @@ def latest_cmd(repo: str, as_json: bool):
 
     Emits: "v0.10.68 → v0.10.70 available" or "v0.10.70 (latest)".
     Network required. Fails soft on offline / rate-limit / repo change.
+
+    Set BUNSHIN_SKIP_UPDATE_CHECK=1 to short-circuit (CI / offline dev).
     """
     import json as _json
+    import os as _os
     from urllib.error import URLError, HTTPError
     from urllib.request import Request, urlopen
     try:
         from bunshin import __version__ as installed
     except Exception:
         installed = "unknown"
+
+    # v0.10.73: symmetric with the doctor probe env var. Same flag,
+    # same accepted values, so a single `export BUNSHIN_SKIP_UPDATE_CHECK=1`
+    # silences update checks across both CLIs.
+    if _os.environ.get("BUNSHIN_SKIP_UPDATE_CHECK", "").strip() in ("1", "true", "yes"):
+        if as_json:
+            print(_json.dumps({
+                "ok": True,
+                "installed": installed,
+                "latest": None,
+                "update_available": False,
+                "skipped": "BUNSHIN_SKIP_UPDATE_CHECK",
+            }, ensure_ascii=False, indent=2))
+        else:
+            console.print(f"[dim]v{installed} · update check skipped (BUNSHIN_SKIP_UPDATE_CHECK)[/dim]")
+        return
 
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     req = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": f"bunshin/{installed}"})
